@@ -87,6 +87,9 @@ pub enum Screen {
         info_lines: Vec<String>,
         scroll: usize,
         selected: usize,
+        /// False when the loaded wallet's pubkey is not in the tx's required
+        /// signer set — Sign is disabled in that case.
+        can_sign: bool,
     },
     SignShowQr { data: String },
     SignMessageInput { grid: CharGrid },
@@ -96,6 +99,11 @@ pub enum Screen {
     SettingsMenu { selected: usize },
     SettingsShowAddress,
     SettingsAccounts { accounts: Vec<(String, String)>, selected: usize },
+    SettingsVerifyAddressScan,
+    SettingsVerifyAddressResult {
+        address: String,
+        result: crate::crypto::derivation::AddressMatch,
+    },
     SettingsAbout,
     SettingsPowerOff { selected: usize },
 }
@@ -361,10 +369,33 @@ impl Drop for LoadedWallet {
     }
 }
 
+/// Default screen-blanking timeout. Zero disables blanking entirely.
+pub const DEFAULT_BLANK_TIMEOUT_MS: u64 = 120_000; // 2 minutes
+
+/// Pure decision function: should the screen render as blank given these inputs?
+///
+/// Kept as a free function so it can be exhaustively unit-tested without
+/// constructing an `App` or dealing with wall-clock time.
+pub fn should_blank(idle_ms: u64, timeout_ms: u64, on_camera_screen: bool) -> bool {
+    // Camera screens never blank — the user is actively looking at a live preview.
+    // Timeout of 0 is the "never blank" sentinel.
+    !on_camera_screen && timeout_ms > 0 && idle_ms >= timeout_ms
+}
+
 /// Top-level application.
 pub struct App {
     pub screen: Screen,
     pub wallet: Option<LoadedWallet>,
+    pub last_activity: std::time::Instant,
+    pub blank_timeout_ms: u64,
+    #[cfg(feature = "simulator")]
+    pub sim_camera: Option<crate::gui::sim_camera::SimCamera>,
+    #[cfg(feature = "simulator")]
+    pub latest_frame: Option<crate::gui::sim_camera::Frame>,
+    #[cfg(feature = "simulator")]
+    pub camera_error: Option<String>,
+    #[cfg(feature = "simulator")]
+    pub scanned_qr: Option<Vec<u8>>,
 }
 
 impl App {
@@ -372,6 +403,16 @@ impl App {
         App {
             screen: Screen::Splash,
             wallet: None,
+            last_activity: std::time::Instant::now(),
+            blank_timeout_ms: DEFAULT_BLANK_TIMEOUT_MS,
+            #[cfg(feature = "simulator")]
+            sim_camera: None,
+            #[cfg(feature = "simulator")]
+            latest_frame: None,
+            #[cfg(feature = "simulator")]
+            camera_error: None,
+            #[cfg(feature = "simulator")]
+            scanned_qr: None,
         }
     }
 
@@ -384,8 +425,109 @@ impl App {
     }
 
     pub fn handle_input(&mut self, event: InputEvent) {
+        let was_blanked = self.is_blanked();
+        self.last_activity = std::time::Instant::now();
+        if was_blanked {
+            // Any input wakes the screen — but we consume the input so the user
+            // doesn't accidentally confirm a dialog they couldn't see.
+            return;
+        }
         let screen = std::mem::replace(&mut self.screen, Screen::Splash);
         self.screen = self.transition(screen, event);
+    }
+
+    /// True when the screen should render as blank right now.
+    pub fn is_blanked(&self) -> bool {
+        let idle_ms = self.last_activity.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        let on_camera = {
+            #[cfg(feature = "simulator")]
+            { self.wants_camera() }
+            #[cfg(not(feature = "simulator"))]
+            { false }
+        };
+        should_blank(idle_ms, self.blank_timeout_ms, on_camera)
+    }
+
+    /// Camera error message, if any (sim-only; always None on Pi).
+    pub fn camera_error_str(&self) -> Option<&str> {
+        #[cfg(feature = "simulator")]
+        {
+            self.camera_error.as_deref()
+        }
+        #[cfg(not(feature = "simulator"))]
+        {
+            None
+        }
+    }
+
+    /// True if a webcam frame is currently available (sim-only).
+    pub fn has_camera_frame(&self) -> bool {
+        #[cfg(feature = "simulator")]
+        {
+            self.latest_frame.is_some()
+        }
+        #[cfg(not(feature = "simulator"))]
+        {
+            false
+        }
+    }
+
+    /// True when the current screen wants the webcam.
+    #[cfg(feature = "simulator")]
+    pub fn wants_camera(&self) -> bool {
+        matches!(
+            &self.screen,
+            Screen::LoadScanQr
+                | Screen::SignScanTx
+                | Screen::CreateCameraEntropy { .. }
+                | Screen::SettingsVerifyAddressScan
+        )
+    }
+
+    /// Per-frame update — manages camera lifecycle and auto-advances on QR detect.
+    #[cfg(feature = "simulator")]
+    pub fn tick(&mut self) {
+        let wants = self.wants_camera();
+        if wants && self.sim_camera.is_none() && self.camera_error.is_none() {
+            match crate::gui::sim_camera::SimCamera::open() {
+                Ok(cam) => self.sim_camera = Some(cam),
+                Err(e) => {
+                    eprintln!("Camera unavailable: {e}");
+                    self.camera_error = Some(e);
+                }
+            }
+        } else if !wants && self.sim_camera.is_some() {
+            self.sim_camera = None;
+            self.latest_frame = None;
+            self.scanned_qr = None;
+        }
+        if !wants {
+            self.camera_error = None;
+        }
+
+        let is_scan_screen = matches!(
+            self.screen,
+            Screen::LoadScanQr | Screen::SignScanTx | Screen::SettingsVerifyAddressScan
+        );
+        let pending_qr = if let Some(cam) = &self.sim_camera {
+            cam.set_decode_enabled(is_scan_screen);
+            if let Some(f) = cam.latest() {
+                self.latest_frame = Some(f);
+            }
+            cam.take_qr()
+        } else {
+            None
+        };
+
+        if let Some(data) = pending_qr {
+            if matches!(
+                self.screen,
+                Screen::LoadScanQr | Screen::SignScanTx | Screen::SettingsVerifyAddressScan
+            ) {
+                self.scanned_qr = Some(data);
+                self.handle_input(InputEvent::Confirm);
+            }
+        }
     }
 
     fn transition(&mut self, screen: Screen, event: InputEvent) -> Screen {
@@ -438,16 +580,29 @@ impl App {
             }
 
             Screen::CreateCameraEntropy { word_count, mut frames_collected, mut entropy } => {
-                // Each button press captures "camera noise" as entropy
-                // On Pi: reads raw bytes from camera sensor
-                // In simulator: uses timestamp + random mix as entropy source
+                // Each button press captures "camera noise" as entropy.
+                // In simulator: hashes the current webcam frame. Falls back to
+                // timing jitter + OS RNG when the webcam isn't available.
+                // On Pi: reads raw bytes from camera sensor (TODO).
                 let total_frames = if word_count == 12 { 10 } else { 20 };
                 match event {
                     InputEvent::Confirm => {
-                        // Gather entropy from timing + system randomness
                         let mut frame_entropy = [0u8; 16];
-                        getrandom::getrandom(&mut frame_entropy).ok();
-                        // Mix in timing jitter
+                        #[cfg(feature = "simulator")]
+                        {
+                            if let Some(frame) = &self.latest_frame {
+                                use sha2::{Digest, Sha256};
+                                let digest = Sha256::digest(&frame.rgb);
+                                frame_entropy.copy_from_slice(&digest[..16]);
+                            } else {
+                                getrandom::getrandom(&mut frame_entropy).ok();
+                            }
+                        }
+                        #[cfg(not(feature = "simulator"))]
+                        {
+                            getrandom::getrandom(&mut frame_entropy).ok();
+                        }
+                        // Always mix in timing jitter so repeated frames don't repeat entropy.
                         let now = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default();
@@ -723,10 +878,17 @@ impl App {
             Screen::LoadScanQr => {
                 match event {
                     InputEvent::Confirm => {
-                        // In simulator: decode a test SeedQR through the full pipeline
-                        // On Pi: TODO actual camera QR scanning
-                        let test_seed_qr = "000000000000000000000000000000000000000000000003";
-                        let decoded = decode_qr::detect_and_decode(test_seed_qr.as_bytes());
+                        // In simulator: if a QR was scanned via webcam, use it; otherwise
+                        // fall back to a hardcoded test SeedQR so the flow still works offline.
+                        // On Pi: TODO actual camera QR scanning.
+                        #[cfg(feature = "simulator")]
+                        let data: Vec<u8> = self.scanned_qr.take().unwrap_or_else(|| {
+                            "000000000000000000000000000000000000000000000003".as_bytes().to_vec()
+                        });
+                        #[cfg(not(feature = "simulator"))]
+                        let data: Vec<u8> =
+                            "000000000000000000000000000000000000000000000003".as_bytes().to_vec();
+                        let decoded = decode_qr::detect_and_decode(&data);
 
                         #[cfg(feature = "simulator")]
                         println!("QR decoded: {:?} ({} bytes raw)", decoded.qr_type, decoded.raw_data.len());
@@ -734,9 +896,9 @@ impl App {
                         if let Some(mnemonic) = decoded.mnemonic {
                             return Screen::LoadPassphrasePrompt { mnemonic, selected: 0 };
                         }
-                        if let Some(addr) = decoded.address {
+                        if let Some(_addr) = &decoded.address {
                             #[cfg(feature = "simulator")]
-                            println!("Scanned address: {}", addr);
+                            println!("Scanned address: {}", _addr);
                         }
                     }
                     InputEvent::Back => return Screen::LoadMethod { selected: 0 },
@@ -891,29 +1053,27 @@ impl App {
             Screen::SignScanTx => {
                 match event {
                     InputEvent::Confirm => {
-                        // In simulator: decode a test base64 transaction through the pipeline
-                        // On Pi: TODO actual camera QR scanning
+                        // In simulator: if a QR was scanned via webcam, use it; otherwise
+                        // build a canned test transaction. On Pi: TODO actual camera QR scanning.
                         if let Some(wallet) = &self.wallet {
-                            let test_tx = self.build_test_transaction(&wallet.keypair.public_key);
-                            let tx_base64 = test_tx.clone();
-                            let decoded = decode_qr::detect_and_decode(test_tx.as_bytes());
+                            #[cfg(feature = "simulator")]
+                            let tx_base64: String = self.scanned_qr.take()
+                                .and_then(|b| String::from_utf8(b).ok())
+                                .unwrap_or_else(|| self.build_test_transaction(&wallet.keypair.public_key));
+                            #[cfg(not(feature = "simulator"))]
+                            let tx_base64: String = self.build_test_transaction(&wallet.keypair.public_key);
+                            let decoded = decode_qr::detect_and_decode(tx_base64.as_bytes());
                             if let Some(tx_bytes) = decoded.tx_bytes {
-                                let info_lines = vec![
-                                    format!("From: {}...{}", &wallet.address[..4], &wallet.address[wallet.address.len()-4..]),
-                                    "To: 11111...1111".to_string(),
-                                    "Amount: 1.0 SOL".to_string(),
-                                    format!("Type: {}", match decoded.qr_type {
-                                        decode_qr::QrType::SolanaTxBase64 => "Transaction",
-                                        _ => "Unknown",
-                                    }),
-                                    format!("Size: {} bytes", tx_bytes.len()),
-                                ];
+                                let (info_lines, can_sign) =
+                                    build_review_lines(&tx_bytes, &wallet.keypair.public_key);
                                 return Screen::SignReview {
                                     tx_bytes,
                                     tx_base64,
                                     info_lines,
                                     scroll: 0,
-                                    selected: 0,
+                                    // Preselect Reject when we can't sign so a stray Enter is safe.
+                                    selected: if can_sign { 0 } else { 1 },
+                                    can_sign,
                                 };
                             }
                         }
@@ -928,15 +1088,23 @@ impl App {
                 Screen::SignScanTx
             }
 
-            Screen::SignReview { tx_bytes, tx_base64, info_lines, mut scroll, mut selected } => {
+            Screen::SignReview { tx_bytes, tx_base64, info_lines, mut scroll, mut selected, can_sign } => {
                 match event {
                     InputEvent::Up => { if scroll > 0 { scroll -= 1; } }
                     InputEvent::Down => {
                         if scroll + 8 < info_lines.len() { scroll += 1; }
                     }
-                    InputEvent::Left | InputEvent::Right => { selected = 1 - selected; }
+                    InputEvent::Left | InputEvent::Right => {
+                        // When signing is blocked, the Sign button is disabled — don't let
+                        // navigation land on it.
+                        if can_sign {
+                            selected = 1 - selected;
+                        } else {
+                            selected = 1;
+                        }
+                    }
                     InputEvent::Confirm => {
-                        if selected == 0 {
+                        if selected == 0 && can_sign {
                             // Sign using base64 entry point (reviewed before reaching here)
                             if let Some(wallet) = &self.wallet {
                                 if let Ok(signed) = crate::models::signer::sign_transaction_base64(
@@ -954,13 +1122,16 @@ impl App {
                                     return Screen::SignShowQr { data: signed.signed_base64 };
                                 }
                             }
+                        } else if selected == 0 && !can_sign {
+                            // Sign pressed while disabled — stay on the review screen.
+                            return Screen::SignReview { tx_bytes, tx_base64, info_lines, scroll, selected: 1, can_sign };
                         }
                         return Screen::MainMenu { selected: 2 };
                     }
                     InputEvent::Back => return Screen::MainMenu { selected: 2 },
                     _ => {}
                 }
-                Screen::SignReview { tx_bytes, tx_base64, info_lines, scroll, selected }
+                Screen::SignReview { tx_bytes, tx_base64, info_lines, scroll, selected, can_sign }
             }
 
             Screen::SignShowQr { data } => {
@@ -1007,7 +1178,7 @@ impl App {
 
             // === Settings ===
             Screen::SettingsMenu { mut selected } => {
-                let item_count = if self.wallet.is_some() { 5 } else { 2 };
+                let item_count = if self.wallet.is_some() { 6 } else { 2 };
                 match event {
                     InputEvent::Up => { if selected > 0 { selected -= 1; } }
                     InputEvent::Down => { if selected + 1 < item_count { selected += 1; } }
@@ -1027,8 +1198,9 @@ impl App {
                                     let accounts = self.build_accounts_list();
                                     Screen::SettingsAccounts { accounts, selected: 0 }
                                 }
-                                3 => Screen::SettingsAbout,
-                                4 => Screen::SettingsPowerOff { selected: 1 },
+                                3 => Screen::SettingsVerifyAddressScan,
+                                4 => Screen::SettingsAbout,
+                                5 => Screen::SettingsPowerOff { selected: 1 },
                                 _ => Screen::SettingsMenu { selected },
                             };
                         } else {
@@ -1043,6 +1215,58 @@ impl App {
                     _ => {}
                 }
                 Screen::SettingsMenu { selected }
+            }
+
+            Screen::SettingsVerifyAddressScan => {
+                match event {
+                    InputEvent::Confirm => {
+                        // In simulator: if a QR was scanned via webcam, use it;
+                        // otherwise fall back to the loaded wallet's own address
+                        // so we can test the happy path without a camera.
+                        let wallet = match &self.wallet {
+                            Some(w) => w,
+                            None => return Screen::SettingsMenu { selected: 3 },
+                        };
+                        #[cfg(feature = "simulator")]
+                        let raw: String = self.scanned_qr.take()
+                            .and_then(|b| String::from_utf8(b).ok())
+                            .unwrap_or_else(|| wallet.address.clone());
+                        #[cfg(not(feature = "simulator"))]
+                        let raw: String = wallet.address.clone();
+
+                        // Strip `solana:` URI wrappers + query strings + whitespace.
+                        let addr = crate::crypto::derivation::normalize_address_input(&raw);
+
+                        let result = crate::crypto::derivation::verify_address(
+                            &wallet.mnemonic,
+                            &wallet.passphrase,
+                            &addr,
+                            10, // search first 10 standard accounts + CLI path
+                        );
+                        // Preserve the original raw scan in the result so the user
+                        // can see what was actually scanned (e.g. a URL) when
+                        // format is invalid.
+                        let display_addr = if matches!(result, crate::crypto::derivation::AddressMatch::InvalidFormat) {
+                            raw
+                        } else {
+                            addr
+                        };
+                        return Screen::SettingsVerifyAddressResult { address: display_addr, result };
+                    }
+                    InputEvent::Back => return Screen::SettingsMenu { selected: 3 },
+                    _ => {}
+                }
+                Screen::SettingsVerifyAddressScan
+            }
+
+            Screen::SettingsVerifyAddressResult { address, result } => {
+                match event {
+                    InputEvent::Confirm | InputEvent::Back => {
+                        return Screen::SettingsMenu { selected: 3 };
+                    }
+                    _ => {}
+                }
+                Screen::SettingsVerifyAddressResult { address, result }
             }
 
             Screen::SettingsShowAddress => {
@@ -1071,7 +1295,7 @@ impl App {
                 match event {
                     InputEvent::Confirm | InputEvent::Back => {
                         // Return to correct index depending on wallet state
-                        let idx = if self.wallet.is_some() { 3 } else { 0 };
+                        let idx = if self.wallet.is_some() { 4 } else { 0 };
                         return Screen::SettingsMenu { selected: idx };
                     }
                     _ => {}
@@ -1092,11 +1316,11 @@ impl App {
                             }
                             return Screen::Splash;
                         }
-                        let idx = if self.wallet.is_some() { 4 } else { 1 };
+                        let idx = if self.wallet.is_some() { 5 } else { 1 };
                         return Screen::SettingsMenu { selected: idx };
                     }
                     InputEvent::Back => {
-                        let idx = if self.wallet.is_some() { 4 } else { 1 };
+                        let idx = if self.wallet.is_some() { 5 } else { 1 };
                         return Screen::SettingsMenu { selected: idx };
                     }
                     _ => {}
@@ -1200,19 +1424,10 @@ impl App {
 
         // Standard accounts (m/44'/501'/N'/0')
         let accounts = derivation::derive_multiple_accounts(&wallet.mnemonic, &wallet.passphrase, 3);
-        let mut list: Vec<(String, String)> = accounts.iter()
-            .enumerate()
-            .map(|(_i, kp)| {
-                let addr = derivation::address(kp);
-                (kp.derivation_path.clone(), addr)
-            })
-            .collect();
-
-        // CLI-compatible path (m/44'/501')
-        let cli_kp = derivation::derive_keypair_cli_path(&wallet.mnemonic, &wallet.passphrase);
-        list.push((cli_kp.derivation_path.clone(), derivation::address(&cli_kp)));
-
-        list
+        accounts
+            .iter()
+            .map(|kp| (kp.derivation_path.clone(), derivation::address(kp)))
+            .collect()
     }
 
     /// Build a minimal valid Solana transaction for simulator testing.
@@ -1263,5 +1478,273 @@ impl App {
             keypair,
             address,
         });
+    }
+}
+
+/// Build the Review TX `info_lines` from a parsed tx. Returns the lines plus
+/// `can_sign` — true only when the loaded wallet's pubkey is in the tx's
+/// required-signer set. Lines starting with `!` render in danger red.
+fn build_review_lines(tx_bytes: &[u8], wallet_pubkey: &[u8; 32]) -> (Vec<String>, bool) {
+    use crate::models::tx_parser::{
+        format_sol, format_token_amount, summarize, TxKind,
+    };
+
+    fn push_wrapped(lines: &mut Vec<String>, label: &str, addr: &str, prefix: &str) {
+        lines.push(format!("{label}:"));
+        for chunk in addr.as_bytes().chunks(22) {
+            lines.push(format!("{prefix}  {}", std::str::from_utf8(chunk).unwrap_or("")));
+        }
+    }
+    fn push_addr(lines: &mut Vec<String>, label: &str, addr: &str) {
+        push_wrapped(lines, label, addr, "");
+    }
+
+    let mut lines: Vec<String> = Vec::with_capacity(16);
+
+    let summary = match summarize(tx_bytes) {
+        Some(s) => s,
+        None => {
+            lines.push("Type: Unparseable".to_string());
+            lines.push(format!("Size: {} bytes", tx_bytes.len()));
+            lines.push("! Cannot sign this TX".to_string());
+            return (lines, false);
+        }
+    };
+    let can_sign = summary.signers.iter().any(|s| s == wallet_pubkey);
+
+    match &summary.kind {
+        TxKind::SolTransfer { from, to, lamports } => {
+            lines.push("Type: Send SOL".to_string());
+            push_addr(&mut lines, "From", from);
+            push_addr(&mut lines, "To", to);
+            lines.push(format!("Amount: {} SOL", format_sol(*lamports)));
+        }
+        TxKind::SplTransfer { source, dest, amount_raw, mint, decimals, symbol } => {
+            match symbol {
+                Some(sym) => lines.push(format!("Type: Send {}", sym)),
+                None => lines.push("Type: Send Token".to_string()),
+            }
+            if symbol.is_none() {
+                if let Some(m) = mint {
+                    push_addr(&mut lines, "Mint", m);
+                }
+            }
+            push_addr(&mut lines, "From", source);
+            push_addr(&mut lines, "To", dest);
+            let amt = format_token_amount(*amount_raw, *decimals);
+            match symbol {
+                Some(sym) => lines.push(format!("Amount: {} {}", amt, sym)),
+                None => lines.push(format!("Amount: {}", amt)),
+            }
+            if decimals.is_none() {
+                lines.push("(legacy: decimals unknown)".to_string());
+            }
+        }
+        TxKind::SplApprove { source, delegate, amount_raw, mint, decimals, symbol } => {
+            match symbol {
+                Some(sym) => lines.push(format!("Type: Approve {}", sym)),
+                None => lines.push("Type: Approve Token".to_string()),
+            }
+            if symbol.is_none() {
+                if let Some(m) = mint {
+                    push_addr(&mut lines, "Mint", m);
+                }
+            }
+            push_addr(&mut lines, "Owner", source);
+            push_addr(&mut lines, "Delegate", delegate);
+            let amt = format_token_amount(*amount_raw, *decimals);
+            match symbol {
+                Some(sym) => lines.push(format!("Amount: {} {}", amt, sym)),
+                None => lines.push(format!("Amount: {}", amt)),
+            }
+        }
+        TxKind::StakeDelegate { stake_account, vote_account } => {
+            lines.push("Type: Stake (Delegate)".to_string());
+            push_addr(&mut lines, "Stake acct", stake_account);
+            push_addr(&mut lines, "Validator", vote_account);
+        }
+        TxKind::StakeDeactivate { stake_account } => {
+            lines.push("Type: Unstake (Deactivate)".to_string());
+            push_addr(&mut lines, "Stake acct", stake_account);
+        }
+        TxKind::StakeWithdraw { stake_account, to, lamports } => {
+            lines.push("Type: Unstake (Withdraw)".to_string());
+            push_addr(&mut lines, "Stake acct", stake_account);
+            push_addr(&mut lines, "To", to);
+            lines.push(format!("Amount: {} SOL", format_sol(*lamports)));
+        }
+        TxKind::Memo { text } => {
+            lines.push("Type: Memo".to_string());
+            if text.is_empty() {
+                lines.push("(empty)".to_string());
+            } else {
+                lines.push("Text:".to_string());
+                for chunk in text.as_bytes().chunks(36) {
+                    lines.push(format!("  {}", std::str::from_utf8(chunk).unwrap_or("?")));
+                }
+            }
+        }
+        TxKind::Other { programs } => {
+            lines.push("Type: Unknown".to_string());
+            if programs.is_empty() {
+                lines.push("(no program info)".to_string());
+            } else {
+                lines.push(format!("Programs ({}):", programs.len()));
+                for p in programs {
+                    for chunk in p.as_bytes().chunks(22) {
+                        lines.push(format!("  {}", std::str::from_utf8(chunk).unwrap_or("")));
+                    }
+                }
+            }
+        }
+    }
+
+    lines.push(format!("Fee: {} SOL", format_sol(summary.fee_lamports)));
+    lines.push(format!("Size: {} bytes", summary.size));
+
+    if !can_sign {
+        lines.push(String::new());
+        lines.push("! Cannot sign this TX".to_string());
+        if let Some(needed) = summary.signers.first() {
+            let addr = bs58::encode(needed).into_string();
+            push_wrapped(&mut lines, "! Need wallet", &addr, "!");
+        }
+    }
+
+    (lines, can_sign)
+}
+
+#[cfg(test)]
+mod blanking_tests {
+    use super::should_blank;
+
+    #[test]
+    fn below_timeout_does_not_blank() {
+        assert!(!should_blank(0, 1000, false));
+        assert!(!should_blank(500, 1000, false));
+        assert!(!should_blank(999, 1000, false));
+    }
+
+    #[test]
+    fn at_or_above_timeout_blanks() {
+        assert!(should_blank(1000, 1000, false));
+        assert!(should_blank(1500, 1000, false));
+        assert!(should_blank(u64::MAX, 1000, false));
+    }
+
+    #[test]
+    fn camera_screen_is_never_blanked() {
+        // Even far past the timeout, blanking is suppressed during camera use.
+        assert!(!should_blank(0, 1000, true));
+        assert!(!should_blank(1_000_000, 1000, true));
+        assert!(!should_blank(u64::MAX, 1, true));
+    }
+
+    #[test]
+    fn zero_timeout_disables_blanking() {
+        // Explicit "never blank" sentinel.
+        assert!(!should_blank(0, 0, false));
+        assert!(!should_blank(u64::MAX, 0, false));
+        assert!(!should_blank(u64::MAX, 0, true));
+    }
+
+    #[test]
+    fn large_values_do_not_overflow() {
+        // Confidence check that we're not doing anything that overflows with
+        // extreme inputs.
+        assert!(should_blank(u64::MAX, 1, false));
+        assert!(!should_blank(0, u64::MAX, false));
+    }
+}
+
+#[cfg(test)]
+mod review_lines_tests {
+    use super::*;
+    use crate::crypto::{bip39, slip0010};
+    use base64::{engine::general_purpose::STANDARD as B64, Engine};
+
+    fn loaded_keypair() -> slip0010::SolanaKeypair {
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let seed = bip39::mnemonic_to_seed(mnemonic, "");
+        slip0010::derive_solana_keypair(&seed, 0)
+    }
+
+    /// Minimal valid SOL-transfer tx to a given signer. Same shape as
+    /// App::build_test_transaction.
+    fn build_tx_for(signer: &[u8; 32]) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.push(1);
+        tx.extend_from_slice(&[0u8; 64]);
+        tx.push(1);
+        tx.push(0);
+        tx.push(1);
+        tx.push(2);
+        tx.extend_from_slice(signer);
+        tx.extend_from_slice(&[0u8; 32]);
+        tx.extend_from_slice(&[0u8; 32]);
+        tx.push(1);
+        tx.push(1);
+        tx.push(2);
+        tx.push(0);
+        tx.push(1);
+        tx.push(12);
+        tx.extend_from_slice(&[2, 0, 0, 0]);
+        tx.extend_from_slice(&1_000_000u64.to_le_bytes());
+        tx
+    }
+
+    #[test]
+    fn matching_wallet_allows_signing() {
+        let kp = loaded_keypair();
+        let tx = build_tx_for(&kp.public_key);
+        let (lines, can_sign) = build_review_lines(&tx, &kp.public_key);
+        assert!(can_sign);
+        assert!(lines.iter().any(|l| l == "Type: Send SOL"));
+        // No warning lines when we can sign.
+        assert!(!lines.iter().any(|l| l.starts_with('!')));
+    }
+
+    #[test]
+    fn mismatched_wallet_blocks_signing_and_shows_required_signer() {
+        let other_pubkey = [0x11u8; 32];
+        let kp = loaded_keypair();
+        assert_ne!(kp.public_key, other_pubkey);
+
+        let tx = build_tx_for(&other_pubkey);
+        let (lines, can_sign) = build_review_lines(&tx, &kp.public_key);
+
+        assert!(!can_sign, "sign must be blocked on mismatch");
+        // Warning banner present.
+        assert!(lines.iter().any(|l| l.contains("Cannot sign")));
+        // The required signer address (base58 of other_pubkey) must appear wrapped
+        // somewhere in the lines so the user knows which wallet to load.
+        let expected = bs58::encode(&other_pubkey).into_string();
+        let joined: String = lines.join("\n");
+        assert!(
+            joined.contains(&expected[..22]),
+            "expected signer prefix to appear in review lines:\n{joined}"
+        );
+    }
+
+    #[test]
+    fn unparseable_tx_blocks_signing() {
+        let kp = loaded_keypair();
+        let garbage = vec![0xFFu8; 10];
+        let (lines, can_sign) = build_review_lines(&garbage, &kp.public_key);
+        assert!(!can_sign);
+        assert!(lines.iter().any(|l| l == "Type: Unparseable"));
+    }
+
+    #[test]
+    fn integrates_with_real_tx_from_user() {
+        // The exact base64 tx the user pasted earlier — signer EfZr... which
+        // won't match our abandon-abandon wallet.
+        let tx_b64 = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAEDywkoNI1j+nah055+LRl/5r74IARS0MSvHfPPW5usTeAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACbZKN5QkVXQQH+5BYJje2PQK9UFAivDK+ncn3rilJV8BAgIAAQwCAAAAgJaYAAAAAAA=";
+        let tx = B64.decode(tx_b64).unwrap();
+        let kp = loaded_keypair();
+        let (lines, can_sign) = build_review_lines(&tx, &kp.public_key);
+        assert!(!can_sign, "abandon-abandon wallet should not match EfZr signer");
+        assert!(lines.iter().any(|l| l.contains("Amount: 0.01 SOL")));
+        assert!(lines.iter().any(|l| l == "Type: Send SOL"));
     }
 }

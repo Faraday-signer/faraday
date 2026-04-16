@@ -11,7 +11,7 @@
 //! The message contains account keys. The signer's position in the
 //! signatures array matches their position in the account keys array.
 
-use ed25519_dalek::{Signer, SigningKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 
@@ -62,6 +62,14 @@ pub fn sign_transaction_bytes(
     let signature = signing_key.sign(message_bytes);
     let sig_bytes = signature.to_bytes();
 
+    // Defence-in-depth: verify our own signature against the message + claimed
+    // public key before we hand it back. This catches (a) a private/public key
+    // pair that doesn't actually correspond — which would otherwise produce a
+    // signature that gets rejected by relayers — and (b) any internal bug that
+    // silently corrupts the sig bytes between signing and returning.
+    verify_signature(message_bytes, &sig_bytes, public_key)
+        .map_err(|_| "Post-sign verification failed")?;
+
     // Build the signed transaction
     let mut signed = unsigned_tx_bytes.to_vec();
     let sig_offset = 1 + signer_index * 64;
@@ -96,6 +104,20 @@ pub fn sign_message(
     let signing_key = SigningKey::from_bytes(private_key);
     let signature = signing_key.sign(message);
     signature.to_bytes()
+}
+
+/// Strict ed25519 verification of (message, signature, public_key).
+/// Uses `verify_strict` which enforces the canonical signature form required
+/// by Solana validators — catches malleability + non-canonical encodings.
+pub fn verify_signature(
+    message: &[u8],
+    signature: &[u8; 64],
+    public_key: &[u8; 32],
+) -> Result<(), &'static str> {
+    let vk = VerifyingKey::from_bytes(public_key).map_err(|_| "Invalid public key")?;
+    let sig = Signature::from_bytes(signature);
+    vk.verify_strict(message, &sig)
+        .map_err(|_| "Signature verification failed")
 }
 
 /// Read a compact-u16 from the buffer at the given offset.
@@ -149,27 +171,143 @@ mod tests {
     use crate::crypto::bip39;
     use crate::crypto::slip0010;
 
-    #[test]
-    fn test_sign_message() {
+    fn test_keypair(account: u32) -> crate::crypto::slip0010::SolanaKeypair {
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let seed = bip39::mnemonic_to_seed(mnemonic, "");
-        let keypair = slip0010::derive_solana_keypair(&seed, 0);
+        slip0010::derive_solana_keypair(&seed, account)
+    }
 
+    /// Minimal valid legacy tx with one signer. Mirrors the shape App::build_test_transaction
+    /// produces, but self-contained so we don't depend on GUI code from tests.
+    fn build_unsigned_tx(signer_pubkey: &[u8; 32]) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.push(1);                         // num_signatures
+        tx.extend_from_slice(&[0u8; 64]);   // placeholder sig
+        tx.push(1);                         // num_required_signatures
+        tx.push(0);                         // num_readonly_signed
+        tx.push(1);                         // num_readonly_unsigned
+        tx.push(2);                         // num_account_keys (compact-u16)
+        tx.extend_from_slice(signer_pubkey);
+        tx.extend_from_slice(&[0u8; 32]);   // system program
+        tx.extend_from_slice(&[7u8; 32]);   // recent blockhash
+        tx.push(0);                         // num_instructions
+        tx
+    }
+
+    #[test]
+    fn test_sign_message() {
+        let kp = test_keypair(0);
         let message = b"hello solana";
-        let sig = sign_message(message, &keypair.private_key);
+        let sig = sign_message(message, &kp.private_key);
         assert_eq!(sig.len(), 64);
-
-        // Verify the signature
-        let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&keypair.public_key).unwrap();
-        let signature = ed25519_dalek::Signature::from_bytes(&sig);
-        assert!(verifying_key.verify_strict(message, &signature).is_ok());
+        assert!(verify_signature(message, &sig, &kp.public_key).is_ok());
     }
 
     #[test]
     fn test_compact_u16() {
-        // Single byte
         assert_eq!(read_compact_u16(&[5], 0).unwrap(), (5, 1));
-        // Two bytes
         assert_eq!(read_compact_u16(&[0x80, 0x01], 0).unwrap(), (128, 2));
+    }
+
+    // --- verify_signature edge cases ---
+
+    #[test]
+    fn verify_accepts_valid_signature() {
+        let kp = test_keypair(0);
+        let msg = b"canonical input";
+        let sig = sign_message(msg, &kp.private_key);
+        assert!(verify_signature(msg, &sig, &kp.public_key).is_ok());
+    }
+
+    #[test]
+    fn verify_rejects_tampered_message() {
+        let kp = test_keypair(0);
+        let msg = b"original message";
+        let sig = sign_message(msg, &kp.private_key);
+        let tampered = b"tampered message";
+        assert!(verify_signature(tampered, &sig, &kp.public_key).is_err());
+    }
+
+    #[test]
+    fn verify_rejects_corrupted_signature() {
+        let kp = test_keypair(0);
+        let msg = b"hello";
+        let mut sig = sign_message(msg, &kp.private_key);
+        sig[0] ^= 0x01; // flip one bit
+        assert!(verify_signature(msg, &sig, &kp.public_key).is_err());
+    }
+
+    #[test]
+    fn verify_rejects_wrong_pubkey() {
+        let kp_a = test_keypair(0);
+        let kp_b = test_keypair(1); // different account → different keypair
+        let msg = b"hello";
+        let sig = sign_message(msg, &kp_a.private_key);
+        assert!(verify_signature(msg, &sig, &kp_b.public_key).is_err());
+    }
+
+    #[test]
+    fn verify_rejects_all_zero_signature() {
+        let kp = test_keypair(0);
+        let zero_sig = [0u8; 64];
+        assert!(verify_signature(b"any", &zero_sig, &kp.public_key).is_err());
+    }
+
+    // --- sign_transaction_bytes with built-in post-sign verify ---
+
+    #[test]
+    fn sign_tx_round_trip_verifies_externally() {
+        let kp = test_keypair(0);
+        let tx = build_unsigned_tx(&kp.public_key);
+        let signed = sign_transaction_bytes(&tx, &kp.private_key, &kp.public_key).unwrap();
+
+        // Extract the message portion from the signed tx and re-verify externally.
+        let sigs_end = 1 + 1 * 64;
+        let message = &signed.signed_bytes[sigs_end..];
+        assert!(verify_signature(message, &signed.signature, &kp.public_key).is_ok());
+    }
+
+    #[test]
+    fn sign_tx_detects_mismatched_keypair() {
+        // Legit bug we want to catch: caller passes private of A but claims B's pubkey.
+        // The tx is built around B (so find_signer_index succeeds), signing proceeds
+        // with A's private key, and the internal verify catches that A's sig doesn't
+        // validate against B's pubkey.
+        let kp_a = test_keypair(0);
+        let kp_b = test_keypair(1);
+        assert_ne!(kp_a.public_key, kp_b.public_key);
+
+        let tx = build_unsigned_tx(&kp_b.public_key);
+        let result = sign_transaction_bytes(&tx, &kp_a.private_key, &kp_b.public_key);
+
+        assert!(result.is_err(), "signing should fail on keypair mismatch");
+        assert_eq!(result.err().unwrap(), "Post-sign verification failed");
+    }
+
+    #[test]
+    fn sign_tx_errors_when_pubkey_not_in_accounts() {
+        // Building the tx around someone else: our pubkey isn't in the account list,
+        // so we should bail before signing.
+        let kp_a = test_keypair(0);
+        let kp_b = test_keypair(1);
+        let tx = build_unsigned_tx(&kp_b.public_key);
+        let result = sign_transaction_bytes(&tx, &kp_a.private_key, &kp_a.public_key);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn sign_tx_errors_on_empty_input() {
+        let kp = test_keypair(0);
+        let result = sign_transaction_bytes(&[], &kp.private_key, &kp.public_key);
+        assert_eq!(result.err().unwrap(), "Empty transaction");
+    }
+
+    #[test]
+    fn sign_tx_errors_on_truncated_input() {
+        // Header claims 1 signature but buffer ends before message.
+        let kp = test_keypair(0);
+        let tx = vec![1u8]; // num_sigs only
+        let result = sign_transaction_bytes(&tx, &kp.private_key, &kp.public_key);
+        assert!(result.is_err());
     }
 }

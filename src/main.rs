@@ -48,12 +48,18 @@ fn run_simulator() {
     window.set_key_repeat_delay(0.3);
     window.set_key_repeat_rate(0.1);
 
-    // Splash
+    // Splash. Keep pumping the window for 2 seconds rather than sleeping —
+    // a bare sleep lets key presses queue up, and the first one gets consumed
+    // without action on the first iteration of the main loop.
     app.draw(&mut fb).unwrap();
     let buf = fb.to_rgb888();
-    window.update_with_buffer(&buf, 240, 240).unwrap();
-    std::thread::sleep(Duration::from_secs(2));
+    let splash_start = std::time::Instant::now();
+    while window.is_open() && splash_start.elapsed() < Duration::from_secs(2) {
+        window.update_with_buffer(&buf, 240, 240).unwrap();
+    }
     app.enter_main_menu();
+    // Reset idle timer so the splash duration doesn't count toward blanking.
+    app.last_activity = std::time::Instant::now();
 
     while window.is_open() {
         // Map keyboard to InputEvent
@@ -81,7 +87,28 @@ fn run_simulator() {
             app.handle_input(ev);
         }
 
-        app.draw(&mut fb).unwrap();
+        app.tick();
+
+        use embedded_graphics_core::draw_target::DrawTarget;
+        if app.is_blanked() {
+            // Idle timeout reached — black screen until input wakes us.
+            let _ = fb.clear(gui::colors::BLACK);
+        } else {
+            // On camera screens, blit the latest webcam frame as background so
+            // overlay drawing in app.draw() paints on top of live preview. When
+            // no frame is available yet (camera warming up or unavailable), fill
+            // with a dark background so stale pixels from the previous screen
+            // don't leak through.
+            if app.wants_camera() {
+                match app.latest_frame.clone() {
+                    Some(frame) => fb.blit_camera_frame(&frame),
+                    None => {
+                        let _ = fb.clear(gui::colors::BG_DARK);
+                    }
+                }
+            }
+            app.draw(&mut fb).unwrap();
+        }
         let buf = fb.to_rgb888();
         window.update_with_buffer(&buf, 240, 240).unwrap();
     }
@@ -119,7 +146,12 @@ fn run_pi() {
     app.enter_main_menu();
 
     loop {
-        app.draw(&mut display).unwrap();
+        use embedded_graphics_core::draw_target::DrawTarget;
+        if app.is_blanked() {
+            let _ = display.clear(crate::gui::colors::BLACK);
+        } else {
+            app.draw(&mut display).unwrap();
+        }
         display.flush();
 
         if let Some(event) = buttons.wait_for_press(Duration::from_millis(100)) {

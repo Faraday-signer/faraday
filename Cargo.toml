@@ -6,7 +6,7 @@ description = "Air-gapped Solana transaction signer"
 
 [features]
 default = []
-simulator = ["dep:minifb"]
+simulator = ["dep:minifb", "dep:nokhwa", "dep:rqrr", "dep:image"]
 
 [dependencies]
 # Display rendering
@@ -27,6 +27,9 @@ getrandom = "0.2"
 
 # Desktop simulator (optional)
 minifb = { version = "0.27", optional = true }
+nokhwa = { version = "0.10", default-features = false, features = ["input-avfoundation"], optional = true }
+rqrr = { version = "0.7", optional = true }
+image = { version = "0.25", default-features = false, optional = true }
 
 # Pi hardware (Linux only)
 [target.'cfg(target_os = "linux")'.dependencies]
