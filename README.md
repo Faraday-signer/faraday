@@ -35,7 +35,7 @@ Total cost: ~$35
 
 - **Wallet Creation**: Generate seeds from dice rolls, coin flips, camera entropy, or device random
 - **Passphrase Support**: Optional BIP39 passphrase with confirmation
-- **Transaction Signing**: Scan unsigned tx QR, review details, approve, display signed QR
+- **Transaction Signing**: Scan unsigned tx QR, review decoded details per instruction type, approve, display signed QR
 - **SeedQR**: Backup/restore seeds as compact QR codes
 - **Manual Import**: Enter 12 or 24 BIP39 words via on-screen keyboard
 - **Air-gapped**: Keys exist only in RAM, wiped on power off
@@ -70,11 +70,40 @@ src/
 ├── qr/
 │   ├── encode_qr.rs      # QR encoding (SeedQR, CompactSeedQR, address, signed tx)
 │   └── decode_qr.rs      # QR decoding and type detection
+├── parser/
+│   ├── mod.rs            # Entry point: parse(tx_bytes) → ParsedTransaction, to_lines()
+│   ├── message.rs        # Solana wire format deserializer (legacy + v0 versioned)
+│   ├── programs.rs       # Known program ID registry (System, Token, Stake, …)
+│   ├── system.rs         # System Program instruction parser
+│   ├── token.rs          # SPL Token / Token-2022 instruction parser
+│   ├── stake.rs          # Stake Program instruction parser
+│   └── unknown.rs        # Fallback parser for unrecognised programs
 └── signer/               # Ed25519 transaction and message signing
 
 build.rs                  # Downloads BIP39 wordlist from bitcoin/bips, verifies SHA256
 opt/                      # Buildroot OS build system for Pi Zero
 ```
+
+## Transaction Parser
+
+Faraday decodes Solana transactions before signing so users see human-readable details instead of raw bytes. Both legacy and v0 (versioned) transaction formats are supported.
+
+Recognised programs:
+
+| Program | Instructions decoded |
+|---------|---------------------|
+| System | Transfer, CreateAccount, CreateAccountWithSeed, Allocate, TransferWithSeed |
+| SPL Token / Token-2022 | Transfer, TransferChecked, Approve, ApproveChecked, Revoke, MintTo, MintToChecked, Burn, BurnChecked, CloseAccount |
+| Stake | Initialize, DelegateStake, Split, Withdraw, Deactivate, Merge |
+| Associated Token | CreateAccount |
+| ComputeBudget | SetComputeUnitLimit, SetComputeUnitPrice |
+| Memo | Inline memo text |
+| Unknown | Program ID + raw data shown with a warning |
+
+To add support for a new program:
+1. Create `src/parser/<program>.rs` with `pub fn parse(data, accounts) -> ParsedInstruction`
+2. Register the program ID in `src/parser/programs.rs`
+3. Add a match arm in the `dispatch()` function in `src/parser/mod.rs`
 
 ## Quick Start (Desktop Simulator)
 
