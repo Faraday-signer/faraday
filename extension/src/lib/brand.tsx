@@ -84,3 +84,29 @@ export function FaradayMark({ height = 20, color = colors.accent, style, title }
     </svg>
   );
 }
+
+/**
+ * Hero mark — the chunkier 50×50 variant from the standalone brand file.
+ * Use for onboarding/home/splash surfaces. Has a clearer Faraday-cage
+ * silhouette at larger sizes than the compact FaradayMark.
+ */
+export function FaradayHeroMark({ height = 72, color = colors.accent, style, title }: BrandProps) {
+  return (
+    <svg
+      role={title ? "img" : undefined}
+      aria-label={title}
+      height={height}
+      width={height}
+      viewBox="0 0 50 50"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={style}
+    >
+      {title ? <title>{title}</title> : null}
+      <path
+        d="M0 0H18.75V6.25H6.25V18.75H0V0ZM31.25 0H50V18.75H43.75V6.25H31.25V0ZM0 31.25H6.25V43.75H18.75V50H0V31.25ZM43.75 31.25H50V50H31.25V43.75H43.75V31.25ZM18.75 18.75H31.25V31.25H18.75V18.75Z"
+        fill={color}
+      />
+    </svg>
+  );
+}

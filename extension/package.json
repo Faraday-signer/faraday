@@ -7,21 +7,26 @@
     "dev": "wxt",
     "build": "wxt build",
     "zip": "wxt zip",
-    "typecheck": "wxt prepare && tsc --noEmit"
+    "typecheck": "wxt prepare && tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@solana/kit": "^5.5.1",
     "@wallet-standard/wallet": "^1.1.0",
     "@zxing/browser": "^0.1.5",
     "bs58": "^6.0.0",
     "qrcode.react": "^4.2.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "swr": "^2.4.1"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.284",
-    "@types/react": "^18.3.8",
-    "@types/react-dom": "^18.3.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "typescript": "^5.7.2",
+    "vitest": "^4.1.4",
     "wxt": "^0.20.6"
   }
 }

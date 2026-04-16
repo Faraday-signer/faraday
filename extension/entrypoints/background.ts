@@ -385,6 +385,17 @@ async function handleMessage(
 }
 
 export default defineBackground(() => {
+  // Toolbar click opens the side panel instead of a popup.
+  // Persists across restarts once set; safe to call on every service
+  // worker wake-up.
+  chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch((error) => {
+      errorLog("Failed to configure side panel behavior", {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
+
   chrome.runtime.onMessage.addListener(
     (
       message: RuntimeRequest,

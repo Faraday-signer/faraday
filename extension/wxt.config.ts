@@ -5,7 +5,8 @@ export default defineConfig({
   manifest: {
     name: "Faraday",
     description: "Air-gapped Solana QR relay wallet for browser dapps.",
-    permissions: ["storage", "tabs"],
+    permissions: ["storage", "tabs", "sidePanel"],
+    action: {},
     host_permissions: ["<all_urls>"],
     web_accessible_resources: [
       {

@@ -1,0 +1,32 @@
+@font-face {
+  font-family: "Departure Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/DepartureMono-Regular.woff2") format("woff2");
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #001721;
+  color: #e7e7e7;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+button {
+  font-family: inherit;
+}
+
+a {
+  color: inherit;
+}
