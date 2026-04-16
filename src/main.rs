@@ -7,7 +7,9 @@ mod gui;
 #[cfg(target_os = "linux")]
 mod hardware;
 #[cfg(any(feature = "simulator", target_os = "linux"))]
-mod models;
+mod qr;
+#[cfg(any(feature = "simulator", target_os = "linux"))]
+mod signer;
 
 #[cfg(any(feature = "simulator", target_os = "linux"))]
 use gui::app::{App, InputEvent};

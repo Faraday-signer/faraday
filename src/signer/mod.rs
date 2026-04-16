@@ -68,7 +68,7 @@ pub fn sign_transaction_bytes(
     signed[sig_offset..sig_offset + 64].copy_from_slice(&sig_bytes);
 
     let signer_pubkey = bs58::encode(public_key).into_string();
-    let signed_base64 = crate::models::encode_qr::encode_signed_tx(&signed);
+    let signed_base64 = crate::qr::encode_qr::encode_signed_tx(&signed);
 
     Ok(SignedTransaction {
         signed_bytes: signed,

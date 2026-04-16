@@ -477,7 +477,7 @@ pub fn draw_qr<D: DrawTarget<Color = Rgb565>>(
     display.clear(colors::BG_DARK)?;
     draw_status_bar(display, title, seed_loaded)?;
 
-    if let Ok((matrix, size)) = crate::models::encode_qr::generate_qr_matrix(data) {
+    if let Ok((matrix, size)) = crate::qr::encode_qr::generate_qr_matrix(data) {
         let max_area = 200u32;
         let module_size = max_area / size as u32;
         let qr_size = module_size * size as u32;

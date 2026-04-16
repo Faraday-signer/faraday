@@ -2,7 +2,7 @@
 
 use crate::crypto::{bip39, derivation};
 use crate::crypto::slip0010::SolanaKeypair;
-use crate::models::decode_qr;
+use crate::qr::decode_qr;
 use zeroize::Zeroize;
 
 /// Platform-independent input event.
@@ -666,9 +666,9 @@ impl App {
                     InputEvent::Confirm => {
                         if selected == 0 {
                             // Confirm — load wallet, then offer SeedQR export
-                            let seed_qr_data = crate::models::encode_qr::encode_seed_qr(&mnemonic)
+                            let seed_qr_data = crate::qr::encode_qr::encode_seed_qr(&mnemonic)
                                 .unwrap_or_default();
-                            let compact_data = crate::models::encode_qr::encode_compact_seed_qr(&mnemonic)
+                            let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(&mnemonic)
                                 .unwrap_or_default();
                             self.load_wallet(mnemonic, passphrase);
                             return Screen::ExportSeedQr { seed_qr_data, compact_data, compact_mode: false, from_settings: false };
@@ -939,7 +939,7 @@ impl App {
                         if selected == 0 {
                             // Sign using base64 entry point (reviewed before reaching here)
                             if let Some(wallet) = &self.wallet {
-                                if let Ok(signed) = crate::models::signer::sign_transaction_base64(
+                                if let Ok(signed) = crate::signer::sign_transaction_base64(
                                     &tx_base64,
                                     &wallet.keypair.private_key,
                                     &wallet.keypair.public_key,
@@ -984,7 +984,7 @@ impl App {
                         return Screen::SignScanTx;
                     }
                     if let Some(wallet) = &self.wallet {
-                        let sig = crate::models::signer::sign_message(
+                        let sig = crate::signer::sign_message(
                             grid.text.as_bytes(),
                             &wallet.keypair.private_key,
                         );
@@ -1017,9 +1017,9 @@ impl App {
                                 0 => Screen::SettingsShowAddress,
                                 1 => {
                                     let mnemonic = &self.wallet.as_ref().unwrap().mnemonic;
-                                    let seed_qr_data = crate::models::encode_qr::encode_seed_qr(mnemonic)
+                                    let seed_qr_data = crate::qr::encode_qr::encode_seed_qr(mnemonic)
                                         .unwrap_or_default();
-                                    let compact_data = crate::models::encode_qr::encode_compact_seed_qr(mnemonic)
+                                    let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(mnemonic)
                                         .unwrap_or_default();
                                     Screen::ExportSeedQr { seed_qr_data, compact_data, compact_mode: false, from_settings: true }
                                 }
@@ -1256,7 +1256,7 @@ impl App {
 
     fn load_wallet(&mut self, mnemonic: String, passphrase: String) {
         let keypair = derivation::derive_keypair(&mnemonic, &passphrase, 0);
-        let address = crate::models::encode_qr::encode_address(&keypair.public_key);
+        let address = crate::qr::encode_qr::encode_address(&keypair.public_key);
         self.wallet = Some(LoadedWallet {
             mnemonic,
             passphrase,
