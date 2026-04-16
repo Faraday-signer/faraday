@@ -54,9 +54,23 @@ Total cost: ~$35
 src/
 ├── main.rs               # Entry point (simulator + Pi modes)
 ├── crypto/               # BIP39 mnemonics, SLIP-0010 derivation, Ed25519
-├── gui/                  # State machine, screens, components, colors, icons
+├── gui/
+│   ├── app.rs            # App struct, Screen enum, input types, transition dispatcher
+│   ├── flows/
+│   │   ├── create.rs     # Create wallet flow (word count, entropy, verify, passphrase)
+│   │   ├── load.rs       # Load wallet flow (scan QR, enter words, passphrase)
+│   │   ├── sign.rs       # Sign TX flow (scan, review, approve, display signed QR)
+│   │   └── settings.rs   # Settings flow (address, accounts, export, power off)
+│   ├── screens.rs        # Screen rendering (all draw functions)
+│   ├── components.rs     # Reusable UI components
+│   ├── colors.rs         # Color palette
+│   ├── icons.rs          # Icon bitmaps
+│   └── framebuffer.rs    # In-memory framebuffer (simulator)
 ├── hardware/             # ST7789 display driver, GPIO buttons
-└── models/               # QR encode/decode, transaction signing
+├── qr/
+│   ├── encode_qr.rs      # QR encoding (SeedQR, CompactSeedQR, address, signed tx)
+│   └── decode_qr.rs      # QR decoding and type detection
+└── signer/               # Ed25519 transaction and message signing
 
 build.rs                  # Downloads BIP39 wordlist from bitcoin/bips, verifies SHA256
 opt/                      # Buildroot OS build system for Pi Zero
