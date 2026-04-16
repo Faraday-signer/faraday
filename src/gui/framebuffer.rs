@@ -51,6 +51,32 @@ impl Framebuffer {
         }
         bytes
     }
+
+    /// Blit an RGB frame from the webcam into the full framebuffer using a
+    /// center-crop + nearest-neighbor scale so the preview fills 240x240
+    /// without distortion.
+    #[cfg(feature = "simulator")]
+    pub fn blit_camera_frame(&mut self, frame: &super::sim_camera::Frame) {
+        let sq = frame.width.min(frame.height);
+        let ox = (frame.width - sq) / 2;
+        let oy = (frame.height - sq) / 2;
+        for dy in 0..HEIGHT {
+            let sy = oy + dy * sq / HEIGHT;
+            for dx in 0..WIDTH {
+                let sx = ox + dx * sq / WIDTH;
+                let si = ((sy * frame.width + sx) * 3) as usize;
+                if si + 2 >= frame.rgb.len() {
+                    continue;
+                }
+                let r = (frame.rgb[si] >> 3) as u16;
+                let g = (frame.rgb[si + 1] >> 2) as u16;
+                let b = (frame.rgb[si + 2] >> 3) as u16;
+                let rgb565 = (r << 11) | (g << 5) | b;
+                let idx = (dy * WIDTH + dx) as usize;
+                self.pixels[idx] = rgb565;
+            }
+        }
+    }
 }
 
 impl OriginDimensions for Framebuffer {

@@ -133,7 +133,26 @@ pub fn draw_text_centered<D: DrawTarget<Color = Rgb565>>(
     Ok(())
 }
 
-/// Draw a vertical option list (for simple choice screens).
+/// Max visible option rows before the list scrolls. Keeps `draw_option_list`
+/// pure w.r.t. list length.
+const OPTION_LIST_MAX_VISIBLE: usize = 4;
+
+/// Compute the scroll offset so `selected` stays inside a viewport of
+/// `max_visible` rows. Tries to keep the selected row pinned near the
+/// bottom while scrolling down; top when scrolling up.
+pub fn option_list_scroll_offset(len: usize, selected: usize, max_visible: usize) -> usize {
+    if len <= max_visible || max_visible == 0 {
+        return 0;
+    }
+    if selected < max_visible {
+        return 0;
+    }
+    let max_scroll = len - max_visible;
+    (selected + 1 - max_visible).min(max_scroll)
+}
+
+/// Draw a vertical option list (for simple choice screens). Scrolls when the
+/// option count exceeds the visible viewport, keeping the selected row visible.
 pub fn draw_option_list<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     title: &str,
@@ -144,11 +163,19 @@ pub fn draw_option_list<D: DrawTarget<Color = Rgb565>>(
     display.clear(colors::BG_DARK)?;
     draw_status_bar(display, title, seed_loaded)?;
 
-    let total_height: i32 = options.len() as i32 * 45;
-    let start_y = 20 + (220 - total_height) / 2;
+    let max_visible = OPTION_LIST_MAX_VISIBLE;
+    let scroll = option_list_scroll_offset(options.len(), selected, max_visible);
+    let visible_count = options.len().saturating_sub(scroll).min(max_visible);
+    let row_h: i32 = 38;
+    let gap: i32 = 7;
+    let step: i32 = row_h + gap;
+    let total_height: i32 = visible_count as i32 * step - gap;
+    let start_y = 24 + (216 - total_height) / 2;
 
-    for (i, option) in options.iter().enumerate() {
-        let y = start_y + (i as i32) * 45;
+    for row in 0..visible_count {
+        let i = scroll + row;
+        let option = options[i];
+        let y = start_y + row as i32 * step;
         let is_selected = i == selected;
 
         let (bg, border, text_color) = if is_selected {
@@ -164,7 +191,7 @@ pub fn draw_option_list<D: DrawTarget<Color = Rgb565>>(
             .build();
 
         RoundedRectangle::with_equal_corners(
-            Rectangle::new(Point::new(20, y), Size::new(200, 38)),
+            Rectangle::new(Point::new(20, y), Size::new(200, row_h as u32)),
             Size::new(6, 6),
         )
         .into_styled(style)
@@ -182,6 +209,15 @@ pub fn draw_option_list<D: DrawTarget<Color = Rgb565>>(
             .draw(display)?;
     }
 
+    // Scroll indicators when off-screen rows exist.
+    let arrow_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
+    if scroll > 0 {
+        Text::with_alignment("▲", Point::new(230, 30), arrow_style, Alignment::Center).draw(display)?;
+    }
+    if scroll + max_visible < options.len() {
+        Text::with_alignment("▼", Point::new(230, 235), arrow_style, Alignment::Center).draw(display)?;
+    }
+
     Ok(())
 }
 
@@ -192,14 +228,30 @@ pub fn draw_button_bar<D: DrawTarget<Color = Rgb565>>(
     right: &str,
     selected: usize,
 ) -> Result<(), D::Error> {
+    draw_button_bar_ex(display, left, right, selected, true)
+}
+
+/// Button bar with an optional disabled-state for the left button.
+/// When `left_enabled` is false, the left button renders muted and
+/// selection should not land on it.
+pub fn draw_button_bar_ex<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    left: &str,
+    right: &str,
+    selected: usize,
+    left_enabled: bool,
+) -> Result<(), D::Error> {
     let y = 210i32;
     let btn_w = 105u32;
 
     for (i, label) in [left, right].iter().enumerate() {
         let x = if i == 0 { 10 } else { 125 };
         let is_selected = i == selected;
+        let is_disabled = i == 0 && !left_enabled;
 
-        let (bg, border, text_color) = if is_selected {
+        let (bg, border, text_color) = if is_disabled {
+            (colors::BG_CARD, colors::BORDER_DEFAULT, colors::TEXT_MUTED)
+        } else if is_selected {
             if i == 0 {
                 (colors::BG_CARD_SELECTED, colors::SUCCESS, colors::SUCCESS)
             } else {
@@ -514,3 +566,49 @@ pub fn draw_qr<D: DrawTarget<Color = Rgb565>>(
 }
 
 extern crate alloc;
+
+#[cfg(test)]
+mod scroll_tests {
+    use super::option_list_scroll_offset;
+
+    #[test]
+    fn small_list_never_scrolls() {
+        for sel in 0..5 {
+            assert_eq!(option_list_scroll_offset(5, sel, 5), 0);
+        }
+    }
+
+    #[test]
+    fn initial_items_in_large_list_dont_scroll() {
+        // With 6 items and max=5, scroll stays 0 while selected is 0..4.
+        for sel in 0..5 {
+            assert_eq!(option_list_scroll_offset(6, sel, 5), 0, "sel={sel}");
+        }
+    }
+
+    #[test]
+    fn scrolls_to_keep_selected_visible() {
+        // 6 items, max=5, selected=5 (last item) → scroll by 1.
+        assert_eq!(option_list_scroll_offset(6, 5, 5), 1);
+    }
+
+    #[test]
+    fn scroll_clamped_to_max() {
+        // 8 items, max=5. Scroll offset never exceeds len - max = 3.
+        assert_eq!(option_list_scroll_offset(8, 7, 5), 3);
+        // Even if we somehow asked for a selected past the end (shouldn't
+        // happen in practice), we still clamp.
+        assert_eq!(option_list_scroll_offset(8, 100, 5), 3);
+    }
+
+    #[test]
+    fn zero_visible_returns_zero_safely() {
+        // Defensive: avoid subtract-overflow if caller passes 0.
+        assert_eq!(option_list_scroll_offset(5, 2, 0), 0);
+    }
+
+    #[test]
+    fn empty_list_is_harmless() {
+        assert_eq!(option_list_scroll_offset(0, 0, 5), 0);
+    }
+}
