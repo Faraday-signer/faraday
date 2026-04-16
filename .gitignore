@@ -35,3 +35,9 @@ opt/rootfs-overlay/
 
 # Logs
 *.log
+
+# Extension (WXT/Node)
+extension/node_modules/
+extension/.output/
+extension/.wxt/
+extension/.vite/

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Faraday Devnet Playground</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>Faraday Devnet Playground</h1>
+        <p>Use this page to test Wallet Standard connect + signTransaction with your Faraday extension.</p>
+      </header>
+
+      <section class="card">
+        <h2>Wallet</h2>
+        <div class="row">
+          <button id="refreshWalletsBtn">Refresh Wallets</button>
+          <select id="walletSelect"></select>
+          <button id="connectBtn">Connect</button>
+          <button id="disconnectBtn">Disconnect</button>
+        </div>
+        <p id="walletInfo" class="muted">Not connected.</p>
+      </section>
+
+      <section class="card">
+        <h2>Devnet Actions</h2>
+        <div class="stack">
+          <label>
+            Recipient Address
+            <input id="recipientInput" type="text" placeholder="Defaults to your own address" />
+          </label>
+          <label>
+            Amount (SOL)
+            <input id="amountInput" type="number" min="0" step="0.000001" value="0.001" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="airdropBtn">Airdrop 1 SOL (Devnet)</button>
+          <button id="signAndSendBtn">Sign + Send Transfer</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Logs</h2>
+        <pre id="log"></pre>
+      </section>
+    </main>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
