@@ -6,7 +6,7 @@ description = "Air-gapped Solana transaction signer"
 
 [features]
 default = []
-simulator = ["dep:minifb", "dep:nokhwa", "dep:rqrr", "dep:image"]
+simulator = ["dep:minifb", "dep:nokhwa"]
 
 [dependencies]
 # Display rendering
@@ -25,15 +25,19 @@ base64 = "0.22"
 qrcode = "0.14"
 getrandom = "0.2"
 
+# QR decoding + image buffer. Shared by both the macOS simulator
+# (nokhwa → sim capture) and the Pi camera (v4l → Pi capture).
+rqrr = "0.7"
+image = { version = "0.25", default-features = false }
+
 # Desktop simulator (optional)
 minifb = { version = "0.27", optional = true }
 nokhwa = { version = "0.10", default-features = false, features = ["input-avfoundation"], optional = true }
-rqrr = { version = "0.7", optional = true }
-image = { version = "0.25", default-features = false, optional = true }
 
-# Pi hardware (Linux only)
+# Pi hardware (Linux only). v4l covers V4L2 ioctls for the Pi camera.
 [target.'cfg(target_os = "linux")'.dependencies]
 rppal = "0.22"
+v4l = "0.14"
 
 [profile.release]
 opt-level = "s"

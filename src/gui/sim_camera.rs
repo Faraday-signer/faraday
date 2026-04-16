@@ -14,12 +14,7 @@ use nokhwa::pixel_format::RgbFormat;
 use nokhwa::utils::{CameraIndex, RequestedFormat, RequestedFormatType};
 use nokhwa::Camera;
 
-#[derive(Clone)]
-pub struct Frame {
-    pub width: u32,
-    pub height: u32,
-    pub rgb: Vec<u8>,
-}
+pub use crate::camera::Frame;
 
 pub struct SimCamera {
     latest: Arc<Mutex<Option<Frame>>>,
@@ -73,40 +68,22 @@ impl SimCamera {
                 let (w, h) = img.dimensions();
                 let rgb = img.into_raw();
 
+                let frame = Frame { width: w, height: h, rgb };
+
                 // QR decode only on scan screens (enabled by the main thread) and
                 // only when the main thread hasn't yet consumed the previous hit.
                 let should_decode = decode_w.load(Ordering::Relaxed)
                     && qr_w.lock().ok().map(|g| g.is_none()).unwrap_or(false);
                 if should_decode {
-                    let mut gray = Vec::with_capacity((w * h) as usize);
-                    for px in rgb.chunks_exact(3) {
-                        // BT.601 luma
-                        let y = (px[0] as u32 * 299
-                            + px[1] as u32 * 587
-                            + px[2] as u32 * 114)
-                            / 1000;
-                        gray.push(y as u8);
-                    }
-                    if let Some(gimg) = image::GrayImage::from_raw(w, h, gray) {
-                        let mut prepared = rqrr::PreparedImage::prepare(gimg);
-                        for grid in prepared.detect_grids() {
-                            let mut out = Vec::new();
-                            if grid.decode_to(&mut out).is_ok() && !out.is_empty() {
-                                if let Ok(mut g) = qr_w.lock() {
-                                    *g = Some(out);
-                                }
-                                break;
-                            }
+                    if let Some(decoded) = crate::camera::try_decode_qr(&frame) {
+                        if let Ok(mut g) = qr_w.lock() {
+                            *g = Some(decoded);
                         }
                     }
                 }
 
                 if let Ok(mut g) = latest_w.lock() {
-                    *g = Some(Frame {
-                        width: w,
-                        height: h,
-                        rgb,
-                    });
+                    *g = Some(frame);
                 }
             }
             let _ = camera.stop_stream();

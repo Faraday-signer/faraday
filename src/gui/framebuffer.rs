@@ -55,8 +55,8 @@ impl Framebuffer {
     /// Blit an RGB frame from the webcam into the full framebuffer using a
     /// center-crop + nearest-neighbor scale so the preview fills 240x240
     /// without distortion.
-    #[cfg(feature = "simulator")]
-    pub fn blit_camera_frame(&mut self, frame: &super::sim_camera::Frame) {
+    #[cfg(any(feature = "simulator", target_os = "linux"))]
+    pub fn blit_camera_frame(&mut self, frame: &crate::camera::Frame) {
         let sq = frame.width.min(frame.height);
         let ox = (frame.width - sq) / 2;
         let oy = (frame.height - sq) / 2;

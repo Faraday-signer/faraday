@@ -5,6 +5,14 @@ use crate::crypto::slip0010::SolanaKeypair;
 use crate::models::decode_qr;
 use zeroize::Zeroize;
 
+// Camera backend selection. Exactly one of these is compiled per build:
+// macOS simulator uses nokhwa; Pi Linux uses V4L2. On targets with neither
+// (e.g. headless cross-platform builds) the camera fields on `App` are absent.
+#[cfg(feature = "simulator")]
+type Camera = crate::gui::sim_camera::SimCamera;
+#[cfg(all(target_os = "linux", not(feature = "simulator")))]
+type Camera = crate::hardware::pi_camera::PiCamera;
+
 /// Platform-independent input event.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InputEvent {
@@ -388,13 +396,13 @@ pub struct App {
     pub wallet: Option<LoadedWallet>,
     pub last_activity: std::time::Instant,
     pub blank_timeout_ms: u64,
-    #[cfg(feature = "simulator")]
-    pub sim_camera: Option<crate::gui::sim_camera::SimCamera>,
-    #[cfg(feature = "simulator")]
-    pub latest_frame: Option<crate::gui::sim_camera::Frame>,
-    #[cfg(feature = "simulator")]
+    #[cfg(any(feature = "simulator", target_os = "linux"))]
+    pub camera: Option<Camera>,
+    #[cfg(any(feature = "simulator", target_os = "linux"))]
+    pub latest_frame: Option<crate::camera::Frame>,
+    #[cfg(any(feature = "simulator", target_os = "linux"))]
     pub camera_error: Option<String>,
-    #[cfg(feature = "simulator")]
+    #[cfg(any(feature = "simulator", target_os = "linux"))]
     pub scanned_qr: Option<Vec<u8>>,
 }
 
@@ -405,13 +413,13 @@ impl App {
             wallet: None,
             last_activity: std::time::Instant::now(),
             blank_timeout_ms: DEFAULT_BLANK_TIMEOUT_MS,
-            #[cfg(feature = "simulator")]
-            sim_camera: None,
-            #[cfg(feature = "simulator")]
+            #[cfg(any(feature = "simulator", target_os = "linux"))]
+            camera: None,
+            #[cfg(any(feature = "simulator", target_os = "linux"))]
             latest_frame: None,
-            #[cfg(feature = "simulator")]
+            #[cfg(any(feature = "simulator", target_os = "linux"))]
             camera_error: None,
-            #[cfg(feature = "simulator")]
+            #[cfg(any(feature = "simulator", target_os = "linux"))]
             scanned_qr: None,
         }
     }
@@ -440,40 +448,40 @@ impl App {
     pub fn is_blanked(&self) -> bool {
         let idle_ms = self.last_activity.elapsed().as_millis().min(u64::MAX as u128) as u64;
         let on_camera = {
-            #[cfg(feature = "simulator")]
+            #[cfg(any(feature = "simulator", target_os = "linux"))]
             { self.wants_camera() }
-            #[cfg(not(feature = "simulator"))]
+            #[cfg(not(any(feature = "simulator", target_os = "linux")))]
             { false }
         };
         should_blank(idle_ms, self.blank_timeout_ms, on_camera)
     }
 
-    /// Camera error message, if any (sim-only; always None on Pi).
+    /// Camera error message, if any. None when camera isn't supported on this build.
     pub fn camera_error_str(&self) -> Option<&str> {
-        #[cfg(feature = "simulator")]
+        #[cfg(any(feature = "simulator", target_os = "linux"))]
         {
             self.camera_error.as_deref()
         }
-        #[cfg(not(feature = "simulator"))]
+        #[cfg(not(any(feature = "simulator", target_os = "linux")))]
         {
             None
         }
     }
 
-    /// True if a webcam frame is currently available (sim-only).
+    /// True if a webcam frame is currently available.
     pub fn has_camera_frame(&self) -> bool {
-        #[cfg(feature = "simulator")]
+        #[cfg(any(feature = "simulator", target_os = "linux"))]
         {
             self.latest_frame.is_some()
         }
-        #[cfg(not(feature = "simulator"))]
+        #[cfg(not(any(feature = "simulator", target_os = "linux")))]
         {
             false
         }
     }
 
     /// True when the current screen wants the webcam.
-    #[cfg(feature = "simulator")]
+    #[cfg(any(feature = "simulator", target_os = "linux"))]
     pub fn wants_camera(&self) -> bool {
         matches!(
             &self.screen,
@@ -485,19 +493,20 @@ impl App {
     }
 
     /// Per-frame update — manages camera lifecycle and auto-advances on QR detect.
-    #[cfg(feature = "simulator")]
+    /// Shared between simulator (macOS nokhwa) and Pi (V4L2) via the `Camera` type alias.
+    #[cfg(any(feature = "simulator", target_os = "linux"))]
     pub fn tick(&mut self) {
         let wants = self.wants_camera();
-        if wants && self.sim_camera.is_none() && self.camera_error.is_none() {
-            match crate::gui::sim_camera::SimCamera::open() {
-                Ok(cam) => self.sim_camera = Some(cam),
+        if wants && self.camera.is_none() && self.camera_error.is_none() {
+            match Camera::open() {
+                Ok(cam) => self.camera = Some(cam),
                 Err(e) => {
                     eprintln!("Camera unavailable: {e}");
                     self.camera_error = Some(e);
                 }
             }
-        } else if !wants && self.sim_camera.is_some() {
-            self.sim_camera = None;
+        } else if !wants && self.camera.is_some() {
+            self.camera = None;
             self.latest_frame = None;
             self.scanned_qr = None;
         }
@@ -509,7 +518,7 @@ impl App {
             self.screen,
             Screen::LoadScanQr | Screen::SignScanTx | Screen::SettingsVerifyAddressScan
         );
-        let pending_qr = if let Some(cam) = &self.sim_camera {
+        let pending_qr = if let Some(cam) = &self.camera {
             cam.set_decode_enabled(is_scan_screen);
             if let Some(f) = cam.latest() {
                 self.latest_frame = Some(f);
@@ -535,11 +544,15 @@ impl App {
             Screen::Splash => Screen::MainMenu { selected: 0 },
 
             Screen::MainMenu { mut selected } => {
+                // Vertical list: Up/Down move one item at a time; Left/Right
+                // behave like Up/Down for joystick ergonomics.
                 match event {
-                    InputEvent::Up => { if selected >= 2 { selected -= 2; } }
-                    InputEvent::Down => { if selected < 2 { selected += 2; } }
-                    InputEvent::Left => { if selected % 2 > 0 { selected -= 1; } }
-                    InputEvent::Right => { if selected % 2 < 1 { selected += 1; } }
+                    InputEvent::Up | InputEvent::Left => {
+                        if selected > 0 { selected -= 1; }
+                    }
+                    InputEvent::Down | InputEvent::Right => {
+                        if selected < 3 { selected += 1; }
+                    }
                     InputEvent::Confirm => return self.menu_select(selected),
                     _ => {}
                 }
@@ -583,12 +596,13 @@ impl App {
                 // Each button press captures "camera noise" as entropy.
                 // In simulator: hashes the current webcam frame. Falls back to
                 // timing jitter + OS RNG when the webcam isn't available.
-                // On Pi: reads raw bytes from camera sensor (TODO).
+                // On Pi: uses the live camera frame bytes (V4L2). Falls back to
+                // timing + OS RNG when the camera isn't available.
                 let total_frames = if word_count == 12 { 10 } else { 20 };
                 match event {
                     InputEvent::Confirm => {
                         let mut frame_entropy = [0u8; 16];
-                        #[cfg(feature = "simulator")]
+                        #[cfg(any(feature = "simulator", target_os = "linux"))]
                         {
                             if let Some(frame) = &self.latest_frame {
                                 use sha2::{Digest, Sha256};
@@ -598,7 +612,7 @@ impl App {
                                 getrandom::getrandom(&mut frame_entropy).ok();
                             }
                         }
-                        #[cfg(not(feature = "simulator"))]
+                        #[cfg(not(any(feature = "simulator", target_os = "linux")))]
                         {
                             getrandom::getrandom(&mut frame_entropy).ok();
                         }
@@ -878,14 +892,14 @@ impl App {
             Screen::LoadScanQr => {
                 match event {
                     InputEvent::Confirm => {
-                        // In simulator: if a QR was scanned via webcam, use it; otherwise
-                        // fall back to a hardcoded test SeedQR so the flow still works offline.
-                        // On Pi: TODO actual camera QR scanning.
-                        #[cfg(feature = "simulator")]
+                        // If the webcam (sim or Pi) picked up a QR, use that.
+                        // Otherwise fall back to a hardcoded test SeedQR so the
+                        // flow is still exercisable without a live camera.
+                        #[cfg(any(feature = "simulator", target_os = "linux"))]
                         let data: Vec<u8> = self.scanned_qr.take().unwrap_or_else(|| {
                             "000000000000000000000000000000000000000000000003".as_bytes().to_vec()
                         });
-                        #[cfg(not(feature = "simulator"))]
+                        #[cfg(not(any(feature = "simulator", target_os = "linux")))]
                         let data: Vec<u8> =
                             "000000000000000000000000000000000000000000000003".as_bytes().to_vec();
                         let decoded = decode_qr::detect_and_decode(&data);
@@ -1053,14 +1067,15 @@ impl App {
             Screen::SignScanTx => {
                 match event {
                     InputEvent::Confirm => {
-                        // In simulator: if a QR was scanned via webcam, use it; otherwise
-                        // build a canned test transaction. On Pi: TODO actual camera QR scanning.
+                        // If a QR was scanned via webcam (sim or Pi), use it;
+                        // otherwise fall back to a canned test transaction so
+                        // the flow is exercisable offline.
                         if let Some(wallet) = &self.wallet {
-                            #[cfg(feature = "simulator")]
+                            #[cfg(any(feature = "simulator", target_os = "linux"))]
                             let tx_base64: String = self.scanned_qr.take()
                                 .and_then(|b| String::from_utf8(b).ok())
                                 .unwrap_or_else(|| self.build_test_transaction(&wallet.keypair.public_key));
-                            #[cfg(not(feature = "simulator"))]
+                            #[cfg(not(any(feature = "simulator", target_os = "linux")))]
                             let tx_base64: String = self.build_test_transaction(&wallet.keypair.public_key);
                             let decoded = decode_qr::detect_and_decode(tx_base64.as_bytes());
                             if let Some(tx_bytes) = decoded.tx_bytes {
@@ -1227,11 +1242,11 @@ impl App {
                             Some(w) => w,
                             None => return Screen::SettingsMenu { selected: 3 },
                         };
-                        #[cfg(feature = "simulator")]
+                        #[cfg(any(feature = "simulator", target_os = "linux"))]
                         let raw: String = self.scanned_qr.take()
                             .and_then(|b| String::from_utf8(b).ok())
                             .unwrap_or_else(|| wallet.address.clone());
-                        #[cfg(not(feature = "simulator"))]
+                        #[cfg(not(any(feature = "simulator", target_os = "linux")))]
                         let raw: String = wallet.address.clone();
 
                         // Strip `solana:` URI wrappers + query strings + whitespace.
