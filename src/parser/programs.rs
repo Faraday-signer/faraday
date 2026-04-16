@@ -11,7 +11,7 @@ pub fn identify(program_id: &[u8; 32]) -> Option<KnownProgram> {
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" => "Token",
         "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" => "Token-2022",
         "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bVU" => "AssocToken",
-        "Stake11111111111111111111111111111111111111112" => "Stake",
+        "Stake11111111111111111111111111111111111112" => "Stake",
         "Vote111111111111111111111111111111111111111p8HGB" => "Vote",
         "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr" => "Memo",
         "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo" => "Memo",
@@ -19,4 +19,52 @@ pub fn identify(program_id: &[u8; 32]) -> Option<KnownProgram> {
         _ => return None,
     };
     Some(KnownProgram { name })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pubkey_from_b58(s: &str) -> [u8; 32] {
+        let bytes = bs58::decode(s).into_vec().unwrap();
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&bytes);
+        key
+    }
+
+    #[test]
+    fn test_system_program() {
+        let id = pubkey_from_b58("11111111111111111111111111111111");
+        assert_eq!(identify(&id).unwrap().name, "System");
+    }
+
+    #[test]
+    fn test_spl_token() {
+        let id = pubkey_from_b58("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+        assert_eq!(identify(&id).unwrap().name, "Token");
+    }
+
+    #[test]
+    fn test_token_2022() {
+        let id = pubkey_from_b58("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+        assert_eq!(identify(&id).unwrap().name, "Token-2022");
+    }
+
+    #[test]
+    fn test_stake_program() {
+        let id = pubkey_from_b58("Stake11111111111111111111111111111111111112");
+        assert_eq!(identify(&id).unwrap().name, "Stake");
+    }
+
+    #[test]
+    fn test_compute_budget() {
+        let id = pubkey_from_b58("ComputeBudget111111111111111111111111111111");
+        assert_eq!(identify(&id).unwrap().name, "ComputeBudget");
+    }
+
+    #[test]
+    fn test_unknown_program_returns_none() {
+        let id = [0x42u8; 32];
+        assert!(identify(&id).is_none());
+    }
 }

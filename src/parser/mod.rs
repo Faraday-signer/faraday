@@ -209,3 +209,149 @@ fn pubkey_short(key: &[u8; 32]) -> String {
     let b58 = bs58::encode(key).into_string();
     format!("{}..{}", &b58[..4], &b58[b58.len() - 4..])
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Builds a legacy System Transfer transaction.
+    fn system_transfer_tx(from: [u8; 32], lamports: u64) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.push(1u8);
+        tx.extend_from_slice(&[0u8; 64]);
+        // header
+        tx.push(1); tx.push(0); tx.push(1);
+        // 2 accounts: signer + system program (all zeros)
+        tx.push(2);
+        tx.extend_from_slice(&from);
+        tx.extend_from_slice(&[0u8; 32]);
+        // blockhash
+        tx.extend_from_slice(&[0xABu8; 32]);
+        // 1 instruction
+        tx.push(1);
+        tx.push(1);  // program_id_index = 1 (system program)
+        tx.push(1); tx.push(0); // 1 account: index 0
+        tx.push(12); // data len
+        tx.extend_from_slice(&[2u8, 0, 0, 0]); // Transfer
+        tx.extend_from_slice(&lamports.to_le_bytes());
+        tx
+    }
+
+    fn v0_system_transfer_tx(from: [u8; 32], lamports: u64) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.push(1u8);
+        tx.extend_from_slice(&[0u8; 64]);
+        tx.push(0x80); // v0 prefix
+        tx.push(1); tx.push(0); tx.push(1);
+        tx.push(2);
+        tx.extend_from_slice(&from);
+        tx.extend_from_slice(&[0u8; 32]);
+        tx.extend_from_slice(&[0xABu8; 32]);
+        tx.push(1);
+        tx.push(1); tx.push(1); tx.push(0);
+        tx.push(12);
+        tx.extend_from_slice(&[2u8, 0, 0, 0]);
+        tx.extend_from_slice(&lamports.to_le_bytes());
+        tx.push(0); // 0 address table lookups
+        tx
+    }
+
+    // --- parse() ---
+
+    #[test]
+    fn test_parse_legacy_system_transfer() {
+        let tx = system_transfer_tx([0x01; 32], 2_000_000_000);
+        let parsed = parse(&tx);
+        assert!(matches!(parsed.version, TransactionVersion::Legacy));
+        assert_eq!(parsed.instructions.len(), 1);
+        assert_eq!(parsed.instructions[0].program, "System");
+        let has_amount = parsed.instructions[0].items.iter().any(|i| matches!(
+            i, ReviewItem::Field { label, value } if label == "Amount" && value == "2 SOL"
+        ));
+        assert!(has_amount);
+    }
+
+    #[test]
+    fn test_parse_v0_transaction() {
+        let tx = v0_system_transfer_tx([0x01; 32], 1_000_000_000);
+        let parsed = parse(&tx);
+        assert!(matches!(parsed.version, TransactionVersion::V0 { address_table_lookups: 0 }));
+        assert_eq!(parsed.instructions.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_fee_payer_is_first_account() {
+        let from = [0xAAu8; 32];
+        let tx = system_transfer_tx(from, 1_000_000_000);
+        let parsed = parse(&tx);
+        assert_eq!(parsed.fee_payer, bs58::encode(&from).into_string());
+    }
+
+    #[test]
+    fn test_parse_invalid_bytes_returns_error_instruction() {
+        let parsed = parse(&[0xFF, 0x00]);
+        assert_eq!(parsed.instructions.len(), 1);
+        let has_warning = parsed.instructions[0].items.iter().any(|i| matches!(i, ReviewItem::Warning(_)));
+        assert!(has_warning);
+    }
+
+    #[test]
+    fn test_parse_empty_bytes_returns_error_instruction() {
+        let parsed = parse(&[]);
+        let has_warning = parsed.instructions[0].items.iter().any(|i| matches!(i, ReviewItem::Warning(_)));
+        assert!(has_warning);
+    }
+
+    // --- to_lines() ---
+
+    #[test]
+    fn test_to_lines_contains_version() {
+        let tx = system_transfer_tx([0x01; 32], 1_000_000_000);
+        let parsed = parse(&tx);
+        let lines = to_lines(&parsed);
+        assert!(lines[0].contains("Legacy"));
+    }
+
+    #[test]
+    fn test_to_lines_v0_shows_version() {
+        let tx = v0_system_transfer_tx([0x01; 32], 1_000_000_000);
+        let parsed = parse(&tx);
+        let lines = to_lines(&parsed);
+        assert!(lines[0].contains("v0"));
+    }
+
+    #[test]
+    fn test_to_lines_contains_amount() {
+        let tx = system_transfer_tx([0x01; 32], 500_000_000);
+        let parsed = parse(&tx);
+        let lines = to_lines(&parsed);
+        let has_amount = lines.iter().any(|l| l.contains("0.5 SOL"));
+        assert!(has_amount);
+    }
+
+    #[test]
+    fn test_to_lines_multi_instruction_shows_count() {
+        // Build a tx with 2 identical Transfer instructions
+        let mut tx = Vec::new();
+        tx.push(1u8);
+        tx.extend_from_slice(&[0u8; 64]);
+        tx.push(1); tx.push(0); tx.push(1);
+        tx.push(2);
+        tx.extend_from_slice(&[0x01u8; 32]);
+        tx.extend_from_slice(&[0x00u8; 32]);
+        tx.extend_from_slice(&[0xABu8; 32]);
+        tx.push(2); // 2 instructions (compact-u16)
+        for _ in 0..2 {
+            tx.push(1); tx.push(1); tx.push(0);
+            tx.push(12);
+            tx.extend_from_slice(&[2u8, 0, 0, 0]);
+            tx.extend_from_slice(&1_000_000_000u64.to_le_bytes());
+        }
+        let parsed = parse(&tx);
+        assert_eq!(parsed.instructions.len(), 2);
+        let lines = to_lines(&parsed);
+        // Multi-instruction lines include "1/2" and "2/2" markers
+        let has_counter = lines.iter().any(|l| l.contains("1/2"));
+        assert!(has_counter);
+    }
+}

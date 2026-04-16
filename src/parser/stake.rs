@@ -102,3 +102,94 @@ fn pubkey_short(key: &[u8; 32]) -> String {
     let b58 = bs58::encode(key).into_string();
     format!("{}..{}", &b58[..4], &b58[b58.len() - 4..])
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(byte: u8) -> [u8; 32] { [byte; 32] }
+
+    fn has_header(items: &[ReviewItem], title: &str) -> bool {
+        items.iter().any(|i| matches!(i, ReviewItem::Header(h) if h == title))
+    }
+
+    fn has_warning(items: &[ReviewItem]) -> bool {
+        items.iter().any(|i| matches!(i, ReviewItem::Warning(_)))
+    }
+
+    fn field_value<'a>(items: &'a [ReviewItem], label: &str) -> Option<&'a str> {
+        items.iter().find_map(|item| match item {
+            ReviewItem::Field { label: l, value } if l == label => Some(value.as_str()),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn test_delegate() {
+        let data = vec![2u8, 0, 0, 0]; // DelegateStake
+        let accounts = [key(0x01), key(0x02)];
+        let ix = parse(&data, &accounts);
+        assert_eq!(ix.program, "Stake");
+        assert!(has_header(&ix.items, "Delegate Stake"));
+        assert!(field_value(&ix.items, "Stake").is_some());
+        assert!(field_value(&ix.items, "Validator").is_some());
+    }
+
+    #[test]
+    fn test_deactivate() {
+        let data = vec![5u8, 0, 0, 0]; // Deactivate
+        let accounts = [key(0x01)];
+        let ix = parse(&data, &accounts);
+        assert!(has_header(&ix.items, "Deactivate Stake"));
+    }
+
+    #[test]
+    fn test_withdraw() {
+        let mut data = vec![4u8, 0, 0, 0]; // Withdraw
+        data.extend_from_slice(&2_000_000_000u64.to_le_bytes()); // 2 SOL
+        let accounts = [key(0x01), key(0x02)];
+        let ix = parse(&data, &accounts);
+        assert!(has_header(&ix.items, "Withdraw Stake"));
+        assert_eq!(field_value(&ix.items, "Amount"), Some("2 SOL"));
+    }
+
+    #[test]
+    fn test_split() {
+        let mut data = vec![3u8, 0, 0, 0]; // Split
+        data.extend_from_slice(&500_000_000u64.to_le_bytes()); // 0.5 SOL
+        let accounts = [key(0x01), key(0x02)];
+        let ix = parse(&data, &accounts);
+        assert!(has_header(&ix.items, "Split Stake"));
+        assert_eq!(field_value(&ix.items, "Amount"), Some("0.5 SOL"));
+    }
+
+    #[test]
+    fn test_initialize() {
+        let data = vec![0u8, 0, 0, 0]; // Initialize
+        let accounts = [key(0x01)];
+        let ix = parse(&data, &accounts);
+        assert!(has_header(&ix.items, "Initialize Stake"));
+    }
+
+    #[test]
+    fn test_merge() {
+        let data = vec![7u8, 0, 0, 0]; // Merge
+        let accounts = [key(0x01), key(0x02)];
+        let ix = parse(&data, &accounts);
+        assert!(has_header(&ix.items, "Merge Stake"));
+    }
+
+    #[test]
+    fn test_unknown_discriminant_does_not_panic() {
+        let data = vec![99u8, 0, 0, 0];
+        let ix = parse(&data, &[]);
+        assert_eq!(ix.program, "Stake");
+        assert!(!has_warning(&ix.items));
+    }
+
+    #[test]
+    fn test_empty_data_returns_warning() {
+        let ix = parse(&[], &[]);
+        assert!(has_warning(&ix.items));
+    }
+}

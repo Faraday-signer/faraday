@@ -126,3 +126,108 @@ fn pubkey_short(key: &[u8; 32]) -> String {
     let b58 = bs58::encode(key).into_string();
     format!("{}..{}", &b58[..4], &b58[b58.len() - 4..])
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(byte: u8) -> [u8; 32] { [byte; 32] }
+
+    fn transfer_data(lamports: u64) -> Vec<u8> {
+        let mut d = vec![2u8, 0, 0, 0]; // Transfer discriminant
+        d.extend_from_slice(&lamports.to_le_bytes());
+        d
+    }
+
+    // --- lamports_to_sol ---
+
+    #[test]
+    fn test_lamports_zero() {
+        assert_eq!(lamports_to_sol(0), "0 SOL");
+    }
+
+    #[test]
+    fn test_lamports_exact_sol() {
+        assert_eq!(lamports_to_sol(1_000_000_000), "1 SOL");
+        assert_eq!(lamports_to_sol(5_000_000_000), "5 SOL");
+    }
+
+    #[test]
+    fn test_lamports_half_sol() {
+        assert_eq!(lamports_to_sol(500_000_000), "0.5 SOL");
+    }
+
+    #[test]
+    fn test_lamports_one_lamport() {
+        assert_eq!(lamports_to_sol(1), "0.000000001 SOL");
+    }
+
+    #[test]
+    fn test_lamports_trims_trailing_zeros() {
+        assert_eq!(lamports_to_sol(1_500_000_000), "1.5 SOL");
+        assert_eq!(lamports_to_sol(1_050_000_000), "1.05 SOL");
+    }
+
+    // --- parse (public entry point) ---
+
+    #[test]
+    fn test_transfer_1_sol() {
+        let data = transfer_data(1_000_000_000);
+        let accounts = [key(0x01), key(0x02)];
+        let ix = parse(&data, &accounts);
+        assert_eq!(ix.program, "System");
+        let has_amount = ix.items.iter().any(|item| matches!(
+            item, ReviewItem::Field { label, value } if label == "Amount" && value == "1 SOL"
+        ));
+        assert!(has_amount, "Expected Amount: 1 SOL");
+    }
+
+    #[test]
+    fn test_transfer_shows_from_and_to() {
+        let data = transfer_data(1_000_000_000);
+        let accounts = [key(0x01), key(0x02)];
+        let ix = parse(&data, &accounts);
+        let labels: Vec<&str> = ix.items.iter().filter_map(|item| match item {
+            ReviewItem::Field { label, .. } => Some(label.as_str()),
+            _ => None,
+        }).collect();
+        assert!(labels.contains(&"From"));
+        assert!(labels.contains(&"To"));
+    }
+
+    #[test]
+    fn test_create_account() {
+        let mut data = vec![0u8, 0, 0, 0]; // CreateAccount discriminant
+        data.extend_from_slice(&2_039_280u64.to_le_bytes()); // lamports (rent)
+        data.extend_from_slice(&165u64.to_le_bytes());       // space
+        data.extend_from_slice(&[0u8; 32]);                  // owner
+        let accounts = [key(0x01), key(0x02)];
+        let ix = parse(&data, &accounts);
+        let has_space = ix.items.iter().any(|item| matches!(
+            item, ReviewItem::Field { label, .. } if label == "Space"
+        ));
+        assert!(has_space);
+    }
+
+    #[test]
+    fn test_unknown_discriminant_does_not_panic() {
+        let data = vec![99u8, 0, 0, 0]; // unrecognized type
+        let ix = parse(&data, &[]);
+        assert_eq!(ix.program, "System");
+    }
+
+    #[test]
+    fn test_transfer_data_too_short_returns_warning() {
+        let data = vec![2u8, 0, 0, 0, 0]; // only 5 bytes, need 12
+        let ix = parse(&data, &[]);
+        let has_warning = ix.items.iter().any(|item| matches!(item, ReviewItem::Warning(_)));
+        assert!(has_warning);
+    }
+
+    #[test]
+    fn test_empty_data_returns_warning() {
+        let ix = parse(&[], &[]);
+        let has_warning = ix.items.iter().any(|item| matches!(item, ReviewItem::Warning(_)));
+        assert!(has_warning);
+    }
+}

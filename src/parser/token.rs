@@ -183,6 +183,9 @@ fn format_token_amount(amount: u64, decimals: u8) -> String {
     let divisor = 10u64.pow(decimals as u32);
     let whole = amount / divisor;
     let frac = amount % divisor;
+    if frac == 0 {
+        return whole.to_string();
+    }
     let frac_str = format!("{:0width$}", frac, width = decimals as usize);
     format!("{}.{}", whole, frac_str.trim_end_matches('0'))
 }
@@ -190,4 +193,136 @@ fn format_token_amount(amount: u64, decimals: u8) -> String {
 fn pubkey_short(key: &[u8; 32]) -> String {
     let b58 = bs58::encode(key).into_string();
     format!("{}..{}", &b58[..4], &b58[b58.len() - 4..])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(byte: u8) -> [u8; 32] { [byte; 32] }
+
+    fn field_value<'a>(items: &'a [ReviewItem], label: &str) -> Option<&'a str> {
+        items.iter().find_map(|item| match item {
+            ReviewItem::Field { label: l, value } if l == label => Some(value.as_str()),
+            _ => None,
+        })
+    }
+
+    fn has_warning(items: &[ReviewItem]) -> bool {
+        items.iter().any(|item| matches!(item, ReviewItem::Warning(_)))
+    }
+
+    // --- format_token_amount ---
+
+    #[test]
+    fn test_format_no_decimals() {
+        assert_eq!(format_token_amount(1000, 0), "1000");
+    }
+
+    #[test]
+    fn test_format_with_decimals() {
+        assert_eq!(format_token_amount(1_000_000, 6), "1");
+        assert_eq!(format_token_amount(1_500_000, 6), "1.5");
+        assert_eq!(format_token_amount(1_000, 6), "0.001");
+    }
+
+    #[test]
+    fn test_format_trims_trailing_zeros() {
+        assert_eq!(format_token_amount(1_100_000, 6), "1.1");
+    }
+
+    // --- Transfer ---
+
+    #[test]
+    fn test_transfer_basic() {
+        let mut data = vec![3u8]; // Transfer discriminant
+        data.extend_from_slice(&500u64.to_le_bytes());
+        let accounts = [key(0x01), key(0x02), key(0x03)];
+        let ix = parse("Token", &data, &accounts);
+        assert_eq!(ix.program, "Token");
+        assert_eq!(field_value(&ix.items, "Amount"), Some("500"));
+        assert!(has_warning(&ix.items)); // "Decimals unknown"
+    }
+
+    // --- TransferChecked ---
+
+    #[test]
+    fn test_transfer_checked() {
+        let mut data = vec![12u8]; // TransferChecked
+        data.extend_from_slice(&1_500_000u64.to_le_bytes());
+        data.push(6); // decimals
+        let accounts = [key(0x01), key(0x02), key(0x03), key(0x04)];
+        let ix = parse("Token", &data, &accounts);
+        assert_eq!(field_value(&ix.items, "Amount"), Some("1.5"));
+        assert!(!has_warning(&ix.items)); // checked variant has decimals, no warning
+    }
+
+    // --- MintTo ---
+
+    #[test]
+    fn test_mint_to() {
+        let mut data = vec![7u8]; // MintTo
+        data.extend_from_slice(&1_000u64.to_le_bytes());
+        let accounts = [key(0x01), key(0x02), key(0x03)];
+        let ix = parse("Token", &data, &accounts);
+        assert!(ix.items.iter().any(|i| matches!(i, ReviewItem::Header(h) if h == "Mint Tokens")));
+        assert_eq!(field_value(&ix.items, "Amount"), Some("1000"));
+    }
+
+    // --- Burn ---
+
+    #[test]
+    fn test_burn() {
+        let mut data = vec![8u8]; // Burn
+        data.extend_from_slice(&200u64.to_le_bytes());
+        let accounts = [key(0x01), key(0x02), key(0x03)];
+        let ix = parse("Token", &data, &accounts);
+        assert!(ix.items.iter().any(|i| matches!(i, ReviewItem::Header(h) if h == "Burn Tokens")));
+    }
+
+    // --- CloseAccount ---
+
+    #[test]
+    fn test_close_account() {
+        let data = vec![9u8]; // CloseAccount
+        let accounts = [key(0x01), key(0x02), key(0x03)];
+        let ix = parse("Token", &data, &accounts);
+        assert!(ix.items.iter().any(|i| matches!(i, ReviewItem::Header(h) if h == "Close Token Account")));
+    }
+
+    // --- Approve ---
+
+    #[test]
+    fn test_approve_has_warning() {
+        let mut data = vec![4u8]; // Approve
+        data.extend_from_slice(&1_000u64.to_le_bytes());
+        let accounts = [key(0x01), key(0x02), key(0x03)];
+        let ix = parse("Token", &data, &accounts);
+        assert!(has_warning(&ix.items), "Approve should warn about delegating spend authority");
+    }
+
+    // --- Token-2022 program name passthrough ---
+
+    #[test]
+    fn test_token_2022_program_name() {
+        let mut data = vec![3u8];
+        data.extend_from_slice(&100u64.to_le_bytes());
+        let ix = parse("Token-2022", &data, &[key(0x01), key(0x02), key(0x03)]);
+        assert_eq!(ix.program, "Token-2022");
+    }
+
+    // --- Error cases ---
+
+    #[test]
+    fn test_empty_data_returns_warning() {
+        let ix = parse("Token", &[], &[]);
+        assert!(has_warning(&ix.items));
+    }
+
+    #[test]
+    fn test_transfer_too_short_returns_warning() {
+        let data = vec![3u8, 0, 0]; // Transfer needs 9 bytes total
+        let ix = parse("Token", &data, &[]);
+        assert!(has_warning(&ix.items));
+    }
 }

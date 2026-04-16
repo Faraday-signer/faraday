@@ -187,3 +187,126 @@ impl<'a> Cursor<'a> {
         Ok((first & 0x7f) | ((second & 0x7f) << 7) | (third << 14))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Builds a minimal legacy transaction: 1 sig, 2 accounts, 1 System Transfer instruction.
+    fn legacy_transfer_tx(lamports: u64) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.push(1u8);                          // num_signatures
+        tx.extend_from_slice(&[0u8; 64]);      // signature placeholder
+
+        // message header
+        tx.push(1); // num_required_signers
+        tx.push(0); // num_readonly_signed
+        tx.push(1); // num_readonly_unsigned
+
+        // accounts (compact-u16 = 2)
+        tx.push(2);
+        tx.extend_from_slice(&[0x01u8; 32]);   // signer
+        tx.extend_from_slice(&[0x00u8; 32]);   // system program
+
+        tx.extend_from_slice(&[0xABu8; 32]);   // recent blockhash
+
+        // 1 instruction
+        tx.push(1);
+        tx.push(1);  // program_id_index = 1
+        tx.push(1);  // 1 account index
+        tx.push(0);  // account_indices[0] = 0
+        tx.push(12); // data_len = 12 (compact-u16)
+        tx.extend_from_slice(&[2u8, 0, 0, 0]); // Transfer type
+        tx.extend_from_slice(&lamports.to_le_bytes());
+        tx
+    }
+
+    /// Same as above but with 0x80 version prefix (v0, no lookup tables).
+    fn v0_transfer_tx(lamports: u64) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.push(1u8);
+        tx.extend_from_slice(&[0u8; 64]);
+
+        tx.push(0x80); // version prefix: v0
+
+        tx.push(1);
+        tx.push(0);
+        tx.push(1);
+
+        tx.push(2);
+        tx.extend_from_slice(&[0x01u8; 32]);
+        tx.extend_from_slice(&[0x00u8; 32]);
+
+        tx.extend_from_slice(&[0xABu8; 32]);
+
+        tx.push(1);
+        tx.push(1);
+        tx.push(1);
+        tx.push(0);
+        tx.push(12);
+        tx.extend_from_slice(&[2u8, 0, 0, 0]);
+        tx.extend_from_slice(&lamports.to_le_bytes());
+
+        tx.push(0); // num_address_table_lookups = 0
+        tx
+    }
+
+    #[test]
+    fn test_legacy_deserialize() {
+        let tx = legacy_transfer_tx(1_000_000_000);
+        let msg = deserialize(&tx).unwrap();
+        assert!(matches!(msg.version, MessageVersion::Legacy));
+        assert_eq!(msg.num_required_signers, 1);
+        assert_eq!(msg.accounts.len(), 2);
+        assert_eq!(msg.accounts[0], [0x01u8; 32]);
+        assert_eq!(msg.accounts[1], [0x00u8; 32]);
+        assert_eq!(msg.recent_blockhash, [0xABu8; 32]);
+        assert_eq!(msg.instructions.len(), 1);
+        assert_eq!(msg.address_table_lookups.len(), 0);
+    }
+
+    #[test]
+    fn test_legacy_instruction_fields() {
+        let tx = legacy_transfer_tx(500_000_000);
+        let msg = deserialize(&tx).unwrap();
+        let ix = &msg.instructions[0];
+        assert_eq!(ix.program_id_index, 1);
+        assert_eq!(ix.account_indices, vec![0]);
+        assert_eq!(&ix.data[..4], &[2, 0, 0, 0]); // Transfer discriminant
+        let lamports = u64::from_le_bytes(ix.data[4..12].try_into().unwrap());
+        assert_eq!(lamports, 500_000_000);
+    }
+
+    #[test]
+    fn test_v0_detected() {
+        let tx = v0_transfer_tx(1_000_000_000);
+        let msg = deserialize(&tx).unwrap();
+        assert!(matches!(msg.version, MessageVersion::V0));
+        assert_eq!(msg.accounts.len(), 2);
+        assert_eq!(msg.instructions.len(), 1);
+        assert_eq!(msg.address_table_lookups.len(), 0);
+    }
+
+    #[test]
+    fn test_empty_transaction_errors() {
+        assert!(deserialize(&[]).is_err());
+    }
+
+    #[test]
+    fn test_truncated_transaction_errors() {
+        // Only num_sigs byte, no signatures
+        assert!(deserialize(&[1u8]).is_err());
+    }
+
+    #[test]
+    fn test_compact_u16_multibyte() {
+        // Value 128 encodes as [0x80, 0x01]
+        // Build a tx where num_accounts = 128 (would be too short to fully parse,
+        // but we can verify the compact-u16 reading fails gracefully)
+        let mut tx = Vec::new();
+        tx.push(0u8);            // 0 signatures
+        tx.push(1); tx.push(0); tx.push(0); // header
+        tx.push(0x80); tx.push(0x01); // compact-u16: 128 accounts — truncated intentionally
+        assert!(deserialize(&tx).is_err());
+    }
+}
