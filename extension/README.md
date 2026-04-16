@@ -27,24 +27,24 @@ Load the unpacked extension from WXT output in Chrome.
 
 ## Playground (Recommended Test Loop)
 
-Use the included devnet playground page to test connect + sign flow.
+A Vite + React devnet playground lives at the repo root in `playground/`.
 
 ```bash
-cd extension/playground
-python3 -m http.server 4173
+cd ../playground
+npm install
+npm run dev
 ```
 
-Then open `http://localhost:4173` and:
+Then open <http://localhost:4173> and:
 
 1. Open extension popup and pair your Faraday pubkey.
-2. Click **Refresh Wallets** in the playground.
-3. Click **Connect** and approve origin access.
-4. (Optional) Click **Airdrop 1 SOL** on devnet.
-5. Click **Sign + Send Transfer**:
+2. Click **Connect** and approve origin access.
+3. (Optional) Click **Airdrop 1 SOL** on devnet.
+4. Click **Sign + send transfer**:
    - unsigned tx QR appears in Faraday sign window,
    - scan on Pi/simulator and approve,
    - scan signed QR back in the sign window,
-   - playground broadcasts to devnet and logs explorer URL.
+   - playground broadcasts to devnet and logs the explorer URL.
 
 ## MVP Limitations
 
