@@ -54,6 +54,7 @@ export interface CreateSignSessionResult {
 
 export interface GetSignSessionResult {
   sessionId: string;
+  origin: string;
   txBase64: string;
   expectedPubkey: string;
   status: SignSessionStatus;
