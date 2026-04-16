@@ -303,6 +303,7 @@ async function handleMessage(
 
       const data: GetSignSessionResult = {
         sessionId: session.id,
+        origin: session.origin,
         txBase64: session.txBase64,
         expectedPubkey: session.expectedPubkey,
         status: session.status,
