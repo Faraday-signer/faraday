@@ -10,6 +10,8 @@ mod hardware;
 mod qr;
 #[cfg(any(feature = "simulator", target_os = "linux"))]
 mod signer;
+#[cfg(any(feature = "simulator", target_os = "linux"))]
+mod parser;
 
 #[cfg(any(feature = "simulator", target_os = "linux"))]
 use gui::app::{App, InputEvent};

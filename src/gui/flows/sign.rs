@@ -21,16 +21,8 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         let tx_base64 = test_tx.clone();
                         let decoded = decode_qr::detect_and_decode(test_tx.as_bytes());
                         if let Some(tx_bytes) = decoded.tx_bytes {
-                            let info_lines = vec![
-                                format!("From: {}...{}", &wallet.address[..4], &wallet.address[wallet.address.len()-4..]),
-                                "To: 11111...1111".to_string(),
-                                "Amount: 1.0 SOL".to_string(),
-                                format!("Type: {}", match decoded.qr_type {
-                                    decode_qr::QrType::SolanaTxBase64 => "Transaction",
-                                    _ => "Unknown",
-                                }),
-                                format!("Size: {} bytes", tx_bytes.len()),
-                            ];
+                            let parsed = crate::parser::parse(&tx_bytes);
+                            let info_lines = crate::parser::to_lines(&parsed);
                             return Screen::SignReview {
                                 tx_bytes, tx_base64, info_lines, scroll: 0, selected: 0,
                             };
