@@ -5,6 +5,14 @@ use crate::crypto::slip0010::SolanaKeypair;
 use crate::gui::flows;
 use zeroize::Zeroize;
 
+// Camera backend selection. Exactly one of these is compiled per build:
+// macOS simulator uses nokhwa; Pi Linux uses V4L2. On targets with neither
+// (e.g. headless cross-platform builds) the camera fields on `App` are absent.
+#[cfg(feature = "simulator")]
+type Camera = crate::gui::sim_camera::SimCamera;
+#[cfg(all(target_os = "linux", not(feature = "simulator")))]
+type Camera = crate::hardware::pi_camera::PiCamera;
+
 /// Platform-independent input event.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InputEvent {
@@ -87,6 +95,9 @@ pub enum Screen {
         info_lines: Vec<String>,
         scroll: usize,
         selected: usize,
+        /// False when the loaded wallet's pubkey is not in the tx's required
+        /// signer set — Sign is disabled in that case.
+        can_sign: bool,
     },
     SignShowQr { data: String },
     SignMessageInput { grid: CharGrid },
@@ -96,6 +107,11 @@ pub enum Screen {
     SettingsMenu { selected: usize },
     SettingsShowAddress,
     SettingsAccounts { accounts: Vec<(String, String)>, selected: usize },
+    SettingsVerifyAddressScan,
+    SettingsVerifyAddressResult {
+        address: String,
+        result: crate::crypto::derivation::AddressMatch,
+    },
     SettingsAbout,
     SettingsPowerOff { selected: usize },
 }
@@ -339,15 +355,51 @@ impl Drop for LoadedWallet {
     }
 }
 
+/// Default screen-blanking timeout. Zero disables blanking entirely.
+pub const DEFAULT_BLANK_TIMEOUT_MS: u64 = 120_000; // 2 minutes
+
+/// Pure decision function: should the screen render as blank given these inputs?
+///
+/// Kept as a free function so it can be exhaustively unit-tested without
+/// constructing an `App` or dealing with wall-clock time.
+pub fn should_blank(idle_ms: u64, timeout_ms: u64, on_camera_screen: bool) -> bool {
+    // Camera screens never blank — the user is actively looking at a live preview.
+    // Timeout of 0 is the "never blank" sentinel.
+    !on_camera_screen && timeout_ms > 0 && idle_ms >= timeout_ms
+}
+
 /// Top-level application.
 pub struct App {
     pub screen: Screen,
     pub wallet: Option<LoadedWallet>,
+    pub last_activity: std::time::Instant,
+    pub blank_timeout_ms: u64,
+    #[cfg(any(feature = "simulator", target_os = "linux"))]
+    pub camera: Option<Camera>,
+    #[cfg(any(feature = "simulator", target_os = "linux"))]
+    pub latest_frame: Option<crate::camera::Frame>,
+    #[cfg(any(feature = "simulator", target_os = "linux"))]
+    pub camera_error: Option<String>,
+    #[cfg(any(feature = "simulator", target_os = "linux"))]
+    pub scanned_qr: Option<Vec<u8>>,
 }
 
 impl App {
     pub fn new() -> Self {
-        App { screen: Screen::Splash, wallet: None }
+        App {
+            screen: Screen::Splash,
+            wallet: None,
+            last_activity: std::time::Instant::now(),
+            blank_timeout_ms: DEFAULT_BLANK_TIMEOUT_MS,
+            #[cfg(any(feature = "simulator", target_os = "linux"))]
+            camera: None,
+            #[cfg(any(feature = "simulator", target_os = "linux"))]
+            latest_frame: None,
+            #[cfg(any(feature = "simulator", target_os = "linux"))]
+            camera_error: None,
+            #[cfg(any(feature = "simulator", target_os = "linux"))]
+            scanned_qr: None,
+        }
     }
 
     pub fn seed_loaded(&self) -> bool {
@@ -359,8 +411,110 @@ impl App {
     }
 
     pub fn handle_input(&mut self, event: InputEvent) {
+        let was_blanked = self.is_blanked();
+        self.last_activity = std::time::Instant::now();
+        if was_blanked {
+            // Any input wakes the screen — but we consume the input so the user
+            // doesn't accidentally confirm a dialog they couldn't see.
+            return;
+        }
         let screen = std::mem::replace(&mut self.screen, Screen::Splash);
         self.screen = self.transition(screen, event);
+    }
+
+    /// True when the screen should render as blank right now.
+    pub fn is_blanked(&self) -> bool {
+        let idle_ms = self.last_activity.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        let on_camera = {
+            #[cfg(any(feature = "simulator", target_os = "linux"))]
+            { self.wants_camera() }
+            #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+            { false }
+        };
+        should_blank(idle_ms, self.blank_timeout_ms, on_camera)
+    }
+
+    /// Camera error message, if any. None when camera isn't supported on this build.
+    pub fn camera_error_str(&self) -> Option<&str> {
+        #[cfg(any(feature = "simulator", target_os = "linux"))]
+        {
+            self.camera_error.as_deref()
+        }
+        #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+        {
+            None
+        }
+    }
+
+    /// True if a webcam frame is currently available.
+    pub fn has_camera_frame(&self) -> bool {
+        #[cfg(any(feature = "simulator", target_os = "linux"))]
+        {
+            self.latest_frame.is_some()
+        }
+        #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+        {
+            false
+        }
+    }
+
+    /// True when the current screen wants the webcam.
+    #[cfg(any(feature = "simulator", target_os = "linux"))]
+    pub fn wants_camera(&self) -> bool {
+        matches!(
+            &self.screen,
+            Screen::LoadScanQr
+                | Screen::SignScanTx
+                | Screen::CreateCameraEntropy { .. }
+                | Screen::SettingsVerifyAddressScan
+        )
+    }
+
+    /// Per-frame update — manages camera lifecycle and auto-advances on QR detect.
+    /// Shared between simulator (macOS nokhwa) and Pi (V4L2) via the `Camera` type alias.
+    #[cfg(any(feature = "simulator", target_os = "linux"))]
+    pub fn tick(&mut self) {
+        let wants = self.wants_camera();
+        if wants && self.camera.is_none() && self.camera_error.is_none() {
+            match Camera::open() {
+                Ok(cam) => self.camera = Some(cam),
+                Err(e) => {
+                    eprintln!("Camera unavailable: {e}");
+                    self.camera_error = Some(e);
+                }
+            }
+        } else if !wants && self.camera.is_some() {
+            self.camera = None;
+            self.latest_frame = None;
+            self.scanned_qr = None;
+        }
+        if !wants {
+            self.camera_error = None;
+        }
+
+        let is_scan_screen = matches!(
+            self.screen,
+            Screen::LoadScanQr | Screen::SignScanTx | Screen::SettingsVerifyAddressScan
+        );
+        let pending_qr = if let Some(cam) = &self.camera {
+            cam.set_decode_enabled(is_scan_screen);
+            if let Some(f) = cam.latest() {
+                self.latest_frame = Some(f);
+            }
+            cam.take_qr()
+        } else {
+            None
+        };
+
+        if let Some(data) = pending_qr {
+            if matches!(
+                self.screen,
+                Screen::LoadScanQr | Screen::SignScanTx | Screen::SettingsVerifyAddressScan
+            ) {
+                self.scanned_qr = Some(data);
+                self.handle_input(InputEvent::Confirm);
+            }
+        }
     }
 
     fn transition(&mut self, screen: Screen, event: InputEvent) -> Screen {
@@ -368,11 +522,15 @@ impl App {
             Screen::Splash => Screen::MainMenu { selected: 0 },
 
             Screen::MainMenu { mut selected } => {
+                // Vertical list: Up/Down move one item at a time; Left/Right
+                // behave like Up/Down for joystick ergonomics.
                 match event {
-                    InputEvent::Up => { if selected >= 2 { selected -= 2; } }
-                    InputEvent::Down => { if selected < 2 { selected += 2; } }
-                    InputEvent::Left => { if selected % 2 > 0 { selected -= 1; } }
-                    InputEvent::Right => { if selected % 2 < 1 { selected += 1; } }
+                    InputEvent::Up | InputEvent::Left => {
+                        if selected > 0 { selected -= 1; }
+                    }
+                    InputEvent::Down | InputEvent::Right => {
+                        if selected < 3 { selected += 1; }
+                    }
                     InputEvent::Confirm => return self.menu_select(selected),
                     _ => {}
                 }
@@ -413,6 +571,8 @@ impl App {
             s @ (Screen::SettingsMenu { .. }
                 | Screen::SettingsShowAddress
                 | Screen::SettingsAccounts { .. }
+                | Screen::SettingsVerifyAddressScan
+                | Screen::SettingsVerifyAddressResult { .. }
                 | Screen::SettingsAbout
                 | Screen::SettingsPowerOff { .. }) => flows::settings::handle(self, s, event),
         }
@@ -439,5 +599,273 @@ impl App {
         let keypair = derivation::derive_keypair(&mnemonic, &passphrase, 0);
         let address = crate::qr::encode_qr::encode_address(&keypair.public_key);
         self.wallet = Some(LoadedWallet { mnemonic, passphrase, keypair, address });
+    }
+}
+
+/// Build the Review TX `info_lines` from a parsed tx. Returns the lines plus
+/// `can_sign` — true only when the loaded wallet's pubkey is in the tx's
+/// required-signer set. Lines starting with `!` render in danger red.
+pub fn build_review_lines(tx_bytes: &[u8], wallet_pubkey: &[u8; 32]) -> (Vec<String>, bool) {
+    use crate::qr::tx_parser::{
+        format_sol, format_token_amount, summarize, TxKind,
+    };
+
+    fn push_wrapped(lines: &mut Vec<String>, label: &str, addr: &str, prefix: &str) {
+        lines.push(format!("{label}:"));
+        for chunk in addr.as_bytes().chunks(22) {
+            lines.push(format!("{prefix}  {}", std::str::from_utf8(chunk).unwrap_or("")));
+        }
+    }
+    fn push_addr(lines: &mut Vec<String>, label: &str, addr: &str) {
+        push_wrapped(lines, label, addr, "");
+    }
+
+    let mut lines: Vec<String> = Vec::with_capacity(16);
+
+    let summary = match summarize(tx_bytes) {
+        Some(s) => s,
+        None => {
+            lines.push("Type: Unparseable".to_string());
+            lines.push(format!("Size: {} bytes", tx_bytes.len()));
+            lines.push("! Cannot sign this TX".to_string());
+            return (lines, false);
+        }
+    };
+    let can_sign = summary.signers.iter().any(|s| s == wallet_pubkey);
+
+    match &summary.kind {
+        TxKind::SolTransfer { from, to, lamports } => {
+            lines.push("Type: Send SOL".to_string());
+            push_addr(&mut lines, "From", from);
+            push_addr(&mut lines, "To", to);
+            lines.push(format!("Amount: {} SOL", format_sol(*lamports)));
+        }
+        TxKind::SplTransfer { source, dest, amount_raw, mint, decimals, symbol } => {
+            match symbol {
+                Some(sym) => lines.push(format!("Type: Send {}", sym)),
+                None => lines.push("Type: Send Token".to_string()),
+            }
+            if symbol.is_none() {
+                if let Some(m) = mint {
+                    push_addr(&mut lines, "Mint", m);
+                }
+            }
+            push_addr(&mut lines, "From", source);
+            push_addr(&mut lines, "To", dest);
+            let amt = format_token_amount(*amount_raw, *decimals);
+            match symbol {
+                Some(sym) => lines.push(format!("Amount: {} {}", amt, sym)),
+                None => lines.push(format!("Amount: {}", amt)),
+            }
+            if decimals.is_none() {
+                lines.push("(legacy: decimals unknown)".to_string());
+            }
+        }
+        TxKind::SplApprove { source, delegate, amount_raw, mint, decimals, symbol } => {
+            match symbol {
+                Some(sym) => lines.push(format!("Type: Approve {}", sym)),
+                None => lines.push("Type: Approve Token".to_string()),
+            }
+            if symbol.is_none() {
+                if let Some(m) = mint {
+                    push_addr(&mut lines, "Mint", m);
+                }
+            }
+            push_addr(&mut lines, "Owner", source);
+            push_addr(&mut lines, "Delegate", delegate);
+            let amt = format_token_amount(*amount_raw, *decimals);
+            match symbol {
+                Some(sym) => lines.push(format!("Amount: {} {}", amt, sym)),
+                None => lines.push(format!("Amount: {}", amt)),
+            }
+        }
+        TxKind::StakeDelegate { stake_account, vote_account } => {
+            lines.push("Type: Stake (Delegate)".to_string());
+            push_addr(&mut lines, "Stake acct", stake_account);
+            push_addr(&mut lines, "Validator", vote_account);
+        }
+        TxKind::StakeDeactivate { stake_account } => {
+            lines.push("Type: Unstake (Deactivate)".to_string());
+            push_addr(&mut lines, "Stake acct", stake_account);
+        }
+        TxKind::StakeWithdraw { stake_account, to, lamports } => {
+            lines.push("Type: Unstake (Withdraw)".to_string());
+            push_addr(&mut lines, "Stake acct", stake_account);
+            push_addr(&mut lines, "To", to);
+            lines.push(format!("Amount: {} SOL", format_sol(*lamports)));
+        }
+        TxKind::Memo { text } => {
+            lines.push("Type: Memo".to_string());
+            if text.is_empty() {
+                lines.push("(empty)".to_string());
+            } else {
+                lines.push("Text:".to_string());
+                for chunk in text.as_bytes().chunks(36) {
+                    lines.push(format!("  {}", std::str::from_utf8(chunk).unwrap_or("?")));
+                }
+            }
+        }
+        TxKind::Other { programs } => {
+            lines.push("Type: Unknown".to_string());
+            if programs.is_empty() {
+                lines.push("(no program info)".to_string());
+            } else {
+                lines.push(format!("Programs ({}):", programs.len()));
+                for p in programs {
+                    for chunk in p.as_bytes().chunks(22) {
+                        lines.push(format!("  {}", std::str::from_utf8(chunk).unwrap_or("")));
+                    }
+                }
+            }
+        }
+    }
+
+    lines.push(format!("Fee: {} SOL", format_sol(summary.fee_lamports)));
+    lines.push(format!("Size: {} bytes", summary.size));
+
+    if !can_sign {
+        lines.push(String::new());
+        lines.push("! Cannot sign this TX".to_string());
+        if let Some(needed) = summary.signers.first() {
+            let addr = bs58::encode(needed).into_string();
+            push_wrapped(&mut lines, "! Need wallet", &addr, "!");
+        }
+    }
+
+    (lines, can_sign)
+}
+
+#[cfg(test)]
+mod blanking_tests {
+    use super::should_blank;
+
+    #[test]
+    fn below_timeout_does_not_blank() {
+        assert!(!should_blank(0, 1000, false));
+        assert!(!should_blank(500, 1000, false));
+        assert!(!should_blank(999, 1000, false));
+    }
+
+    #[test]
+    fn at_or_above_timeout_blanks() {
+        assert!(should_blank(1000, 1000, false));
+        assert!(should_blank(1500, 1000, false));
+        assert!(should_blank(u64::MAX, 1000, false));
+    }
+
+    #[test]
+    fn camera_screen_is_never_blanked() {
+        // Even far past the timeout, blanking is suppressed during camera use.
+        assert!(!should_blank(0, 1000, true));
+        assert!(!should_blank(1_000_000, 1000, true));
+        assert!(!should_blank(u64::MAX, 1, true));
+    }
+
+    #[test]
+    fn zero_timeout_disables_blanking() {
+        // Explicit "never blank" sentinel.
+        assert!(!should_blank(0, 0, false));
+        assert!(!should_blank(u64::MAX, 0, false));
+        assert!(!should_blank(u64::MAX, 0, true));
+    }
+
+    #[test]
+    fn large_values_do_not_overflow() {
+        // Confidence check that we're not doing anything that overflows with
+        // extreme inputs.
+        assert!(should_blank(u64::MAX, 1, false));
+        assert!(!should_blank(0, u64::MAX, false));
+    }
+}
+
+#[cfg(test)]
+mod review_lines_tests {
+    use super::*;
+    use crate::crypto::{bip39, slip0010};
+    use base64::{engine::general_purpose::STANDARD as B64, Engine};
+
+    fn loaded_keypair() -> slip0010::SolanaKeypair {
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let seed = bip39::mnemonic_to_seed(mnemonic, "");
+        slip0010::derive_solana_keypair(&seed, 0)
+    }
+
+    /// Minimal valid SOL-transfer tx to a given signer. Same shape as
+    /// App::build_test_transaction.
+    fn build_tx_for(signer: &[u8; 32]) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.push(1);
+        tx.extend_from_slice(&[0u8; 64]);
+        tx.push(1);
+        tx.push(0);
+        tx.push(1);
+        tx.push(2);
+        tx.extend_from_slice(signer);
+        tx.extend_from_slice(&[0u8; 32]);
+        tx.extend_from_slice(&[0u8; 32]);
+        tx.push(1);
+        tx.push(1);
+        tx.push(2);
+        tx.push(0);
+        tx.push(1);
+        tx.push(12);
+        tx.extend_from_slice(&[2, 0, 0, 0]);
+        tx.extend_from_slice(&1_000_000u64.to_le_bytes());
+        tx
+    }
+
+    #[test]
+    fn matching_wallet_allows_signing() {
+        let kp = loaded_keypair();
+        let tx = build_tx_for(&kp.public_key);
+        let (lines, can_sign) = build_review_lines(&tx, &kp.public_key);
+        assert!(can_sign);
+        assert!(lines.iter().any(|l| l == "Type: Send SOL"));
+        // No warning lines when we can sign.
+        assert!(!lines.iter().any(|l| l.starts_with('!')));
+    }
+
+    #[test]
+    fn mismatched_wallet_blocks_signing_and_shows_required_signer() {
+        let other_pubkey = [0x11u8; 32];
+        let kp = loaded_keypair();
+        assert_ne!(kp.public_key, other_pubkey);
+
+        let tx = build_tx_for(&other_pubkey);
+        let (lines, can_sign) = build_review_lines(&tx, &kp.public_key);
+
+        assert!(!can_sign, "sign must be blocked on mismatch");
+        // Warning banner present.
+        assert!(lines.iter().any(|l| l.contains("Cannot sign")));
+        // The required signer address (base58 of other_pubkey) must appear wrapped
+        // somewhere in the lines so the user knows which wallet to load.
+        let expected = bs58::encode(&other_pubkey).into_string();
+        let joined: String = lines.join("\n");
+        assert!(
+            joined.contains(&expected[..22]),
+            "expected signer prefix to appear in review lines:\n{joined}"
+        );
+    }
+
+    #[test]
+    fn unparseable_tx_blocks_signing() {
+        let kp = loaded_keypair();
+        let garbage = vec![0xFFu8; 10];
+        let (lines, can_sign) = build_review_lines(&garbage, &kp.public_key);
+        assert!(!can_sign);
+        assert!(lines.iter().any(|l| l == "Type: Unparseable"));
+    }
+
+    #[test]
+    fn integrates_with_real_tx_from_user() {
+        // The exact base64 tx the user pasted earlier — signer EfZr... which
+        // won't match our abandon-abandon wallet.
+        let tx_b64 = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAEDywkoNI1j+nah055+LRl/5r74IARS0MSvHfPPW5usTeAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACbZKN5QkVXQQH+5BYJje2PQK9UFAivDK+ncn3rilJV8BAgIAAQwCAAAAgJaYAAAAAAA=";
+        let tx = B64.decode(tx_b64).unwrap();
+        let kp = loaded_keypair();
+        let (lines, can_sign) = build_review_lines(&tx, &kp.public_key);
+        assert!(!can_sign, "abandon-abandon wallet should not match EfZr signer");
+        assert!(lines.iter().any(|l| l.contains("Amount: 0.01 SOL")));
+        assert!(lines.iter().any(|l| l == "Type: Send SOL"));
     }
 }

@@ -43,7 +43,20 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             match event {
                 InputEvent::Confirm => {
                     let mut frame_entropy = [0u8; 16];
-                    getrandom::getrandom(&mut frame_entropy).ok();
+                    #[cfg(any(feature = "simulator", target_os = "linux"))]
+                    {
+                        if let Some(frame) = &app.latest_frame {
+                            use sha2::{Digest, Sha256};
+                            let digest = Sha256::digest(&frame.rgb);
+                            frame_entropy.copy_from_slice(&digest[..16]);
+                        } else {
+                            getrandom::getrandom(&mut frame_entropy).ok();
+                        }
+                    }
+                    #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                    {
+                        getrandom::getrandom(&mut frame_entropy).ok();
+                    }
                     let now = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default();

@@ -4,14 +4,14 @@ use embedded_graphics::{
     mono_font::{ascii::FONT_6X10, ascii::FONT_9X15, ascii::FONT_9X15_BOLD, ascii::FONT_10X20, MonoTextStyle},
     pixelcolor::Rgb565,
     prelude::*,
-    primitives::{PrimitiveStyle, Rectangle},
+    primitives::{PrimitiveStyle, PrimitiveStyleBuilder, Rectangle, RoundedRectangle},
     text::{Alignment, Text},
 };
 
 use crate::gui::app::{App, Screen};
 use crate::gui::colors;
 use crate::gui::components::{
-    Card, draw_button_bar, draw_char_grid, draw_option_list,
+    draw_button_bar, draw_button_bar_ex, draw_char_grid, draw_option_list,
     draw_qr, draw_status_bar, draw_text_centered, draw_word_picker,
 };
 use crate::gui::icons;
@@ -49,7 +49,7 @@ impl App {
                 draw_option_list(display, &title, &["Random", "Camera", "Coin Flips", "Dice Rolls"], *selected, self.seed_loaded())
             }
             Screen::CreateCameraEntropy { word_count, frames_collected, .. } => {
-                draw_camera_entropy(display, *word_count, *frames_collected, self.seed_loaded())
+                draw_camera_entropy(display, *word_count, *frames_collected, self.seed_loaded(), self.has_camera_frame())
             }
             Screen::CreateCoinFlips { word_count, bits, selected } => {
                 draw_coin_flips(display, *word_count, bits, *selected, self.seed_loaded())
@@ -97,11 +97,12 @@ impl App {
                 draw_option_list(display, "Load Wallet", &["Scan SeedQR", "Enter Words"], *selected, self.seed_loaded())
             }
             Screen::LoadScanQr => {
-                #[cfg(feature = "simulator")]
+                #[cfg(any(feature = "simulator", target_os = "linux"))]
                 {
-                    draw_message(display, "Scan SeedQR", "Simulator mode:\nEnter = load test wallet\nEsc = back", self.seed_loaded())?;
+                    draw_scan_overlay(display, "Scan SeedQR", "Point camera at SeedQR",
+                        self.seed_loaded(), self.has_camera_frame(), self.camera_error_str())?;
                 }
-                #[cfg(not(feature = "simulator"))]
+                #[cfg(not(any(feature = "simulator", target_os = "linux")))]
                 {
                     draw_message(display, "Scan SeedQR", "Point camera at\nSeedQR code", self.seed_loaded())?;
                 }
@@ -137,10 +138,18 @@ impl App {
                 draw_message(display, "Sign TX", "Load a wallet first", self.seed_loaded())
             }
             Screen::SignScanTx => {
-                draw_message(display, "Sign TX", "Scan unsigned TX QR\nX: Sign Message", self.seed_loaded())
+                #[cfg(any(feature = "simulator", target_os = "linux"))]
+                {
+                    draw_scan_overlay(display, "Sign TX", "Point camera at TX QR",
+                        self.seed_loaded(), self.has_camera_frame(), self.camera_error_str())
+                }
+                #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                {
+                    draw_message(display, "Sign TX", "Scan unsigned TX QR\nX: Sign Message", self.seed_loaded())
+                }
             }
-            Screen::SignReview { info_lines, scroll, selected, .. } => {
-                draw_tx_review(display, info_lines, *scroll, *selected, self.seed_loaded())
+            Screen::SignReview { info_lines, scroll, selected, can_sign, .. } => {
+                draw_tx_review(display, info_lines, *scroll, *selected, *can_sign, self.seed_loaded())
             }
             Screen::SignShowQr { data } => {
                 draw_qr(display, "Signed TX", data, self.seed_loaded())
@@ -155,7 +164,7 @@ impl App {
             // Settings
             Screen::SettingsMenu { selected } => {
                 let opts: Vec<&str> = if self.seed_loaded() {
-                    vec!["Show Address", "Export SeedQR", "Accounts", "About", "Power Off"]
+                    vec!["Show Address", "Export SeedQR", "Accounts", "Verify Address", "About", "Power Off"]
                 } else {
                     vec!["About", "Power Off"]
                 };
@@ -170,6 +179,20 @@ impl App {
                 } else {
                     draw_message(display, "Address", "No wallet loaded", false)
                 }
+            }
+            Screen::SettingsVerifyAddressScan => {
+                #[cfg(any(feature = "simulator", target_os = "linux"))]
+                {
+                    draw_scan_overlay(display, "Verify Address", "Point camera at address QR",
+                        self.seed_loaded(), self.has_camera_frame(), self.camera_error_str())
+                }
+                #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                {
+                    draw_message(display, "Verify Address", "Scan address QR\nto verify it's yours", self.seed_loaded())
+                }
+            }
+            Screen::SettingsVerifyAddressResult { address, result } => {
+                draw_verify_address_result(display, address, result, self.seed_loaded())
             }
             Screen::SettingsAbout => {
                 draw_about(display, self.seed_loaded())
@@ -213,7 +236,8 @@ pub fn draw_splash<D: DrawTarget<Color = Rgb565>>(display: &mut D) -> Result<(),
     Ok(())
 }
 
-/// Main menu: 2x2 card grid.
+/// Main menu: 4 full-width rows with bold label + icon, sized for the 240x240
+/// screen so text is legible without squinting.
 fn draw_main_menu<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     selected: usize,
@@ -223,36 +247,90 @@ fn draw_main_menu<D: DrawTarget<Color = Rgb565>>(
     display.clear(colors::BG_DARK)?;
     draw_status_bar(display, "Faraday", seed_loaded)?;
 
-    // Show truncated address below status bar when wallet is loaded
-    if let Some(addr) = address {
+    // Truncated address under the status bar when a wallet is loaded.
+    let (top_offset, has_addr) = if let Some(addr) = address {
         let truncated = if addr.len() > 12 {
-            alloc::format!("{}...{}", &addr[..4], &addr[addr.len()-4..])
+            alloc::format!("{}...{}", &addr[..4], &addr[addr.len() - 4..])
         } else {
             addr.to_string()
         };
         let addr_style = MonoTextStyle::new(&FONT_6X10, colors::SOLANA_GREEN);
         Text::with_alignment(&truncated, Point::new(120, 30), addr_style, Alignment::Center)
             .draw(display)?;
-    }
+        (40i32, true)
+    } else {
+        (26i32, false)
+    };
 
     let margin = 10i32;
-    let gap = 8i32;
-    let card_w = ((240 - margin * 2 - gap) / 2) as u32; // ~106px
-    let card_h = 96u32;
-    let top_offset = if address.is_some() { 35i32 } else { 28i32 };
+    let gap = 6i32;
+    // Fit 4 rows in the remaining vertical space.
+    let available = 240 - top_offset - margin;
+    let row_h = ((available - gap * 3) / 4) as u32;
+    let row_w = (240 - margin * 2) as u32;
+    let _ = has_addr;
 
     for (i, item) in MENU_ITEMS.iter().enumerate() {
-        let col = (i % 2) as i32;
-        let row = (i / 2) as i32;
-        let x = margin + col * (card_w as i32 + gap);
-        let y = top_offset + row * (card_h as i32 + gap);
+        let y = top_offset + (i as i32) * (row_h as i32 + gap);
+        let is_selected = i == selected;
 
-        let card = Card {
-            label: item.label,
-            icon: (item.icon_fn)(),
-            selected: i == selected,
+        let (bg, border, text_color) = if is_selected {
+            (colors::BG_CARD_SELECTED, colors::BORDER_SELECTED, colors::TEXT_PRIMARY)
+        } else {
+            (colors::BG_CARD, colors::BORDER_DEFAULT, colors::TEXT_SECONDARY)
         };
-        card.draw(display, x, y, card_w, card_h)?;
+
+        let style = PrimitiveStyleBuilder::new()
+            .fill_color(bg)
+            .stroke_color(border)
+            .stroke_width(1)
+            .build();
+        RoundedRectangle::with_equal_corners(
+            Rectangle::new(Point::new(margin, y), Size::new(row_w, row_h)),
+            Size::new(8, 8),
+        )
+        .into_styled(style)
+        .draw(display)?;
+
+        if is_selected {
+            let glow = colors::blend(colors::BG_CARD_SELECTED, colors::ACCENT, 80);
+            Rectangle::new(Point::new(margin + 2, y + 1), Size::new(row_w - 4, 2))
+                .into_styled(PrimitiveStyle::with_fill(glow))
+                .draw(display)?;
+        }
+
+        // Icon on the left, 2x scaled (32x32).
+        let icon = (item.icon_fn)();
+        let icon_x = margin + 12;
+        let icon_y = y + (row_h as i32 - 32) / 2;
+        let icon_color = if is_selected { colors::SOLANA_GREEN } else { colors::SOLANA_TEAL };
+        let data = icon.data;
+        for row in 0..16i32 {
+            let hi = data[row as usize * 2];
+            let lo = data[row as usize * 2 + 1];
+            let word = ((hi as u16) << 8) | (lo as u16);
+            for col in 0..16i32 {
+                if (word >> (15 - col)) & 1 == 1 {
+                    Rectangle::new(
+                        Point::new(icon_x + col * 2, icon_y + row * 2),
+                        Size::new(2, 2),
+                    )
+                    .into_styled(PrimitiveStyle::with_fill(icon_color))
+                    .draw(display)?;
+                }
+            }
+        }
+
+        // Label to the right of the icon, FONT_10X20 (big).
+        let label_style = MonoTextStyle::new(&FONT_10X20, text_color);
+        let text_x = icon_x + 32 + 14;
+        Text::with_alignment(
+            item.label,
+            Point::new(text_x, y + row_h as i32 / 2 + 7),
+            label_style,
+            Alignment::Left,
+        )
+        .draw(display)?;
     }
 
     Ok(())
@@ -471,21 +549,111 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
     info_lines: &[String],
     scroll: usize,
     selected: usize,
+    can_sign: bool,
     seed_loaded: bool,
 ) -> Result<(), D::Error> {
     display.clear(colors::BG_DARK)?;
     draw_status_bar(display, "Review TX", seed_loaded)?;
 
-    let line_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
+    let normal_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
+    let warn_style = MonoTextStyle::new(&FONT_6X10, colors::DANGER);
     let max_lines = 15usize;
 
     for (vi, i) in (scroll..info_lines.len().min(scroll + max_lines)).enumerate() {
         let y = 35 + vi as i32 * 12;
-        Text::new(&info_lines[i], Point::new(5, y), line_style)
-            .draw(display)?;
+        let line = &info_lines[i];
+        let style = if line.starts_with('!') { warn_style } else { normal_style };
+        Text::new(line, Point::new(5, y), style).draw(display)?;
     }
 
-    draw_button_bar(display, "Sign", "Reject", selected)?;
+    draw_button_bar_ex(display, "Sign", "Reject", selected, can_sign)?;
+
+    Ok(())
+}
+
+/// Address verification result screen: shows the scanned address with full
+/// characters and whether it belongs to the loaded seed.
+fn draw_verify_address_result<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    address: &str,
+    result: &crate::crypto::derivation::AddressMatch,
+    seed_loaded: bool,
+) -> Result<(), D::Error> {
+    use crate::crypto::derivation::AddressMatch;
+    display.clear(colors::BG_DARK)?;
+    draw_status_bar(display, "Verify Address", seed_loaded)?;
+
+    let label = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
+    let addr_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
+
+    Text::new("Scanned:", Point::new(8, 34), label).draw(display)?;
+    let mut y = 46i32;
+    for chunk in address.as_bytes().chunks(22) {
+        let s = std::str::from_utf8(chunk).unwrap_or("");
+        Text::new(s, Point::new(12, y), addr_style).draw(display)?;
+        y += 12;
+    }
+
+    // Big result banner.
+    let banner_y = 110i32;
+    let (banner_text, banner_color) = match result {
+        AddressMatch::Standard { .. } => ("MATCH", colors::SUCCESS),
+        AddressMatch::NotFound => ("NOT YOURS", colors::DANGER),
+        AddressMatch::InvalidFormat => ("INVALID", colors::WARNING),
+    };
+    Rectangle::new(Point::new(0, banner_y), Size::new(240, 30))
+        .into_styled(PrimitiveStyle::with_fill(colors::BG_CARD))
+        .draw(display)?;
+    let banner_style = MonoTextStyle::new(&FONT_10X20, banner_color);
+    Text::with_alignment(banner_text, Point::new(120, banner_y + 22), banner_style, Alignment::Center)
+        .draw(display)?;
+
+    // Detail line: path / not-derived / not-an-address explanation.
+    let detail_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
+    let sub = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
+    match result {
+        AddressMatch::Standard { .. } => {
+            let path = result.path_str();
+            Text::with_alignment(
+                &alloc::format!("Path: {}", path),
+                Point::new(120, 160),
+                detail_style,
+                Alignment::Center,
+            ).draw(display)?;
+        }
+        AddressMatch::NotFound => {
+            Text::with_alignment(
+                "Not derived from this seed",
+                Point::new(120, 158),
+                detail_style,
+                Alignment::Center,
+            ).draw(display)?;
+            Text::with_alignment(
+                "(checked 10 std + CLI paths)",
+                Point::new(120, 172),
+                sub,
+                Alignment::Center,
+            ).draw(display)?;
+        }
+        AddressMatch::InvalidFormat => {
+            Text::with_alignment(
+                "Not a Solana address",
+                Point::new(120, 158),
+                detail_style,
+                Alignment::Center,
+            ).draw(display)?;
+            Text::with_alignment(
+                "Scan a plain address QR",
+                Point::new(120, 172),
+                sub,
+                Alignment::Center,
+            ).draw(display)?;
+        }
+    }
+
+    let hint = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
+    Text::with_alignment("Press any key to return", Point::new(120, 230), hint, Alignment::Center)
+        .draw(display)?;
 
     Ok(())
 }
@@ -602,14 +770,21 @@ fn draw_passphrase_mismatch<D: DrawTarget<Color = Rgb565>>(
 }
 
 /// Camera entropy collection screen.
+///
+/// When `preview_active` is true, the background has already been painted
+/// with a live webcam frame — we skip the clear and the big icon so the
+/// preview remains visible behind a translucent overlay.
 fn draw_camera_entropy<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     word_count: usize,
     frames_collected: usize,
     seed_loaded: bool,
+    preview_active: bool,
 ) -> Result<(), D::Error> {
     let total = if word_count == 12 { 10 } else { 20 };
-    display.clear(colors::BG_DARK)?;
+    if !preview_active {
+        display.clear(colors::BG_DARK)?;
+    }
 
     let title = alloc::format!("Capture {}/{}", frames_collected, total);
     draw_status_bar(display, &title, seed_loaded)?;
@@ -625,42 +800,106 @@ fn draw_camera_entropy<D: DrawTarget<Color = Rgb565>>(
             .draw(display)?;
     }
 
-    // Camera icon (large)
-    let icon = icons::camera();
-    // Draw 3x scaled icon in center
-    let icon_x = 88i32;
-    let icon_y = 70i32;
-    let scale = 4i32;
-    let data = icon.data;
-    for row in 0..16i32 {
-        let byte_hi = data[row as usize * 2];
-        let byte_lo = data[row as usize * 2 + 1];
-        let word = ((byte_hi as u16) << 8) | (byte_lo as u16);
-        for col in 0..16i32 {
-            if (word >> (15 - col)) & 1 == 1 {
-                Rectangle::new(
-                    Point::new(icon_x + col * scale, icon_y + row * scale),
-                    Size::new(scale as u32, scale as u32),
-                )
-                .into_styled(PrimitiveStyle::with_fill(colors::SOLANA_GREEN))
-                .draw(display)?;
+    if !preview_active {
+        // Pi / no-preview: draw the large camera icon as a visual anchor.
+        let icon = icons::camera();
+        let icon_x = 88i32;
+        let icon_y = 70i32;
+        let scale = 4i32;
+        let data = icon.data;
+        for row in 0..16i32 {
+            let byte_hi = data[row as usize * 2];
+            let byte_lo = data[row as usize * 2 + 1];
+            let word = ((byte_hi as u16) << 8) | (byte_lo as u16);
+            for col in 0..16i32 {
+                if (word >> (15 - col)) & 1 == 1 {
+                    Rectangle::new(
+                        Point::new(icon_x + col * scale, icon_y + row * scale),
+                        Size::new(scale as u32, scale as u32),
+                    )
+                    .into_styled(PrimitiveStyle::with_fill(colors::SOLANA_GREEN))
+                    .draw(display)?;
+                }
             }
         }
     }
 
-    // Instructions
-    let style = MonoTextStyle::new(&FONT_9X15, colors::TEXT_SECONDARY);
-    Text::with_alignment("Press Enter to", Point::new(120, 160), style, Alignment::Center)
+    // Bottom instruction strip — painted opaque so text stays legible over preview.
+    Rectangle::new(Point::new(0, 190), Size::new(240, 50))
+        .into_styled(PrimitiveStyle::with_fill(colors::BG_DARK))
         .draw(display)?;
-    Text::with_alignment("capture frame", Point::new(120, 178), style, Alignment::Center)
+
+    let style = MonoTextStyle::new(&FONT_9X15, colors::TEXT_SECONDARY);
+    Text::with_alignment("Press Enter to capture", Point::new(120, 208), style, Alignment::Center)
         .draw(display)?;
 
     let sub = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    Text::with_alignment("Move camera around for randomness", Point::new(120, 200), sub, Alignment::Center)
+    Text::with_alignment("Move camera for randomness", Point::new(120, 222), sub, Alignment::Center)
+        .draw(display)?;
+    Text::with_alignment("Esc: cancel", Point::new(120, 234), sub, Alignment::Center)
         .draw(display)?;
 
-    let hint = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    Text::with_alignment("Esc: cancel", Point::new(120, 232), hint, Alignment::Center)
+    Ok(())
+}
+
+/// Overlay for scan screens (LoadScanQr, SignScanTx) when the webcam preview
+/// is active. Paints status bar, a centered reticle, and a bottom hint bar on
+/// top of the already-blitted preview.
+#[cfg(any(feature = "simulator", target_os = "linux"))]
+fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    title: &str,
+    hint: &str,
+    seed_loaded: bool,
+    has_frame: bool,
+    error: Option<&str>,
+) -> Result<(), D::Error> {
+    if !has_frame {
+        display.clear(colors::BG_DARK)?;
+    }
+    draw_status_bar(display, title, seed_loaded)?;
+
+    if let Some(err) = error {
+        // Camera unavailable — show a dark panel with the error and fallback hint.
+        Rectangle::new(Point::new(10, 70), Size::new(220, 100))
+            .into_styled(PrimitiveStyle::with_fill(colors::BG_CARD))
+            .draw(display)?;
+        let style = MonoTextStyle::new(&FONT_9X15, colors::DANGER);
+        Text::with_alignment("Camera unavailable", Point::new(120, 95), style, Alignment::Center)
+            .draw(display)?;
+        let sub = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
+        let err_short: &str = if err.len() > 34 { &err[..34] } else { err };
+        Text::with_alignment(err_short, Point::new(120, 115), sub, Alignment::Center)
+            .draw(display)?;
+        Text::with_alignment("Press Enter for test data", Point::new(120, 145), sub, Alignment::Center)
+            .draw(display)?;
+        Text::with_alignment("Esc: back", Point::new(120, 160), sub, Alignment::Center)
+            .draw(display)?;
+        return Ok(());
+    }
+
+    if !has_frame {
+        let style = MonoTextStyle::new(&FONT_9X15, colors::TEXT_SECONDARY);
+        Text::with_alignment("Opening camera...", Point::new(120, 120), style, Alignment::Center)
+            .draw(display)?;
+        return Ok(());
+    }
+
+    // Centered reticle — simple outline rectangle where the QR should go.
+    let reticle = Rectangle::new(Point::new(40, 40), Size::new(160, 160));
+    reticle
+        .into_styled(PrimitiveStyle::with_stroke(colors::SOLANA_GREEN, 2))
+        .draw(display)?;
+
+    // Bottom hint bar (opaque) with the instruction + fallback.
+    Rectangle::new(Point::new(0, 210), Size::new(240, 30))
+        .into_styled(PrimitiveStyle::with_fill(colors::BG_DARK))
+        .draw(display)?;
+    let hint_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
+    Text::with_alignment(hint, Point::new(120, 224), hint_style, Alignment::Center)
+        .draw(display)?;
+    let sub = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
+    Text::with_alignment("Enter: test data  Esc: back", Point::new(120, 235), sub, Alignment::Center)
         .draw(display)?;
 
     Ok(())

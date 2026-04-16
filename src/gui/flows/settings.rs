@@ -6,7 +6,7 @@ use crate::gui::app::{App, InputEvent, Screen};
 pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
     match screen {
         Screen::SettingsMenu { mut selected } => {
-            let item_count = if app.wallet.is_some() { 5 } else { 2 };
+            let item_count = if app.wallet.is_some() { 6 } else { 2 };
             match event {
                 InputEvent::Up => { if selected > 0 { selected -= 1; } }
                 InputEvent::Down => { if selected + 1 < item_count { selected += 1; } }
@@ -28,8 +28,9 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                                 let accounts = build_accounts_list(app);
                                 Screen::SettingsAccounts { accounts, selected: 0 }
                             }
-                            3 => Screen::SettingsAbout,
-                            4 => Screen::SettingsPowerOff { selected: 1 },
+                            3 => Screen::SettingsVerifyAddressScan,
+                            4 => Screen::SettingsAbout,
+                            5 => Screen::SettingsPowerOff { selected: 1 },
                             _ => Screen::SettingsMenu { selected },
                         };
                     } else {
@@ -64,10 +65,54 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             Screen::SettingsAccounts { accounts, selected }
         }
 
+        Screen::SettingsVerifyAddressScan => {
+            match event {
+                InputEvent::Confirm => {
+                    let wallet = match &app.wallet {
+                        Some(w) => w,
+                        None => return Screen::SettingsMenu { selected: 3 },
+                    };
+                    #[cfg(any(feature = "simulator", target_os = "linux"))]
+                    let raw: String = app.scanned_qr.take()
+                        .and_then(|b| String::from_utf8(b).ok())
+                        .unwrap_or_else(|| wallet.address.clone());
+                    #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                    let raw: String = wallet.address.clone();
+
+                    let addr = derivation::normalize_address_input(&raw);
+                    let result = derivation::verify_address(
+                        &wallet.mnemonic,
+                        &wallet.passphrase,
+                        &addr,
+                        10,
+                    );
+                    let display_addr = if matches!(result, derivation::AddressMatch::InvalidFormat) {
+                        raw
+                    } else {
+                        addr
+                    };
+                    return Screen::SettingsVerifyAddressResult { address: display_addr, result };
+                }
+                InputEvent::Back => return Screen::SettingsMenu { selected: 3 },
+                _ => {}
+            }
+            Screen::SettingsVerifyAddressScan
+        }
+
+        Screen::SettingsVerifyAddressResult { address, result } => {
+            match event {
+                InputEvent::Confirm | InputEvent::Back => {
+                    return Screen::SettingsMenu { selected: 3 };
+                }
+                _ => {}
+            }
+            Screen::SettingsVerifyAddressResult { address, result }
+        }
+
         Screen::SettingsAbout => {
             match event {
                 InputEvent::Confirm | InputEvent::Back => {
-                    let idx = if app.wallet.is_some() { 3 } else { 0 };
+                    let idx = if app.wallet.is_some() { 4 } else { 0 };
                     return Screen::SettingsMenu { selected: idx };
                 }
                 _ => {}
@@ -87,11 +132,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         }
                         return Screen::Splash;
                     }
-                    let idx = if app.wallet.is_some() { 4 } else { 1 };
+                    let idx = if app.wallet.is_some() { 5 } else { 1 };
                     return Screen::SettingsMenu { selected: idx };
                 }
                 InputEvent::Back => {
-                    let idx = if app.wallet.is_some() { 4 } else { 1 };
+                    let idx = if app.wallet.is_some() { 5 } else { 1 };
                     return Screen::SettingsMenu { selected: idx };
                 }
                 _ => {}
@@ -110,12 +155,7 @@ fn build_accounts_list(app: &App) -> Vec<(String, String)> {
     };
 
     let accounts = derivation::derive_multiple_accounts(&wallet.mnemonic, &wallet.passphrase, 3);
-    let mut list: Vec<(String, String)> = accounts.iter()
+    accounts.iter()
         .map(|kp| (kp.derivation_path.clone(), derivation::address(kp)))
-        .collect();
-
-    let cli_kp = derivation::derive_keypair_cli_path(&wallet.mnemonic, &wallet.passphrase);
-    list.push((cli_kp.derivation_path.clone(), derivation::address(&cli_kp)));
-
-    list
+        .collect()
 }

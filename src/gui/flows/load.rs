@@ -25,8 +25,14 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         Screen::LoadScanQr => {
             match event {
                 InputEvent::Confirm => {
-                    let test_seed_qr = "000000000000000000000000000000000000000000000003";
-                    let decoded = decode_qr::detect_and_decode(test_seed_qr.as_bytes());
+                    #[cfg(any(feature = "simulator", target_os = "linux"))]
+                    let data: Vec<u8> = app.scanned_qr.take().unwrap_or_else(|| {
+                        "000000000000000000000000000000000000000000000003".as_bytes().to_vec()
+                    });
+                    #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                    let data: Vec<u8> =
+                        "000000000000000000000000000000000000000000000003".as_bytes().to_vec();
+                    let decoded = decode_qr::detect_and_decode(&data);
 
                     #[cfg(feature = "simulator")]
                     println!("QR decoded: {:?} ({} bytes raw)", decoded.qr_type, decoded.raw_data.len());
@@ -34,9 +40,9 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     if let Some(mnemonic) = decoded.mnemonic {
                         return Screen::LoadPassphrasePrompt { mnemonic, selected: 0 };
                     }
-                    if let Some(addr) = decoded.address {
+                    if let Some(_addr) = &decoded.address {
                         #[cfg(feature = "simulator")]
-                        println!("Scanned address: {}", addr);
+                        println!("Scanned address: {}", _addr);
                     }
                 }
                 InputEvent::Back => return Screen::LoadMethod { selected: 0 },

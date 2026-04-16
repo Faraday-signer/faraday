@@ -1,6 +1,6 @@
 //! Sign transaction flow.
 
-use crate::gui::app::{App, CharGrid, InputEvent, Screen};
+use crate::gui::app::{App, CharGrid, InputEvent, Screen, build_review_lines};
 use crate::qr::decode_qr;
 
 pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
@@ -17,14 +17,23 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             match event {
                 InputEvent::Confirm => {
                     if let Some(wallet) = &app.wallet {
-                        let test_tx = build_test_transaction(&wallet.keypair.public_key);
-                        let tx_base64 = test_tx.clone();
-                        let decoded = decode_qr::detect_and_decode(test_tx.as_bytes());
+                        #[cfg(any(feature = "simulator", target_os = "linux"))]
+                        let tx_base64: String = app.scanned_qr.take()
+                            .and_then(|b| String::from_utf8(b).ok())
+                            .unwrap_or_else(|| build_test_transaction(&wallet.keypair.public_key));
+                        #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                        let tx_base64: String = build_test_transaction(&wallet.keypair.public_key);
+                        let decoded = decode_qr::detect_and_decode(tx_base64.as_bytes());
                         if let Some(tx_bytes) = decoded.tx_bytes {
-                            let parsed = crate::parser::parse(&tx_bytes);
-                            let info_lines = crate::parser::to_lines(&parsed);
+                            let (info_lines, can_sign) =
+                                build_review_lines(&tx_bytes, &wallet.keypair.public_key);
                             return Screen::SignReview {
-                                tx_bytes, tx_base64, info_lines, scroll: 0, selected: 0,
+                                tx_bytes,
+                                tx_base64,
+                                info_lines,
+                                scroll: 0,
+                                selected: if can_sign { 0 } else { 1 },
+                                can_sign,
                             };
                         }
                     }
@@ -36,13 +45,19 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             Screen::SignScanTx
         }
 
-        Screen::SignReview { tx_bytes, tx_base64, info_lines, mut scroll, mut selected } => {
+        Screen::SignReview { tx_bytes, tx_base64, info_lines, mut scroll, mut selected, can_sign } => {
             match event {
                 InputEvent::Up => { if scroll > 0 { scroll -= 1; } }
                 InputEvent::Down => { if scroll + 8 < info_lines.len() { scroll += 1; } }
-                InputEvent::Left | InputEvent::Right => { selected = 1 - selected; }
+                InputEvent::Left | InputEvent::Right => {
+                    if can_sign {
+                        selected = 1 - selected;
+                    } else {
+                        selected = 1;
+                    }
+                }
                 InputEvent::Confirm => {
-                    if selected == 0 {
+                    if selected == 0 && can_sign {
                         if let Some(wallet) = &app.wallet {
                             if let Ok(signed) = crate::signer::sign_transaction_base64(
                                 &tx_base64,
@@ -58,13 +73,15 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                                 return Screen::SignShowQr { data: signed.signed_base64 };
                             }
                         }
+                    } else if selected == 0 && !can_sign {
+                        return Screen::SignReview { tx_bytes, tx_base64, info_lines, scroll, selected: 1, can_sign };
                     }
                     return Screen::MainMenu { selected: 2 };
                 }
                 InputEvent::Back => return Screen::MainMenu { selected: 2 },
                 _ => {}
             }
-            Screen::SignReview { tx_bytes, tx_base64, info_lines, scroll, selected }
+            Screen::SignReview { tx_bytes, tx_base64, info_lines, scroll, selected, can_sign }
         }
 
         Screen::SignShowQr { data } => {
