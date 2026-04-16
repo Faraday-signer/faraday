@@ -1,15 +1,15 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 
-import { PopupApp } from "./popup-app";
+import { SidePanelApp } from "./sidepanel-app";
 
 const rootNode = document.getElementById("root");
 if (!rootNode) {
-  throw new Error("Missing popup root element.");
+  throw new Error("Missing side panel root element.");
 }
 
 createRoot(rootNode).render(
   <React.StrictMode>
-    <PopupApp />
+    <SidePanelApp />
   </React.StrictMode>
 );

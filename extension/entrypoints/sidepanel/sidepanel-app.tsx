@@ -15,8 +15,8 @@ function shortAddress(address: string): string {
 }
 
 const shellStyle: CSSProperties = {
-  width: 360,
-  minHeight: 480,
+  width: "100%",
+  minHeight: "100vh",
   margin: 0,
   padding: 0,
   fontFamily: fontFamily.ui,
@@ -113,7 +113,7 @@ const originRowStyle: CSSProperties = {
   background: colors.bg
 };
 
-export function PopupApp() {
+export function SidePanelApp() {
   const [state, setState] = useState<ExtensionState | null>(null);
   const [inputPubkey, setInputPubkey] = useState("");
   const [error, setError] = useState<string | null>(null);
