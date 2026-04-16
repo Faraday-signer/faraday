@@ -173,6 +173,32 @@ impl ST7789 {
         let _ = self.spi.write(&self.buffer);
     }
 
+    /// Blit a webcam RGB frame into the display buffer using a center-crop +
+    /// nearest-neighbor scale. Mirrors `Framebuffer::blit_camera_frame`.
+    /// Stored as big-endian RGB565 matching the SPI wire format.
+    pub fn blit_camera_frame(&mut self, frame: &crate::camera::Frame) {
+        let sq = frame.width.min(frame.height);
+        let ox = (frame.width - sq) / 2;
+        let oy = (frame.height - sq) / 2;
+        for dy in 0..HEIGHT {
+            let sy = oy + dy * sq / HEIGHT;
+            for dx in 0..WIDTH {
+                let sx = ox + dx * sq / WIDTH;
+                let si = ((sy * frame.width + sx) * 3) as usize;
+                if si + 2 >= frame.rgb.len() {
+                    continue;
+                }
+                let r = (frame.rgb[si] >> 3) as u16;
+                let g = (frame.rgb[si + 1] >> 2) as u16;
+                let b = (frame.rgb[si + 2] >> 3) as u16;
+                let rgb565 = (r << 11) | (g << 5) | b;
+                let idx = ((dy * WIDTH + dx) * 2) as usize;
+                self.buffer[idx] = (rgb565 >> 8) as u8;
+                self.buffer[idx + 1] = (rgb565 & 0xFF) as u8;
+            }
+        }
+    }
+
     /// Fill the entire display with a single RGB565 color.
     pub fn clear_color(&mut self, color: Rgb565) {
         let raw = embedded_graphics_core::pixelcolor::raw::RawU16::from(color).into_inner();

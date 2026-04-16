@@ -4,14 +4,14 @@ use embedded_graphics::{
     mono_font::{ascii::FONT_6X10, ascii::FONT_9X15, ascii::FONT_9X15_BOLD, ascii::FONT_10X20, MonoTextStyle},
     pixelcolor::Rgb565,
     prelude::*,
-    primitives::{PrimitiveStyle, Rectangle},
+    primitives::{PrimitiveStyle, PrimitiveStyleBuilder, Rectangle, RoundedRectangle},
     text::{Alignment, Text},
 };
 
 use crate::gui::app::{App, Screen};
 use crate::gui::colors;
 use crate::gui::components::{
-    Card, draw_button_bar, draw_button_bar_ex, draw_char_grid, draw_option_list,
+    draw_button_bar, draw_button_bar_ex, draw_char_grid, draw_option_list,
     draw_qr, draw_status_bar, draw_text_centered, draw_word_picker,
 };
 use crate::gui::icons;
@@ -97,12 +97,12 @@ impl App {
                 draw_option_list(display, "Load Wallet", &["Scan SeedQR", "Enter Words"], *selected, self.seed_loaded())
             }
             Screen::LoadScanQr => {
-                #[cfg(feature = "simulator")]
+                #[cfg(any(feature = "simulator", target_os = "linux"))]
                 {
                     draw_scan_overlay(display, "Scan SeedQR", "Point camera at SeedQR",
                         self.seed_loaded(), self.has_camera_frame(), self.camera_error_str())?;
                 }
-                #[cfg(not(feature = "simulator"))]
+                #[cfg(not(any(feature = "simulator", target_os = "linux")))]
                 {
                     draw_message(display, "Scan SeedQR", "Point camera at\nSeedQR code", self.seed_loaded())?;
                 }
@@ -138,12 +138,12 @@ impl App {
                 draw_message(display, "Sign TX", "Load a wallet first", self.seed_loaded())
             }
             Screen::SignScanTx => {
-                #[cfg(feature = "simulator")]
+                #[cfg(any(feature = "simulator", target_os = "linux"))]
                 {
                     draw_scan_overlay(display, "Sign TX", "Point camera at TX QR",
                         self.seed_loaded(), self.has_camera_frame(), self.camera_error_str())
                 }
-                #[cfg(not(feature = "simulator"))]
+                #[cfg(not(any(feature = "simulator", target_os = "linux")))]
                 {
                     draw_message(display, "Sign TX", "Scan unsigned TX QR\nX: Sign Message", self.seed_loaded())
                 }
@@ -181,12 +181,12 @@ impl App {
                 }
             }
             Screen::SettingsVerifyAddressScan => {
-                #[cfg(feature = "simulator")]
+                #[cfg(any(feature = "simulator", target_os = "linux"))]
                 {
                     draw_scan_overlay(display, "Verify Address", "Point camera at address QR",
                         self.seed_loaded(), self.has_camera_frame(), self.camera_error_str())
                 }
-                #[cfg(not(feature = "simulator"))]
+                #[cfg(not(any(feature = "simulator", target_os = "linux")))]
                 {
                     draw_message(display, "Verify Address", "Scan address QR\nto verify it's yours", self.seed_loaded())
                 }
@@ -236,7 +236,8 @@ pub fn draw_splash<D: DrawTarget<Color = Rgb565>>(display: &mut D) -> Result<(),
     Ok(())
 }
 
-/// Main menu: 2x2 card grid.
+/// Main menu: 4 full-width rows with bold label + icon, sized for the 240x240
+/// screen so text is legible without squinting.
 fn draw_main_menu<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     selected: usize,
@@ -246,36 +247,90 @@ fn draw_main_menu<D: DrawTarget<Color = Rgb565>>(
     display.clear(colors::BG_DARK)?;
     draw_status_bar(display, "Faraday", seed_loaded)?;
 
-    // Show truncated address below status bar when wallet is loaded
-    if let Some(addr) = address {
+    // Truncated address under the status bar when a wallet is loaded.
+    let (top_offset, has_addr) = if let Some(addr) = address {
         let truncated = if addr.len() > 12 {
-            alloc::format!("{}...{}", &addr[..4], &addr[addr.len()-4..])
+            alloc::format!("{}...{}", &addr[..4], &addr[addr.len() - 4..])
         } else {
             addr.to_string()
         };
         let addr_style = MonoTextStyle::new(&FONT_6X10, colors::SOLANA_GREEN);
         Text::with_alignment(&truncated, Point::new(120, 30), addr_style, Alignment::Center)
             .draw(display)?;
-    }
+        (40i32, true)
+    } else {
+        (26i32, false)
+    };
 
     let margin = 10i32;
-    let gap = 8i32;
-    let card_w = ((240 - margin * 2 - gap) / 2) as u32; // ~106px
-    let card_h = 96u32;
-    let top_offset = if address.is_some() { 35i32 } else { 28i32 };
+    let gap = 6i32;
+    // Fit 4 rows in the remaining vertical space.
+    let available = 240 - top_offset - margin;
+    let row_h = ((available - gap * 3) / 4) as u32;
+    let row_w = (240 - margin * 2) as u32;
+    let _ = has_addr;
 
     for (i, item) in MENU_ITEMS.iter().enumerate() {
-        let col = (i % 2) as i32;
-        let row = (i / 2) as i32;
-        let x = margin + col * (card_w as i32 + gap);
-        let y = top_offset + row * (card_h as i32 + gap);
+        let y = top_offset + (i as i32) * (row_h as i32 + gap);
+        let is_selected = i == selected;
 
-        let card = Card {
-            label: item.label,
-            icon: (item.icon_fn)(),
-            selected: i == selected,
+        let (bg, border, text_color) = if is_selected {
+            (colors::BG_CARD_SELECTED, colors::BORDER_SELECTED, colors::TEXT_PRIMARY)
+        } else {
+            (colors::BG_CARD, colors::BORDER_DEFAULT, colors::TEXT_SECONDARY)
         };
-        card.draw(display, x, y, card_w, card_h)?;
+
+        let style = PrimitiveStyleBuilder::new()
+            .fill_color(bg)
+            .stroke_color(border)
+            .stroke_width(1)
+            .build();
+        RoundedRectangle::with_equal_corners(
+            Rectangle::new(Point::new(margin, y), Size::new(row_w, row_h)),
+            Size::new(8, 8),
+        )
+        .into_styled(style)
+        .draw(display)?;
+
+        if is_selected {
+            let glow = colors::blend(colors::BG_CARD_SELECTED, colors::ACCENT, 80);
+            Rectangle::new(Point::new(margin + 2, y + 1), Size::new(row_w - 4, 2))
+                .into_styled(PrimitiveStyle::with_fill(glow))
+                .draw(display)?;
+        }
+
+        // Icon on the left, 2x scaled (32x32).
+        let icon = (item.icon_fn)();
+        let icon_x = margin + 12;
+        let icon_y = y + (row_h as i32 - 32) / 2;
+        let icon_color = if is_selected { colors::SOLANA_GREEN } else { colors::SOLANA_TEAL };
+        let data = icon.data;
+        for row in 0..16i32 {
+            let hi = data[row as usize * 2];
+            let lo = data[row as usize * 2 + 1];
+            let word = ((hi as u16) << 8) | (lo as u16);
+            for col in 0..16i32 {
+                if (word >> (15 - col)) & 1 == 1 {
+                    Rectangle::new(
+                        Point::new(icon_x + col * 2, icon_y + row * 2),
+                        Size::new(2, 2),
+                    )
+                    .into_styled(PrimitiveStyle::with_fill(icon_color))
+                    .draw(display)?;
+                }
+            }
+        }
+
+        // Label to the right of the icon, FONT_10X20 (big).
+        let label_style = MonoTextStyle::new(&FONT_10X20, text_color);
+        let text_x = icon_x + 32 + 14;
+        Text::with_alignment(
+            item.label,
+            Point::new(text_x, y + row_h as i32 / 2 + 7),
+            label_style,
+            Alignment::Left,
+        )
+        .draw(display)?;
     }
 
     Ok(())
@@ -790,7 +845,7 @@ fn draw_camera_entropy<D: DrawTarget<Color = Rgb565>>(
 /// Overlay for scan screens (LoadScanQr, SignScanTx) when the webcam preview
 /// is active. Paints status bar, a centered reticle, and a bottom hint bar on
 /// top of the already-blitted preview.
-#[cfg(feature = "simulator")]
+#[cfg(any(feature = "simulator", target_os = "linux"))]
 fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     title: &str,

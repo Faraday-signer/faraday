@@ -3,6 +3,8 @@
 mod crypto;
 
 #[cfg(any(feature = "simulator", target_os = "linux"))]
+mod camera;
+#[cfg(any(feature = "simulator", target_os = "linux"))]
 mod gui;
 #[cfg(target_os = "linux")]
 mod hardware;
@@ -144,17 +146,13 @@ fn run_pi() {
     display.flush();
     std::thread::sleep(Duration::from_secs(2));
     app.enter_main_menu();
+    // Reset idle timer so splash doesn't count toward blanking.
+    app.last_activity = std::time::Instant::now();
 
     loop {
         use embedded_graphics_core::draw_target::DrawTarget;
-        if app.is_blanked() {
-            let _ = display.clear(crate::gui::colors::BLACK);
-        } else {
-            app.draw(&mut display).unwrap();
-        }
-        display.flush();
 
-        if let Some(event) = buttons.wait_for_press(Duration::from_millis(100)) {
+        if let Some(event) = buttons.wait_for_press(Duration::from_millis(33)) {
             let input = match event.button {
                 Button::JoyUp => InputEvent::Up,
                 Button::JoyDown => InputEvent::Down,
@@ -166,6 +164,26 @@ fn run_pi() {
             };
             app.handle_input(input);
         }
+
+        // Drive camera lifecycle + pull latest frame + auto-advance on QR.
+        app.tick();
+
+        if app.is_blanked() {
+            let _ = display.clear(crate::gui::colors::BLACK);
+        } else {
+            // On camera screens, blit preview first, then let the screen
+            // overlay draw on top. Fill dark when no frame is ready yet.
+            if app.wants_camera() {
+                match app.latest_frame.clone() {
+                    Some(frame) => display.blit_camera_frame(&frame),
+                    None => {
+                        let _ = display.clear(crate::gui::colors::BG_DARK);
+                    }
+                }
+            }
+            app.draw(&mut display).unwrap();
+        }
+        display.flush();
     }
 }
 
