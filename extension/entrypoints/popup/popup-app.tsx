@@ -1,22 +1,116 @@
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 
+import { FaradayLogo } from "../../src/lib/brand";
 import { isValidSolanaAddress } from "../../src/lib/solana";
 import { sendRuntimeMessage } from "../../src/lib/runtime";
+import { colors, fontFamily, font, radius, space } from "../../src/lib/theme";
 import type { ExtensionState } from "../../src/lib/types";
 
 function shortAddress(address: string): string {
   if (address.length <= 14) {
     return address;
   }
-  return `${address.slice(0, 8)}...${address.slice(-6)}`;
+  return `${address.slice(0, 8)}…${address.slice(-6)}`;
 }
 
+const shellStyle: CSSProperties = {
+  width: 360,
+  minHeight: 480,
+  margin: 0,
+  padding: 0,
+  fontFamily: fontFamily.ui,
+  background: colors.bg,
+  color: colors.text,
+  display: "flex",
+  flexDirection: "column"
+};
+
+const headerStyle: CSSProperties = {
+  padding: `${space.md}px ${space.md}px ${space.sm}px`,
+  borderBottom: `1px solid ${colors.border}`
+};
+
+const tagStyle: CSSProperties = {
+  margin: `${space.xs}px 0 0`,
+  fontSize: font.xs,
+  color: colors.textMuted,
+  letterSpacing: 0.4
+};
+
 const cardStyle: CSSProperties = {
-  border: "1px solid #1f2937",
-  borderRadius: 10,
-  padding: 12,
-  background: "#0b1220"
+  border: `1px solid ${colors.border}`,
+  borderRadius: radius.md,
+  padding: space.sm,
+  background: colors.panel
+};
+
+const sectionTitleStyle: CSSProperties = {
+  margin: `0 0 ${space.xs}px`,
+  fontSize: font.md,
+  fontWeight: 600,
+  letterSpacing: 0.3
+};
+
+const helpTextStyle: CSSProperties = {
+  margin: `0 0 ${space.xs}px`,
+  fontSize: font.xs,
+  color: colors.textMuted
+};
+
+const primaryButtonStyle: CSSProperties = {
+  background: colors.accent,
+  color: colors.bg,
+  border: "none",
+  borderRadius: radius.sm,
+  padding: `${space.xs}px ${space.sm}px`,
+  fontFamily: fontFamily.ui,
+  fontSize: font.sm,
+  fontWeight: 600,
+  cursor: "pointer",
+  letterSpacing: 0.3
+};
+
+const ghostButtonStyle: CSSProperties = {
+  background: "transparent",
+  color: colors.text,
+  border: `1px solid ${colors.borderStrong}`,
+  borderRadius: radius.sm,
+  padding: `${space.xs}px ${space.sm}px`,
+  fontFamily: fontFamily.ui,
+  fontSize: font.sm,
+  cursor: "pointer"
+};
+
+const inputStyle: CSSProperties = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: `${space.xs}px ${space.sm}px`,
+  borderRadius: radius.sm,
+  border: `1px solid ${colors.borderStrong}`,
+  background: colors.bg,
+  color: colors.text,
+  fontFamily: fontFamily.mono,
+  fontSize: font.xs,
+  outline: "none"
+};
+
+const pairedAddressStyle: CSSProperties = {
+  color: colors.accent,
+  fontFamily: fontFamily.mono,
+  fontSize: font.md,
+  letterSpacing: 0.4
+};
+
+const originRowStyle: CSSProperties = {
+  border: `1px solid ${colors.border}`,
+  borderRadius: radius.sm,
+  padding: `${space.xs}px ${space.sm}px`,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: space.xs,
+  background: colors.bg
 };
 
 export function PopupApp() {
@@ -33,7 +127,6 @@ export function PopupApp() {
       setError(response.error);
       return;
     }
-
     setState(response.data);
     setError(null);
   }
@@ -48,19 +141,16 @@ export function PopupApp() {
       setError("Please enter a valid Solana pubkey.");
       return;
     }
-
     setSaving(true);
     const response = await sendRuntimeMessage<ExtensionState>({
       type: "faraday:set-paired-pubkey",
       pubkey: trimmed
     });
     setSaving(false);
-
     if (!response.ok) {
       setError(response.error);
       return;
     }
-
     setState(response.data);
     setInputPubkey("");
     setError(null);
@@ -70,12 +160,10 @@ export function PopupApp() {
     setSaving(true);
     const response = await sendRuntimeMessage<ExtensionState>({ type: "faraday:clear-paired-pubkey" });
     setSaving(false);
-
     if (!response.ok) {
       setError(response.error);
       return;
     }
-
     setState(response.data);
     setError(null);
   }
@@ -89,7 +177,6 @@ export function PopupApp() {
       setError(response.error);
       return;
     }
-
     setState(response.data);
     setError(null);
   }
@@ -102,126 +189,115 @@ export function PopupApp() {
       setError(response.error);
       return;
     }
-
     setState(response.data);
     setError(null);
   }
 
   return (
-    <main
-      style={{
-        width: 360,
-        minHeight: 480,
-        margin: 0,
-        padding: 14,
-        fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
-        background: "#020617",
-        color: "#e2e8f0"
-      }}
-    >
-      <header style={{ marginBottom: 14 }}>
-        <h1 style={{ margin: 0, fontSize: 20, letterSpacing: 0.4 }}>Faraday</h1>
-        <p style={{ margin: "6px 0 0", fontSize: 13, color: "#94a3b8" }}>
-          Watch-only browser relay for the air-gapped signer.
-        </p>
+    <main style={shellStyle}>
+      <header style={headerStyle}>
+        <FaradayLogo height={24} title="Faraday" />
+        <p style={tagStyle}>Watch-only browser relay for the air-gapped signer.</p>
       </header>
 
-      <section style={{ ...cardStyle, marginBottom: 12 }}>
-        <h2 style={{ margin: "0 0 8px", fontSize: 14 }}>Paired Account</h2>
-        <p style={{ margin: "0 0 8px", fontSize: 12, color: "#94a3b8" }}>
-          Paste the Solana pubkey shown by your Faraday device.
-        </p>
+      <div style={{ padding: space.md, display: "flex", flexDirection: "column", gap: space.sm }}>
+        <section style={cardStyle}>
+          <h2 style={sectionTitleStyle}>Paired account</h2>
+          <p style={helpTextStyle}>Paste the Solana pubkey shown by your Faraday device.</p>
 
-        {state?.pairedPubkey ? (
-          <div style={{ marginBottom: 10, fontSize: 13 }}>
-            <div style={{ color: "#22d3ee", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-              {shortAddress(state.pairedPubkey)}
-            </div>
-            <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-              <button onClick={clearPairing} disabled={saving} style={{ padding: "6px 10px", cursor: "pointer" }}>
-                Remove Pairing
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div style={{ marginBottom: 10, fontSize: 12, color: "#fda4af" }}>No paired account yet.</div>
-        )}
-
-        <input
-          value={inputPubkey}
-          onChange={(event) => setInputPubkey(event.target.value)}
-          placeholder="Paste Solana pubkey"
-          spellCheck={false}
-          style={{
-            width: "100%",
-            boxSizing: "border-box",
-            padding: "8px 10px",
-            borderRadius: 8,
-            border: "1px solid #334155",
-            background: "#0f172a",
-            color: "#e2e8f0",
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-            fontSize: 12
-          }}
-        />
-
-        <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
-          <button
-            onClick={pairPubkey}
-            disabled={saving || inputPubkey.trim().length === 0 || !pubkeyLooksValid}
-            style={{ padding: "6px 10px", cursor: "pointer" }}
-          >
-            Pair Pubkey
-          </button>
-          {!pubkeyLooksValid && inputPubkey.trim().length > 0 ? (
-            <span style={{ fontSize: 11, color: "#fda4af" }}>Invalid format</span>
-          ) : null}
-        </div>
-      </section>
-
-      <section style={cardStyle}>
-        <h2 style={{ margin: "0 0 8px", fontSize: 14 }}>Approved Sites</h2>
-
-        {state?.approvedOrigins?.length ? (
-          <div style={{ display: "grid", gap: 8 }}>
-            {state.approvedOrigins.map((origin) => (
-              <div
-                key={origin}
-                style={{
-                  border: "1px solid #273449",
-                  borderRadius: 8,
-                  padding: "8px 10px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8
-                }}
-              >
-                <span style={{ fontSize: 12, color: "#cbd5e1", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {origin}
-                </span>
-                <button onClick={() => revokeOrigin(origin)} style={{ padding: "4px 8px", cursor: "pointer" }}>
-                  Revoke
+          {state?.pairedPubkey ? (
+            <div style={{ marginBottom: space.xs }}>
+              <div style={pairedAddressStyle}>{shortAddress(state.pairedPubkey)}</div>
+              <div style={{ marginTop: space.xs, display: "flex", gap: space.xs }}>
+                <button type="button" onClick={clearPairing} disabled={saving} style={ghostButtonStyle}>
+                  Remove pairing
                 </button>
               </div>
-            ))}
+            </div>
+          ) : (
+            <div style={{ marginBottom: space.xs, fontSize: font.xs, color: colors.error }}>
+              No paired account yet.
+            </div>
+          )}
 
-            <button onClick={clearOrigins} style={{ marginTop: 4, padding: "6px 10px", cursor: "pointer" }}>
-              Clear All Site Approvals
+          <input
+            value={inputPubkey}
+            onChange={(event) => setInputPubkey(event.target.value)}
+            placeholder="Paste Solana pubkey"
+            spellCheck={false}
+            style={inputStyle}
+          />
+
+          <div style={{ marginTop: space.xs, display: "flex", gap: space.xs, alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={pairPubkey}
+              disabled={saving || inputPubkey.trim().length === 0 || !pubkeyLooksValid}
+              style={primaryButtonStyle}
+            >
+              Pair pubkey
             </button>
+            {!pubkeyLooksValid && inputPubkey.trim().length > 0 ? (
+              <span style={{ fontSize: font.xs, color: colors.error }}>Invalid format</span>
+            ) : null}
           </div>
-        ) : (
-          <p style={{ margin: 0, fontSize: 12, color: "#94a3b8" }}>
-            No sites approved yet. Access requests appear when a dapp calls connect.
-          </p>
-        )}
-      </section>
+        </section>
 
-      {error ? (
-        <div style={{ marginTop: 12, color: "#fda4af", fontSize: 12 }} role="alert">
-          {error}
-        </div>
-      ) : null}
+        <section style={cardStyle}>
+          <h2 style={sectionTitleStyle}>Approved sites</h2>
+
+          {state?.approvedOrigins?.length ? (
+            <div style={{ display: "grid", gap: space.xs }}>
+              {state.approvedOrigins.map((origin) => (
+                <div key={origin} style={originRowStyle}>
+                  <span
+                    style={{
+                      fontSize: font.xs,
+                      color: colors.text,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis"
+                    }}
+                  >
+                    {origin}
+                  </span>
+                  <button type="button" onClick={() => revokeOrigin(origin)} style={ghostButtonStyle}>
+                    Revoke
+                  </button>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={clearOrigins}
+                style={{ ...ghostButtonStyle, marginTop: space.xxs }}
+              >
+                Clear all approvals
+              </button>
+            </div>
+          ) : (
+            <p style={{ margin: 0, fontSize: font.xs, color: colors.textMuted }}>
+              No sites approved yet. Access requests appear when a dapp calls connect.
+            </p>
+          )}
+        </section>
+
+        {error ? (
+          <div
+            role="alert"
+            style={{
+              marginTop: space.xxs,
+              padding: `${space.xs}px ${space.sm}px`,
+              borderRadius: radius.sm,
+              background: "rgba(255, 107, 107, 0.12)",
+              border: `1px solid ${colors.error}`,
+              color: colors.error,
+              fontSize: font.xs
+            }}
+          >
+            {error}
+          </div>
+        ) : null}
+      </div>
     </main>
   );
 }
