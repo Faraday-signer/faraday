@@ -1,0 +1,38 @@
+[package]
+name = "faraday"
+version = "0.1.0"
+edition = "2021"
+description = "Air-gapped Solana transaction signer"
+
+[features]
+default = []
+simulator = ["dep:minifb"]
+
+[dependencies]
+# Display rendering
+embedded-graphics = "0.8"
+embedded-graphics-core = "0.4"
+
+# Crypto (all pure Rust)
+sha2 = "0.10"
+hmac = "0.12"
+pbkdf2 = "0.12"
+ed25519-dalek = "2"
+bs58 = "0.5"
+zeroize = { version = "1", features = ["zeroize_derive"] }
+hex = "0.4"
+base64 = "0.22"
+qrcode = "0.14"
+getrandom = "0.2"
+
+# Desktop simulator (optional)
+minifb = { version = "0.27", optional = true }
+
+# Pi hardware (Linux only)
+[target.'cfg(target_os = "linux")'.dependencies]
+rppal = "0.22"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

@@ -1,0 +1,18 @@
+services:
+  build-images:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    privileged: true
+    volumes:
+      - ./opt:/opt
+      - ./images:/images
+      - buildroot-output:/output
+      - ./buildroot_dl:/opt/buildroot_dl
+      - ./.buildroot-ccache:/root/.buildroot-ccache
+      - ./target/arm-unknown-linux-gnueabihf/release/faraday:/opt/faraday-bin:ro
+    command: "${BUILD_ARGS:---pi0}"
+
+volumes:
+  buildroot-output:
+    name: faraday-buildroot-output

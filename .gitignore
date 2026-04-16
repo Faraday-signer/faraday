@@ -1,0 +1,37 @@
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Claude Code
+.claude/
+
+# Secrets - NEVER commit these
+.env
+*.key
+*.pem
+*.p12
+credentials.*
+
+# Rust
+target/
+
+# Pi build artifacts
+*.img
+*.iso
+*.img.xz
+images/
+output/
+buildroot_dl/
+opt/buildroot/
+opt/rootfs-overlay/
+.buildroot-ccache/
+.ccache/
+
+# Logs
+*.log
