@@ -9,6 +9,13 @@ export FORCE_UNSAFE_CONFIGURE=1
 
 cur_dir=$(pwd)
 
+# Clone Buildroot if not present
+BUILDROOT_VERSION="2024.11"
+if [ ! -d "${cur_dir}/buildroot" ]; then
+  echo "Cloning Buildroot ${BUILDROOT_VERSION}..."
+  git clone --depth 1 --branch "${BUILDROOT_VERSION}" https://github.com/buildroot/buildroot.git "${cur_dir}/buildroot"
+fi
+
 help() {
   echo "Usage: build.sh [options]"
   echo "  --pi0       Build for Pi Zero / Zero W"
