@@ -860,20 +860,36 @@ fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
     draw_status_bar(display, title, seed_loaded)?;
 
     if let Some(err) = error {
-        // Camera unavailable — show a dark panel with the error and fallback hint.
-        Rectangle::new(Point::new(10, 70), Size::new(220, 100))
+        // Camera unavailable — show a dark panel with the full error wrapped
+        // across multiple lines. Diagnostics are critical on a device with no
+        // shell/logs; truncation here would hide the MMAL/V4L2 failure reason.
+        Rectangle::new(Point::new(5, 50), Size::new(230, 140))
             .into_styled(PrimitiveStyle::with_fill(colors::BG_CARD))
             .draw(display)?;
         let style = MonoTextStyle::new(&FONT_9X15, colors::DANGER);
-        Text::with_alignment("Camera unavailable", Point::new(120, 95), style, Alignment::Center)
+        Text::with_alignment("Camera unavailable", Point::new(120, 70), style, Alignment::Center)
             .draw(display)?;
         let sub = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-        let err_short: &str = if err.len() > 34 { &err[..34] } else { err };
-        Text::with_alignment(err_short, Point::new(120, 115), sub, Alignment::Center)
+        // 37 chars/line fits within the 230-px panel at 6px/char. Wrap hard
+        // at char boundaries — MMAL errors tend to be comma-separated already.
+        const LINE_CHARS: usize = 37;
+        const MAX_LINES: usize = 5;
+        let mut y = 88i32;
+        let mut remaining = err.as_bytes();
+        for _ in 0..MAX_LINES {
+            if remaining.is_empty() {
+                break;
+            }
+            let take = remaining.len().min(LINE_CHARS);
+            let line = std::str::from_utf8(&remaining[..take]).unwrap_or("");
+            Text::with_alignment(line, Point::new(120, y), sub, Alignment::Center)
+                .draw(display)?;
+            y += 12;
+            remaining = &remaining[take..];
+        }
+        Text::with_alignment("Press Enter for test data", Point::new(120, 170), sub, Alignment::Center)
             .draw(display)?;
-        Text::with_alignment("Press Enter for test data", Point::new(120, 145), sub, Alignment::Center)
-            .draw(display)?;
-        Text::with_alignment("Esc: back", Point::new(120, 160), sub, Alignment::Center)
+        Text::with_alignment("Esc: back", Point::new(120, 185), sub, Alignment::Center)
             .draw(display)?;
         return Ok(());
     }

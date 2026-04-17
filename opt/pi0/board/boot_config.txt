@@ -4,14 +4,18 @@ fixup_file=fixup_x.dat
 # Kernel location
 kernel=zImage
 
-# How much memory in MB to assign to the GPU on Pi models having
-gpu_mem=64
+# How much memory in MB to assign to the GPU. Camera firmware (MMAL)
+# needs headroom for capture buffers; 64 was too tight on this kernel
+# (stream opened but never delivered a frame). 128 matches what most
+# Pi-Zero camera projects use.
+gpu_mem=128
 
-# Enable Camera module. `start_x=1` loads the camera firmware (legacy path
-# via bcm2835-v4l2 — /dev/video0 served by the GPU). `dtoverlay=ov5647`
-# additionally wires the OV5647 sensor driver for the modern unicam path.
+# Enable Camera module. `start_x=1` loads the GPU camera firmware, which
+# drives the OV5647 sensor and exposes /dev/video0 via the in-kernel
+# bcm2835-v4l2 shim. Do NOT also set dtoverlay=ov5647 — that binds the
+# sensor to the kernel unicam subdev and fights the firmware for CSI/I2C
+# ownership (symptom: /dev/video0 opens but never produces frames).
 start_x=1
-dtoverlay=ov5647
 
 # Enable SPI
 dtparam=spi=on

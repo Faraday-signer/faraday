@@ -118,6 +118,11 @@ impl SimCamera {
     pub fn set_decode_enabled(&self, on: bool) {
         self.decode_enabled.store(on, Ordering::Relaxed);
     }
+
+    /// API parity with PiCamera; simulator webcam has no watchdog path.
+    pub fn take_fatal_err(&self) -> Option<String> {
+        None
+    }
 }
 
 impl Drop for SimCamera {
