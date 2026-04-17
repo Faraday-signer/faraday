@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from "react";
 
+import { ErrorBanner } from "../../../src/components/error-banner";
 import { PanelShell } from "../../../src/components/panel-shell";
 import { useNavigation } from "../../../src/lib/router";
 import { sendRuntimeMessage } from "../../../src/lib/runtime";
@@ -174,7 +175,13 @@ export function SettingsScreen() {
             </>
           )}
           {error ? (
-            <p style={{ ...disconnectHelpStyle, color: colors.error }}>{error}</p>
+            <ErrorBanner
+              title="Disconnect failed"
+              message={error}
+              onRetry={disconnect}
+              retrying={busy}
+              onDismiss={() => setError(null)}
+            />
           ) : null}
         </div>
       </div>

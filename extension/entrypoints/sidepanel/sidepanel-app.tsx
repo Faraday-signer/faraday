@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { ErrorBoundary } from "../../src/components/error-boundary";
 import { sendRuntimeMessage } from "../../src/lib/runtime";
 import { NavigationProvider, useNavigation, type Route } from "../../src/lib/router";
 import type { ExtensionState } from "../../src/lib/types";
@@ -50,21 +51,38 @@ function ActiveRoute() {
   }
 }
 
-export function SidePanelApp() {
+function Bootstrapper() {
   const [initial, setInitial] = useState<Route | null>(null);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const response = await sendRuntimeMessage<ExtensionState>({ type: "faraday:get-state" });
-      if (cancelled) return;
-      const paired = response.ok && response.data.pairedPubkey;
-      setInitial(paired ? { name: "home" } : { name: "onboarding" });
+      try {
+        const response = await sendRuntimeMessage<ExtensionState>({ type: "faraday:get-state" });
+        if (cancelled) return;
+        if (!response.ok) {
+          setBootstrapError(response.error);
+          return;
+        }
+        const paired = Boolean(response.data.pairedPubkey);
+        setInitial(paired ? { name: "home" } : { name: "onboarding" });
+      } catch (error) {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : "Failed to start side panel.";
+        setBootstrapError(message);
+      }
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  if (bootstrapError) {
+    // Throw from render so the outer ErrorBoundary paints the fallback UI
+    // with the same treatment as any later render crash.
+    throw new Error(bootstrapError);
+  }
 
   if (!initial) {
     return null;
@@ -74,5 +92,13 @@ export function SidePanelApp() {
     <NavigationProvider initial={initial}>
       <ActiveRoute />
     </NavigationProvider>
+  );
+}
+
+export function SidePanelApp() {
+  return (
+    <ErrorBoundary>
+      <Bootstrapper />
+    </ErrorBoundary>
   );
 }

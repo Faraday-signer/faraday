@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { BrowserQRCodeReader } from "@zxing/browser";
 
+import { ErrorBanner } from "../../../src/components/error-banner";
 import { LinkButton, PanelShell, PrimaryButton } from "../../../src/components/panel-shell";
 import { useNavigation } from "../../../src/lib/router";
 import { sendRuntimeMessage } from "../../../src/lib/runtime";
@@ -28,15 +29,66 @@ const FAST_VIDEO: MediaStreamConstraints = {
   }
 };
 
-/** Accept either a raw base58 address or a `solana:<address>[?…]` URI. */
-function extractPubkey(raw: string): string | null {
+type ScanResult =
+  | { kind: "pair"; pubkey: string; source: "faraday-pair" | "solana-uri" | "bare" }
+  | { kind: "wrong-mode"; hint: string }
+  | { kind: "invalid" };
+
+/**
+ * Parse a QR payload as a pairing input. Supports three formats in order of
+ * preference:
+ *
+ *   1. `faraday:pair:<address>` — preferred tagged envelope (see
+ *      docs/proposals/qr-uri-envelope.md). Device firmware ships this when
+ *      the user opens the Pair screen.
+ *   2. `solana:<address>[?params]` — ecosystem-standard receive URI. Accepted
+ *      as a fallback while the device still emits this format.
+ *   3. Bare base58 address — last-resort accepted for pasting; discouraged
+ *      via QR because any 32-byte value can match it.
+ *
+ * When a recognised-but-wrong payload is detected (e.g. a signed-tx QR with
+ * the `faraday:sig:` prefix), returns `wrong-mode` with a hint pointing the
+ * user at the right device screen.
+ */
+function parsePairScan(raw: string): ScanResult {
   const trimmed = raw.trim();
-  if (!trimmed) return null;
+  if (!trimmed) return { kind: "invalid" };
   const lower = trimmed.toLowerCase();
-  const candidate = lower.startsWith("solana:")
-    ? trimmed.slice(7).split(/[?&#]/)[0]
-    : trimmed;
-  return isValidSolanaAddress(candidate) ? candidate : null;
+
+  if (lower.startsWith("faraday:pair:")) {
+    const candidate = trimmed.slice("faraday:pair:".length).split(/[?&#]/)[0];
+    if (isValidSolanaAddress(candidate)) {
+      return { kind: "pair", pubkey: candidate, source: "faraday-pair" };
+    }
+    return { kind: "invalid" };
+  }
+
+  if (lower.startsWith("faraday:sig:") || lower.startsWith("faraday:signed:")) {
+    return {
+      kind: "wrong-mode",
+      hint: "That's a signed-transaction QR. On your Faraday, go to Home → Show Address."
+    };
+  }
+
+  if (lower.startsWith("faraday:unsigned:") || lower.startsWith("faraday:tx:")) {
+    return {
+      kind: "wrong-mode",
+      hint: "That's a transaction QR, not a pairing QR. On your Faraday, go to Home → Show Address."
+    };
+  }
+
+  if (lower.startsWith("solana:")) {
+    const candidate = trimmed.slice("solana:".length).split(/[?&#]/)[0];
+    if (isValidSolanaAddress(candidate)) {
+      return { kind: "pair", pubkey: candidate, source: "solana-uri" };
+    }
+  }
+
+  if (isValidSolanaAddress(trimmed)) {
+    return { kind: "pair", pubkey: trimmed, source: "bare" };
+  }
+
+  return { kind: "invalid" };
 }
 
 const frameStyle: CSSProperties = {
@@ -76,9 +128,40 @@ const corner = (pos: "tl" | "tr" | "bl" | "br"): CSSProperties => {
 const wrapStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  alignItems: "center",
+  alignItems: "stretch",
   gap: space.md,
   padding: `${space.md}px ${space.md}px ${space.lg}px`
+};
+
+const instructionCardStyle: CSSProperties = {
+  padding: space.sm,
+  borderRadius: radius.md,
+  background: flowColors.pair.soft,
+  border: `1px solid ${flowColors.pair.primary}`,
+  display: "flex",
+  flexDirection: "column",
+  gap: 2
+};
+
+const instructionEyebrowStyle: CSSProperties = {
+  fontFamily: fontFamily.display,
+  fontSize: 10,
+  letterSpacing: 1.6,
+  textTransform: "uppercase",
+  color: flowColors.pair.primary
+};
+
+const instructionBodyStyle: CSSProperties = {
+  fontFamily: fontFamily.ui,
+  fontSize: font.xs,
+  color: colors.text,
+  lineHeight: 1.5
+};
+
+const instructionStepStyle: CSSProperties = {
+  fontFamily: fontFamily.mono,
+  fontSize: font.xs,
+  color: flowColors.pair.primary
 };
 
 const statusStyle = (isError: boolean): CSSProperties => ({
@@ -110,7 +193,9 @@ const previewAddressStyle: CSSProperties = {
 export function PairScanScreen() {
   const nav = useNavigation();
   const [status, setStatus] = useState("Requesting camera access…");
-  const [isError, setIsError] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const [detectedPubkey, setDetectedPubkey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -147,17 +232,25 @@ export function PairScanScreen() {
 
   function handleDecoded(raw: string) {
     if (lockedRef.current) return;
-    const pubkey = extractPubkey(raw);
-    if (!pubkey) {
-      setStatus("QR recognised but not a Solana address. Keep trying.");
-      setIsError(true);
+    const result = parsePairScan(raw);
+    if (result.kind === "pair") {
+      lockedRef.current = true;
+      stopCamera();
+      setDetectedPubkey(result.pubkey);
+      setStatus(
+        result.source === "faraday-pair"
+          ? "Faraday pair QR recognised."
+          : result.source === "solana-uri"
+            ? "Solana address QR captured."
+            : "Address captured."
+      );
       return;
     }
-    lockedRef.current = true;
-    stopCamera();
-    setDetectedPubkey(pubkey);
-    setIsError(false);
-    setStatus("Address captured.");
+    if (result.kind === "wrong-mode") {
+      setStatus(result.hint);
+      return;
+    }
+    setStatus("QR recognised but not a Solana address. Keep trying.");
   }
 
   useEffect(() => {
@@ -205,14 +298,15 @@ export function PairScanScreen() {
     }
 
     void (async () => {
+      setCameraError(null);
       try {
         if (getNativeDetectorCtor()) await startNative();
         else await startZxing();
       } catch (error) {
         if (cancelled) return;
         const msg = error instanceof Error ? error.message : "Failed to start camera.";
-        setStatus(msg);
-        setIsError(true);
+        setCameraError(msg);
+        setStatus("Camera unavailable.");
       }
     })();
 
@@ -221,11 +315,12 @@ export function PairScanScreen() {
       stopCamera();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [retryKey]);
 
   async function confirmPair() {
     if (!detectedPubkey) return;
     setSaving(true);
+    setMutationError(null);
     const r = await sendRuntimeMessage<ExtensionState>({
       type: "faraday:set-paired-pubkey",
       pubkey: detectedPubkey
@@ -234,14 +329,46 @@ export function PairScanScreen() {
     if (r.ok) {
       nav.reset({ name: "home" });
     } else {
-      setStatus(r.error);
-      setIsError(true);
+      setMutationError(r.error);
     }
+  }
+
+  function retryCamera() {
+    lockedRef.current = false;
+    setDetectedPubkey(null);
+    setStatus("Requesting camera access…");
+    setRetryKey((k) => k + 1);
   }
 
   return (
     <PanelShell eyebrow="Pair Device" title="Scan your Faraday">
       <div style={wrapStyle}>
+        {cameraError ? (
+          <ErrorBanner
+            title="Camera unavailable"
+            message={cameraError}
+            onRetry={retryCamera}
+          />
+        ) : null}
+
+        {mutationError ? (
+          <ErrorBanner
+            title="Pairing failed"
+            message={mutationError}
+            onRetry={confirmPair}
+            retrying={saving}
+            onDismiss={() => setMutationError(null)}
+          />
+        ) : null}
+
+        <div style={instructionCardStyle}>
+          <span style={instructionEyebrowStyle}>On your Faraday</span>
+          <span style={instructionStepStyle}>Home → Show Address</span>
+          <span style={instructionBodyStyle}>
+            Point your webcam at the address QR on the device screen.
+          </span>
+        </div>
+
         <div style={frameStyle}>
           <video ref={videoRef} autoPlay muted playsInline style={videoStyle} />
           <span style={corner("tl")} aria-hidden />
@@ -250,7 +377,7 @@ export function PairScanScreen() {
           <span style={corner("br")} aria-hidden />
         </div>
 
-        <p style={statusStyle(isError)}>{status}</p>
+        <p style={statusStyle(false)}>{status}</p>
 
         {detectedPubkey ? (
           <div style={previewCardStyle}>
