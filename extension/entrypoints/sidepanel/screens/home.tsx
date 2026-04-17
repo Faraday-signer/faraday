@@ -3,6 +3,7 @@ import { useState, type CSSProperties } from "react";
 import { FaradayMark } from "../../../src/lib/brand";
 import { useNavigation } from "../../../src/lib/router";
 import { formatSol, useWallet } from "../../../src/lib/use-wallet";
+import { ErrorBanner } from "../../../src/components/error-banner";
 import { PanelShell } from "../../../src/components/panel-shell";
 import { CLUSTER_LABEL } from "../../../src/lib/sol-client";
 import { colors, fontFamily, font, letterSpacing, radius, space } from "../../../src/lib/theme";
@@ -196,15 +197,24 @@ export function HomeScreen() {
           <span style={heroUnitStyle}>SOL</span>
         </div>
         <div style={heroMetaStyle}>
-          {wallet.balanceError
-            ? `Error: ${wallet.balanceError}`
-            : wallet.balanceLoading
-              ? "Fetching…"
-              : wallet.solUiAmount === null
-                ? "Balance unavailable"
-                : `Balance on ${CLUSTER_LABEL.toLowerCase()}`}
+          {wallet.balanceLoading
+            ? "Fetching…"
+            : wallet.solUiAmount === null
+              ? "Balance unavailable"
+              : `Balance on ${CLUSTER_LABEL.toLowerCase()}`}
         </div>
       </div>
+
+      {wallet.balanceError ? (
+        <div style={{ padding: `0 ${space.md}px` }}>
+          <ErrorBanner
+            title="Balance unavailable"
+            message={wallet.balanceError}
+            onRetry={wallet.refreshBalance}
+            retrying={wallet.balanceLoading}
+          />
+        </div>
+      ) : null}
 
       <div style={actionRowStyle}>
         <button

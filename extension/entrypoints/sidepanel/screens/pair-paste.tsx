@@ -1,5 +1,6 @@
 import { useMemo, useState, type CSSProperties } from "react";
 
+import { ErrorBanner } from "../../../src/components/error-banner";
 import { LinkButton, PanelShell, PrimaryButton } from "../../../src/components/panel-shell";
 import { useNavigation } from "../../../src/lib/router";
 import { sendRuntimeMessage } from "../../../src/lib/runtime";
@@ -45,18 +46,17 @@ const helperStyle = (isError: boolean): CSSProperties => ({
 export function PairPasteScreen() {
   const nav = useNavigation();
   const [value, setValue] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const trimmed = value.trim();
   const looksValid = useMemo(() => isValidSolanaAddress(trimmed), [trimmed]);
+  const shouldHint = value.length > 0 && !looksValid;
 
   async function confirm() {
-    if (!looksValid) {
-      setError("Not a valid Solana address.");
-      return;
-    }
+    if (!looksValid) return;
     setSaving(true);
+    setMutationError(null);
     const r = await sendRuntimeMessage<ExtensionState>({
       type: "faraday:set-paired-pubkey",
       pubkey: trimmed
@@ -65,13 +65,23 @@ export function PairPasteScreen() {
     if (r.ok) {
       nav.reset({ name: "home" });
     } else {
-      setError(r.error);
+      setMutationError(r.error);
     }
   }
 
   return (
     <PanelShell eyebrow="Pair Device" title="Paste address">
       <div style={wrapStyle}>
+        {mutationError ? (
+          <ErrorBanner
+            title="Pairing failed"
+            message={mutationError}
+            onRetry={confirm}
+            retrying={saving}
+            onDismiss={() => setMutationError(null)}
+          />
+        ) : null}
+
         <label style={{ display: "flex", flexDirection: "column", gap: space.xs }}>
           <span style={labelStyle}>Solana public key</span>
           <input
@@ -79,20 +89,17 @@ export function PairPasteScreen() {
             spellCheck={false}
             placeholder="Paste your Faraday device address"
             value={value}
-            onChange={(event) => {
-              setValue(event.target.value);
-              if (error) setError(null);
-            }}
+            onChange={(event) => setValue(event.target.value)}
             style={inputStyle}
           />
-          <span style={helperStyle(!!error)}>
-            {error ?? (value.length > 0 && !looksValid ? "Not a valid Solana address." : "Base58 address from your device.")}
+          <span style={helperStyle(shouldHint)}>
+            {shouldHint ? "Not a valid Solana address." : "Base58 address from your device."}
           </span>
         </label>
 
         <div style={{ display: "flex", justifyContent: "center" }}>
           <PrimaryButton onClick={confirm} disabled={!looksValid || saving}>
-            Pair this address
+            {saving ? "Pairing…" : "Pair this address"}
           </PrimaryButton>
         </div>
 
