@@ -135,7 +135,7 @@ fn is_base58(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::encode_qr;
+    use crate::qr::encode_qr;
 
     #[test]
     fn test_seed_qr_roundtrip() {
