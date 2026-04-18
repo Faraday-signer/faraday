@@ -75,13 +75,18 @@ src/
 ├── parser/
 │   ├── mod.rs            # Entry point: parse(tx_bytes) → ParsedTransaction, to_lines()
 │   ├── message.rs        # Solana wire format deserializer (legacy + v0 versioned)
-│   ├── programs.rs       # Known program ID registry (System, Token, Stake, Jupiter, …)
+│   ├── programs.rs       # Known program ID registry (System, Token, Stake, Jupiter, Raydium, …)
 │   ├── system.rs         # System Program instruction parser
 │   ├── token.rs          # SPL Token / Token-2022 instruction parser
 │   ├── stake.rs          # Stake Program instruction parser
 │   ├── anchor.rs         # Anchor discriminator computation (sha256("global:{name}")[..8])
 │   ├── token_registry.rs # Hardcoded token list + offline ATA derivation for mint resolution
 │   ├── jupiter.rs        # Jupiter v6 aggregator swap parser (10 instruction variants)
+│   ├── raydium/
+│   │   ├── mod.rs        # Shared types (SwapInfo) and helpers (format, ATA resolution)
+│   │   ├── amm_v4.rs     # AMM v4 legacy swap parser (non-Anchor, u8 discriminator)
+│   │   ├── clmm.rs       # CLMM concentrated liquidity swap parser (Anchor)
+│   │   └── cpmm.rs       # CPMM constant-product v2 swap parser (Anchor)
 │   └── unknown.rs        # Fallback parser for unrecognised programs
 └── signer/               # Ed25519 transaction and message signing
 
@@ -101,6 +106,9 @@ Recognised programs:
 | SPL Token / Token-2022 | Transfer, TransferChecked, Approve, ApproveChecked, Revoke, MintTo, MintToChecked, Burn, BurnChecked, CloseAccount |
 | Stake | Initialize, DelegateStake, Split, Withdraw, Deactivate, Merge |
 | Jupiter v6 | Route, RouteV2, SharedAccountsRoute, SharedAccountsRouteV2, ExactOutRoute, ExactOutRouteV2, SharedAccountsExactOutRoute, SharedAccountsExactOutRouteV2, RouteWithTokenLedger, SharedAccountsRouteWithTokenLedger |
+| Raydium AMM v4 | SwapBaseIn, SwapBaseOut |
+| Raydium CLMM | Swap, SwapV2 |
+| Raydium CPMM | SwapBaseInput, SwapBaseOutput |
 | Associated Token | CreateAccount |
 | ComputeBudget | SetComputeUnitLimit, SetComputeUnitPrice |
 | Memo | Inline memo text |
@@ -131,6 +139,18 @@ What the user sees on the review screen:
 ```
 
 When a mint can't be resolved (e.g. token in a lookup table not in the registry), a warning is shown instead of a symbol.
+
+### Raydium Parser
+
+Raydium has three on-chain programs, each in its own file under `parser/raydium/`:
+
+| Program | File | Discriminator | Mint resolution |
+|---------|------|---------------|-----------------|
+| **AMM v4** (legacy) | `amm_v4.rs` | u8 (non-Anchor) | ATA derivation (mints not in accounts) |
+| **CLMM** (concentrated liquidity) | `clmm.rs` | Anchor 8-byte | swap: ATA derivation / swap_v2: explicit in accounts |
+| **CPMM** (constant-product v2) | `cpmm.rs` | Anchor 8-byte | Explicit in accounts |
+
+Shared code (token formatting, ATA resolution, error helpers) lives in `raydium/mod.rs`. Each program file is self-contained: modifying one doesn't affect the others, and adding a new Raydium program means adding a file + one line in `programs.rs` and `mod.rs`.
 
 ## Quick Start (Desktop Simulator)
 
