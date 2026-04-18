@@ -174,16 +174,32 @@ impl ST7789 {
     }
 
     /// Blit a webcam RGB frame into the display buffer using a center-crop +
-    /// nearest-neighbor scale. Mirrors `Framebuffer::blit_camera_frame`.
-    /// Stored as big-endian RGB565 matching the SPI wire format.
+    /// nearest-neighbor scale, rotated 90° clockwise. The OV5647 is mounted
+    /// with its native frame landscape while the display is held portrait,
+    /// so the captured image arrives on its side; rotating during blit keeps
+    /// the QR decoder seeing the original (rotation-invariant) frame while
+    /// giving the user a correctly-oriented preview.
+    ///
+    /// Movement sanity check: with this rotation, moving your hand RIGHT in
+    /// front of the camera should appear to move RIGHT on screen, and DOWN
+    /// should move DOWN. If either axis looks mirrored, we need to add an
+    /// additional flip — see the note on `FLIP_HORIZONTAL` below.
     pub fn blit_camera_frame(&mut self, frame: &crate::camera::Frame) {
+        // Center-crop to a square so rotation + scale don't stretch.
         let sq = frame.width.min(frame.height);
         let ox = (frame.width - sq) / 2;
         let oy = (frame.height - sq) / 2;
+        // 90° CW reverse-mapping within the square: rotated(x, y) reads from
+        // original(y, sq-1-x). See the unit-test-style derivation in the
+        // commit message.
         for dy in 0..HEIGHT {
-            let sy = oy + dy * sq / HEIGHT;
+            // `sq_y` is the row we'd sample from at this display y BEFORE
+            // rotation — with rotation it becomes the x-axis into the frame.
+            let sq_y = dy * sq / HEIGHT;
+            let sx = ox + sq_y;
             for dx in 0..WIDTH {
-                let sx = ox + dx * sq / WIDTH;
+                let sq_x = dx * sq / WIDTH;
+                let sy = oy + sq - 1 - sq_x;
                 let si = ((sy * frame.width + sx) * 3) as usize;
                 if si + 2 >= frame.rgb.len() {
                     continue;

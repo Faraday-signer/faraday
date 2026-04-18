@@ -25,8 +25,8 @@ base64 = "0.22"
 qrcode = "0.14"
 getrandom = "0.2"
 
-# QR decoding + image buffer. Shared by both the macOS simulator
-# (nokhwa → sim capture) and the Pi camera (v4l → Pi capture).
+# QR decoding + image buffer. Shared by both the macOS simulator (nokhwa)
+# and the Pi camera (MMAL via a raspividyuv subprocess — see pi_camera.rs).
 rqrr = "0.7"
 image = { version = "0.25", default-features = false }
 
@@ -34,10 +34,11 @@ image = { version = "0.25", default-features = false }
 minifb = { version = "0.27", optional = true }
 nokhwa = { version = "0.10", default-features = false, features = ["input-avfoundation"], optional = true }
 
-# Pi hardware (Linux only). v4l covers V4L2 ioctls for the Pi camera.
+# Pi hardware (Linux only). Camera goes through a raspividyuv subprocess
+# (MMAL path) rather than a V4L2 crate — the kernel V4L2 shim couldn't
+# deliver frames on this firmware.
 [target.'cfg(target_os = "linux")'.dependencies]
 rppal = "0.22"
-v4l = "0.14"
 
 [profile.release]
 opt-level = "s"

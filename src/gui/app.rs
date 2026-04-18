@@ -501,7 +501,18 @@ impl App {
             if let Some(f) = cam.latest() {
                 self.latest_frame = Some(f);
             }
-            cam.take_qr()
+            // Watchdog from the Pi camera thread — if the stream opened but
+            // never produced a frame (or errored mid-capture), surface it as
+            // a UI error so the user isn't stuck on "Opening camera...".
+            if let Some(err) = cam.take_fatal_err() {
+                eprintln!("Camera fatal: {err}");
+                self.camera_error = Some(err);
+                self.camera = None;
+                self.latest_frame = None;
+                None
+            } else {
+                cam.take_qr()
+            }
         } else {
             None
         };
