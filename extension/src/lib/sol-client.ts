@@ -1,4 +1,4 @@
-import { createSolanaRpc } from "@solana/kit";
+import { createSolanaRpc, createSolanaRpcSubscriptions } from "@solana/kit";
 
 /**
  * Fallback RPC if no override is configured. Public mainnet is free but
@@ -49,6 +49,20 @@ export const IS_PUBLIC_RPC = RPC_URL === FALLBACK_RPC_URL;
  * Methods are called as `solanaRpc.getBalance(address).send()`.
  */
 export const solanaRpc = createSolanaRpc(RPC_URL);
+
+/**
+ * WebSocket subscription endpoint. Derived from RPC_URL by protocol swap —
+ * Helius, QuickNode, and the public Solana RPC all follow this convention.
+ */
+export const WSS_URL = RPC_URL.replace(/^http(s)?:/, (_, s) => (s ? "wss:" : "ws:"));
+
+/**
+ * SolanaRpcSubscriptions for live push notifications (balance changes,
+ * signature confirmations). Used by `useLiveBalance`. Do not hand this to
+ * untrusted code — subscriptions live for as long as the channel is open
+ * and each one consumes a slot on the server side.
+ */
+export const solanaRpcSubscriptions = createSolanaRpcSubscriptions(WSS_URL);
 
 export const CLUSTER_LABEL = "MAINNET";
 export const CLUSTER_ID = "mainnet-beta" as const;

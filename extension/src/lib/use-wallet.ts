@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import useSWR from "swr";
 
 import { address as toAddress } from "@solana/kit";
@@ -6,8 +6,10 @@ import { address as toAddress } from "@solana/kit";
 import { sendRuntimeMessage } from "./runtime";
 import { solanaRpc } from "./sol-client";
 import type { ExtensionState } from "./types";
+import { useLiveBalance, type LiveConnectionState } from "./use-live-balance";
 
-const BALANCE_REFRESH_MS = 30_000;
+/** SWR poll interval — backstop for when the WebSocket subscription is down. */
+const BALANCE_REFRESH_MS = 120_000;
 const LAMPORTS_PER_SOL = 1_000_000_000n;
 
 export interface WalletSnapshot {
@@ -18,6 +20,8 @@ export interface WalletSnapshot {
   balanceError: string | null;
   /** Force a refresh of the balance. Useful for pull-to-refresh or retry. */
   refreshBalance: () => void;
+  /** WebSocket subscription status for live balance pushes. */
+  liveState: LiveConnectionState;
   /** True while the initial extension-state fetch is pending. */
   loading: boolean;
   /** Extension-state load error (couldn't reach background, etc.). */
@@ -85,6 +89,9 @@ export function useWallet(): WalletSnapshot {
     pairedPubkey ? ["balance", pairedPubkey] : null,
     async ([, addr]: readonly [string, string]) => fetchLamports(addr),
     {
+      // Slower backstop poll: the WebSocket subscription below is the fast
+      // path, and each SWR refetch hits the HTTP endpoint. Keep the safety
+      // net but don't burn rate limit.
       refreshInterval: BALANCE_REFRESH_MS,
       revalidateOnFocus: true,
       shouldRetryOnError: true,
@@ -92,6 +99,15 @@ export function useWallet(): WalletSnapshot {
       errorRetryInterval: 4_000
     }
   );
+
+  const refreshBalance = useCallback(() => {
+    void mutate();
+  }, [mutate]);
+
+  // Live push notifications via WebSocket. Each on-chain change triggers
+  // an SWR revalidation so `lamports` stays current within 1–2 seconds
+  // instead of the poll interval.
+  const liveState = useLiveBalance(pairedPubkey, refreshBalance);
 
   const solLamports = lamports ?? null;
   const solUiAmount =
@@ -103,9 +119,8 @@ export function useWallet(): WalletSnapshot {
     solUiAmount,
     balanceLoading: Boolean(pairedPubkey && isValidating),
     balanceError: balanceError ? describeError(balanceError) : null,
-    refreshBalance: () => {
-      void mutate();
-    },
+    refreshBalance,
+    liveState,
     loading,
     error
   };
