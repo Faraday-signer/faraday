@@ -2,9 +2,10 @@
 //!
 //! Approach: spawn `/usr/bin/raspividyuv` as a child process, configure it
 //! to stream raw YUV420 frames to stdout, and read fixed-size frames in a
-//! background thread. This is the same MMAL/VCHIQ path the legacy
-//! `picamera` Python library used — the only one proven to work on this
-//! Pi Zero + OV5647 firmware stack.
+//! background thread. This uses the MMAL/VCHIQ userland path to talk to
+//! the GPU camera firmware — the only route that delivers frames reliably
+//! on this Pi Zero + OV5647 combination (the kernel V4L2 shim opens the
+//! stream but never DMAs frames into userspace buffers).
 //!
 //! Frame layout: `raspividyuv` emits YUV420 planar — Y plane first
 //! (W*H bytes), then U plane (W/2 * H/2), then V plane. For 640x480 that
@@ -53,6 +54,7 @@ pub struct PiCamera {
     stderr_buf: Arc<Mutex<Vec<u8>>>,
     _reader: Option<JoinHandle<()>>,
     _stderr_handle: Option<JoinHandle<()>>,
+    _decoder: Option<JoinHandle<()>>,
 }
 
 impl PiCamera {
@@ -112,18 +114,31 @@ impl PiCamera {
             stderr_loop(stderr, stderr_w, stop_e);
         });
 
-        // Frame reader thread.
+        // Frame reader thread — reads YUV, converts to RGB, publishes.
+        // Kept decode-free so preview stays smooth; QR work runs on the
+        // decoder thread below.
         let latest_w = Arc::clone(&latest);
-        let qr_w = Arc::clone(&pending_qr);
         let fatal_w = Arc::clone(&fatal_err);
         let stderr_r = Arc::clone(&stderr_buf);
         let child_r = Arc::clone(&child_slot);
         let stop_r = Arc::clone(&stop);
-        let decode_r = Arc::clone(&decode_enabled);
         let reader = thread::spawn(move || {
-            reader_loop(
-                stdout, latest_w, qr_w, fatal_w, stderr_r, child_r, stop_r, decode_r,
-            );
+            reader_loop(stdout, latest_w, fatal_w, stderr_r, child_r, stop_r);
+        });
+
+        // Dedicated QR decoder thread — rqrr on a 640x480 Y-plane costs
+        // 200-400 ms on a Pi Zero; if we ran it inside the reader we'd
+        // effectively drop the preview to ~2-3 fps on scan screens, and
+        // the user would struggle to keep a QR in frame long enough for
+        // an attempt to complete. Running decode independently keeps
+        // preview at the full raspividyuv rate and lets decode attempts
+        // overlap with fresh frame arrivals.
+        let latest_d = Arc::clone(&latest);
+        let qr_d = Arc::clone(&pending_qr);
+        let stop_d = Arc::clone(&stop);
+        let decode_d = Arc::clone(&decode_enabled);
+        let decoder = thread::spawn(move || {
+            decoder_loop(latest_d, qr_d, stop_d, decode_d);
         });
 
         // Watchdog: first frame or bust. Reports raspividyuv's stderr if the
@@ -173,6 +188,7 @@ impl PiCamera {
             stderr_buf,
             _reader: Some(reader),
             _stderr_handle: Some(stderr_handle),
+            _decoder: Some(decoder),
         })
     }
 
@@ -208,12 +224,10 @@ impl Drop for PiCamera {
 fn reader_loop(
     mut stdout: ChildStdout,
     latest: Arc<Mutex<Option<Frame>>>,
-    pending_qr: Arc<Mutex<Option<Vec<u8>>>>,
     fatal: Arc<Mutex<Option<String>>>,
     stderr_buf: Arc<Mutex<Vec<u8>>>,
     child_slot: Arc<Mutex<Option<Child>>>,
     stop: Arc<AtomicBool>,
-    decode_enabled: Arc<AtomicBool>,
 ) {
     let mut buf = vec![0u8; FRAME_BYTES];
     while !stop.load(Ordering::Relaxed) {
@@ -248,19 +262,51 @@ fn reader_loop(
             rgb,
         };
 
-        let should_decode = decode_enabled.load(Ordering::Relaxed)
-            && pending_qr.lock().ok().map(|g| g.is_none()).unwrap_or(false);
-        if should_decode {
-            if let Some(decoded) = crate::camera::try_decode_qr(&frame) {
-                if let Ok(mut g) = pending_qr.lock() {
-                    *g = Some(decoded);
-                }
-            }
-        }
-
         if let Ok(mut g) = latest.lock() {
             *g = Some(frame);
         }
+    }
+}
+
+/// Runs QR detection on whatever frame is currently latest. Sleeps briefly
+/// when idle or when a result is already waiting for the main thread to
+/// consume, so this thread barely costs anything off the scan screens.
+fn decoder_loop(
+    latest: Arc<Mutex<Option<Frame>>>,
+    pending_qr: Arc<Mutex<Option<Vec<u8>>>>,
+    stop: Arc<AtomicBool>,
+    decode_enabled: Arc<AtomicBool>,
+) {
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            return;
+        }
+        if !decode_enabled.load(Ordering::Relaxed) {
+            thread::sleep(Duration::from_millis(100));
+            continue;
+        }
+        // Skip if a previous decode is still waiting to be consumed.
+        let has_pending = pending_qr.lock().ok().map(|g| g.is_some()).unwrap_or(false);
+        if has_pending {
+            thread::sleep(Duration::from_millis(50));
+            continue;
+        }
+        // Snapshot the latest frame. Clone is ~1MB but avoids holding the
+        // lock across the 200-400ms rqrr call.
+        let frame = match latest.lock().ok().and_then(|g| g.clone()) {
+            Some(f) => f,
+            None => {
+                thread::sleep(Duration::from_millis(50));
+                continue;
+            }
+        };
+        if let Some(decoded) = crate::camera::try_decode_qr(&frame) {
+            if let Ok(mut g) = pending_qr.lock() {
+                *g = Some(decoded);
+            }
+        }
+        // Tiny yield so the reader and main threads get scheduler time.
+        thread::sleep(Duration::from_millis(10));
     }
 }
 
