@@ -8,3 +8,5 @@ pub mod bip39;
 pub mod slip0010;
 #[allow(dead_code)]
 pub mod derivation;
+#[allow(dead_code)]
+pub mod pda;

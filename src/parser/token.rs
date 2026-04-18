@@ -3,6 +3,7 @@
 //! Reference: https://docs.rs/spl-token/latest/spl_token/instruction/enum.TokenInstruction.html
 
 use crate::parser::{ParsedInstruction, ReviewItem};
+use crate::parser::token_registry;
 
 pub fn parse(program_name: &str, data: &[u8], accounts: &[[u8; 32]]) -> ParsedInstruction {
     let items = match decode(data, accounts) {
@@ -64,7 +65,7 @@ fn parse_transfer_checked(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<Revi
         ReviewItem::Field { label: "From".into(), value: source },
         ReviewItem::Field { label: "To".into(), value: dest },
         ReviewItem::Field { label: "Mint".into(), value: mint },
-        ReviewItem::Field { label: "Amount".into(), value: format_token_amount(amount, decimals) },
+        ReviewItem::Field { label: "Amount".into(), value: token_registry::format_amount(amount, decimals) },
     ])
 }
 
@@ -94,7 +95,7 @@ fn parse_approve_checked(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<Revie
         ReviewItem::Header("Token Approve".into()),
         ReviewItem::Field { label: "Account".into(), value: source },
         ReviewItem::Field { label: "Delegate".into(), value: delegate },
-        ReviewItem::Field { label: "Amount".into(), value: format_token_amount(amount, decimals) },
+        ReviewItem::Field { label: "Amount".into(), value: token_registry::format_amount(amount, decimals) },
         ReviewItem::Warning("Granting spend authority".into()),
     ])
 }
@@ -132,7 +133,7 @@ fn parse_mint_to_checked(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<Revie
         ReviewItem::Header("Mint Tokens".into()),
         ReviewItem::Field { label: "Mint".into(), value: mint },
         ReviewItem::Field { label: "To".into(), value: dest },
-        ReviewItem::Field { label: "Amount".into(), value: format_token_amount(amount, decimals) },
+        ReviewItem::Field { label: "Amount".into(), value: token_registry::format_amount(amount, decimals) },
     ])
 }
 
@@ -161,7 +162,7 @@ fn parse_burn_checked(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewIt
         ReviewItem::Header("Burn Tokens".into()),
         ReviewItem::Field { label: "Account".into(), value: source },
         ReviewItem::Field { label: "Mint".into(), value: mint },
-        ReviewItem::Field { label: "Amount".into(), value: format_token_amount(amount, decimals) },
+        ReviewItem::Field { label: "Amount".into(), value: token_registry::format_amount(amount, decimals) },
     ])
 }
 
@@ -174,20 +175,6 @@ fn parse_close_account(accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'stati
         ReviewItem::Field { label: "Account".into(), value: account },
         ReviewItem::Field { label: "Rent to".into(), value: dest },
     ])
-}
-
-fn format_token_amount(amount: u64, decimals: u8) -> String {
-    if decimals == 0 {
-        return amount.to_string();
-    }
-    let divisor = 10u64.pow(decimals as u32);
-    let whole = amount / divisor;
-    let frac = amount % divisor;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:0width$}", frac, width = decimals as usize);
-    format!("{}.{}", whole, frac_str.trim_end_matches('0'))
 }
 
 fn pubkey_short(key: &[u8; 32]) -> String {
@@ -212,23 +199,23 @@ mod tests {
         items.iter().any(|item| matches!(item, ReviewItem::Warning(_)))
     }
 
-    // --- format_token_amount ---
+    // --- format_amount (now in token_registry) ---
 
     #[test]
     fn test_format_no_decimals() {
-        assert_eq!(format_token_amount(1000, 0), "1000");
+        assert_eq!(token_registry::format_amount(1000, 0), "1000");
     }
 
     #[test]
     fn test_format_with_decimals() {
-        assert_eq!(format_token_amount(1_000_000, 6), "1");
-        assert_eq!(format_token_amount(1_500_000, 6), "1.5");
-        assert_eq!(format_token_amount(1_000, 6), "0.001");
+        assert_eq!(token_registry::format_amount(1_000_000, 6), "1");
+        assert_eq!(token_registry::format_amount(1_500_000, 6), "1.5");
+        assert_eq!(token_registry::format_amount(1_000, 6), "0.001");
     }
 
     #[test]
     fn test_format_trims_trailing_zeros() {
-        assert_eq!(format_token_amount(1_100_000, 6), "1.1");
+        assert_eq!(token_registry::format_amount(1_100_000, 6), "1.1");
     }
 
     // --- Transfer ---

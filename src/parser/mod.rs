@@ -14,6 +14,13 @@ mod token;
 mod stake;
 mod unknown;
 
+// Shared modules — reusable across dApp parsers
+pub(crate) mod anchor;
+pub(crate) mod token_registry;
+
+// dApp parsers
+mod jupiter;
+
 // === Public types ===
 
 pub struct ParsedTransaction {
@@ -69,8 +76,19 @@ pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
         .map(|k| bs58::encode(k).into_string())
         .unwrap_or_else(|| "?".into());
 
+    // Build ATA map for offline token resolution (only when Jupiter is present)
+    let needs_ata = msg.accounts.iter().any(|acct| {
+        programs::identify(acct).as_ref().map(|p| p.name) == Some("Jupiter")
+    });
+    let ata_map = if needs_ata {
+        let n = (msg.num_required_signers as usize).min(msg.accounts.len());
+        token_registry::build_ata_map(&msg.accounts[..n])
+    } else {
+        token_registry::AtaMap::new()
+    };
+
     let instructions = msg.instructions.iter()
-        .map(|ix| dispatch(ix, &msg.accounts))
+        .map(|ix| dispatch(ix, &msg.accounts, &ata_map))
         .collect();
 
     ParsedTransaction {
@@ -131,7 +149,11 @@ pub fn to_lines(tx: &ParsedTransaction) -> Vec<String> {
 
 // === Internal dispatcher ===
 
-fn dispatch(ix: &message::RawInstruction, all_accounts: &[[u8; 32]]) -> ParsedInstruction {
+fn dispatch(
+    ix: &message::RawInstruction,
+    all_accounts: &[[u8; 32]],
+    ata_map: &token_registry::AtaMap,
+) -> ParsedInstruction {
     let program_id = match all_accounts.get(ix.program_id_index) {
         Some(id) => id,
         None => return unknown::parse(&[0u8; 32], &ix.data, &[]),
@@ -149,6 +171,7 @@ fn dispatch(ix: &message::RawInstruction, all_accounts: &[[u8; 32]]) -> ParsedIn
         Some("AssocToken")   => parse_assoc_token(program_id, &ix.data, &resolved_accounts),
         Some("Memo")         => parse_memo(&ix.data),
         Some("ComputeBudget") => parse_compute_budget(&ix.data),
+        Some("Jupiter")      => jupiter::parse(&ix.data, &ix.account_indices, all_accounts, ata_map),
         Some(name)           => ParsedInstruction {
             program: name.into(),
             items: vec![ReviewItem::Header(name.into())],

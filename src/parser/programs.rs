@@ -16,6 +16,7 @@ pub fn identify(program_id: &[u8; 32]) -> Option<KnownProgram> {
         "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr" => "Memo",
         "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo" => "Memo",
         "ComputeBudget111111111111111111111111111111" => "ComputeBudget",
+        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4" => "Jupiter",
         _ => return None,
     };
     Some(KnownProgram { name })
@@ -60,6 +61,12 @@ mod tests {
     fn test_compute_budget() {
         let id = pubkey_from_b58("ComputeBudget111111111111111111111111111111");
         assert_eq!(identify(&id).unwrap().name, "ComputeBudget");
+    }
+
+    #[test]
+    fn test_jupiter_v6() {
+        let id = pubkey_from_b58("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
+        assert_eq!(identify(&id).unwrap().name, "Jupiter");
     }
 
     #[test]
