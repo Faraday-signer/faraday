@@ -17,6 +17,9 @@ pub fn identify(program_id: &[u8; 32]) -> Option<KnownProgram> {
         "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo" => "Memo",
         "ComputeBudget111111111111111111111111111111" => "ComputeBudget",
         "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4" => "Jupiter",
+        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8" => "Raydium AMM",
+        "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK" => "Raydium CLMM",
+        "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C" => "Raydium CPMM",
         _ => return None,
     };
     Some(KnownProgram { name })
@@ -67,6 +70,24 @@ mod tests {
     fn test_jupiter_v6() {
         let id = pubkey_from_b58("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
         assert_eq!(identify(&id).unwrap().name, "Jupiter");
+    }
+
+    #[test]
+    fn test_raydium_amm_v4() {
+        let id = pubkey_from_b58("675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8");
+        assert_eq!(identify(&id).unwrap().name, "Raydium AMM");
+    }
+
+    #[test]
+    fn test_raydium_clmm() {
+        let id = pubkey_from_b58("CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK");
+        assert_eq!(identify(&id).unwrap().name, "Raydium CLMM");
+    }
+
+    #[test]
+    fn test_raydium_cpmm() {
+        let id = pubkey_from_b58("CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C");
+        assert_eq!(identify(&id).unwrap().name, "Raydium CPMM");
     }
 
     #[test]

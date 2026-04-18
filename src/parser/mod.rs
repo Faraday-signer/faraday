@@ -20,6 +20,7 @@ pub(crate) mod token_registry;
 
 // dApp parsers
 mod jupiter;
+mod raydium;
 
 // === Public types ===
 
@@ -78,7 +79,10 @@ pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
 
     // Build ATA map for offline token resolution (only when Jupiter is present)
     let needs_ata = msg.accounts.iter().any(|acct| {
-        programs::identify(acct).as_ref().map(|p| p.name) == Some("Jupiter")
+        matches!(
+            programs::identify(acct).as_ref().map(|p| p.name),
+            Some("Jupiter" | "Raydium AMM" | "Raydium CLMM" | "Raydium CPMM")
+        )
     });
     let ata_map = if needs_ata {
         let n = (msg.num_required_signers as usize).min(msg.accounts.len());
@@ -171,8 +175,11 @@ fn dispatch(
         Some("AssocToken")   => parse_assoc_token(program_id, &ix.data, &resolved_accounts),
         Some("Memo")         => parse_memo(&ix.data),
         Some("ComputeBudget") => parse_compute_budget(&ix.data),
-        Some("Jupiter")      => jupiter::parse(&ix.data, &ix.account_indices, all_accounts, ata_map),
-        Some(name)           => ParsedInstruction {
+        Some("Jupiter")       => jupiter::parse(&ix.data, &ix.account_indices, all_accounts, ata_map),
+        Some("Raydium AMM")  => raydium::amm_v4::parse(&ix.data, &ix.account_indices, all_accounts, ata_map),
+        Some("Raydium CLMM") => raydium::clmm::parse(&ix.data, &ix.account_indices, all_accounts, ata_map),
+        Some("Raydium CPMM") => raydium::cpmm::parse(&ix.data, &ix.account_indices, all_accounts, ata_map),
+        Some(name)            => ParsedInstruction {
             program: name.into(),
             items: vec![ReviewItem::Header(name.into())],
         },
