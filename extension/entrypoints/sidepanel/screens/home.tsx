@@ -3,6 +3,7 @@ import { useState, type CSSProperties } from "react";
 import { FaradayMark } from "../../../src/lib/brand";
 import { useNavigation } from "../../../src/lib/router";
 import { formatSol, useWallet } from "../../../src/lib/use-wallet";
+import type { LiveConnectionState } from "../../../src/lib/use-live-balance";
 import { ErrorBanner } from "../../../src/components/error-banner";
 import { PanelShell } from "../../../src/components/panel-shell";
 import { CLUSTER_LABEL } from "../../../src/lib/sol-client";
@@ -196,12 +197,21 @@ export function HomeScreen() {
           <span style={heroNumberStyle}>{formatSol(wallet.solUiAmount)}</span>
           <span style={heroUnitStyle}>SOL</span>
         </div>
-        <div style={heroMetaStyle}>
-          {wallet.balanceLoading
-            ? "Fetching…"
-            : wallet.solUiAmount === null
-              ? "Balance unavailable"
-              : `Balance on ${CLUSTER_LABEL.toLowerCase()}`}
+        <div style={{ ...heroMetaStyle, display: "flex", alignItems: "center", gap: 6 }}>
+          <LiveDot state={wallet.liveState} />
+          <span>
+            {wallet.balanceLoading
+              ? "Fetching…"
+              : wallet.solUiAmount === null
+                ? "Balance unavailable"
+                : wallet.liveState === "live"
+                  ? `Live on ${CLUSTER_LABEL.toLowerCase()}`
+                  : wallet.liveState === "reconnecting"
+                    ? `Reconnecting… (polling fallback)`
+                    : wallet.liveState === "failed"
+                      ? `Live connection down — polling`
+                      : `Balance on ${CLUSTER_LABEL.toLowerCase()}`}
+          </span>
         </div>
       </div>
 
@@ -237,5 +247,38 @@ export function HomeScreen() {
         SPL tokens, activity, and USD values land in the next data-layer pass.
       </div>
     </PanelShell>
+  );
+}
+
+function LiveDot({ state }: { state: LiveConnectionState }) {
+  const { color, title, pulse } = (() => {
+    switch (state) {
+      case "live":
+        return { color: colors.success, title: "Live", pulse: true };
+      case "connecting":
+        return { color: colors.accent, title: "Connecting", pulse: true };
+      case "reconnecting":
+        return { color: colors.warning, title: "Reconnecting", pulse: true };
+      case "failed":
+        return { color: colors.error, title: "Live connection unavailable", pulse: false };
+      default:
+        return { color: colors.textDim, title: "Idle", pulse: false };
+    }
+  })();
+
+  return (
+    <span
+      aria-label={title}
+      title={title}
+      style={{
+        display: "inline-block",
+        width: 6,
+        height: 6,
+        borderRadius: "50%",
+        background: color,
+        boxShadow: pulse ? `0 0 0 2px ${color}33` : "none",
+        animation: pulse ? "faraday-pulse 1.6s ease-in-out infinite" : "none"
+      }}
+    />
   );
 }
