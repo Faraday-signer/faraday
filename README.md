@@ -53,7 +53,9 @@ Total cost: ~$35
 ```
 src/
 ├── main.rs               # Entry point (simulator + Pi modes)
-├── crypto/               # BIP39 mnemonics, SLIP-0010 derivation, Ed25519
+├── crypto/
+│   ├── mod.rs            # BIP39 mnemonics, SLIP-0010 derivation, Ed25519
+│   └── pda.rs            # Program Derived Address derivation (offline, no SDK)
 ├── gui/
 │   ├── app.rs            # App struct, Screen enum, input types, transition dispatcher
 │   ├── flows/
@@ -73,10 +75,13 @@ src/
 ├── parser/
 │   ├── mod.rs            # Entry point: parse(tx_bytes) → ParsedTransaction, to_lines()
 │   ├── message.rs        # Solana wire format deserializer (legacy + v0 versioned)
-│   ├── programs.rs       # Known program ID registry (System, Token, Stake, …)
+│   ├── programs.rs       # Known program ID registry (System, Token, Stake, Jupiter, …)
 │   ├── system.rs         # System Program instruction parser
 │   ├── token.rs          # SPL Token / Token-2022 instruction parser
 │   ├── stake.rs          # Stake Program instruction parser
+│   ├── anchor.rs         # Anchor discriminator computation (sha256("global:{name}")[..8])
+│   ├── token_registry.rs # Hardcoded token list + offline ATA derivation for mint resolution
+│   ├── jupiter.rs        # Jupiter v6 aggregator swap parser (10 instruction variants)
 │   └── unknown.rs        # Fallback parser for unrecognised programs
 └── signer/               # Ed25519 transaction and message signing
 
@@ -95,6 +100,7 @@ Recognised programs:
 | System | Transfer, CreateAccount, CreateAccountWithSeed, Allocate, TransferWithSeed |
 | SPL Token / Token-2022 | Transfer, TransferChecked, Approve, ApproveChecked, Revoke, MintTo, MintToChecked, Burn, BurnChecked, CloseAccount |
 | Stake | Initialize, DelegateStake, Split, Withdraw, Deactivate, Merge |
+| Jupiter v6 | Route, RouteV2, SharedAccountsRoute, SharedAccountsRouteV2, ExactOutRoute, ExactOutRouteV2, SharedAccountsExactOutRoute, SharedAccountsExactOutRouteV2, RouteWithTokenLedger, SharedAccountsRouteWithTokenLedger |
 | Associated Token | CreateAccount |
 | ComputeBudget | SetComputeUnitLimit, SetComputeUnitPrice |
 | Memo | Inline memo text |
@@ -104,6 +110,27 @@ To add support for a new program:
 1. Create `src/parser/<program>.rs` with `pub fn parse(data, accounts) -> ParsedInstruction`
 2. Register the program ID in `src/parser/programs.rs`
 3. Add a match arm in the `dispatch()` function in `src/parser/mod.rs`
+
+### Jupiter v6 Parser
+
+Jupiter swaps are the most complex instructions Faraday parses. The parser works entirely offline:
+
+1. **Anchor discriminators** (`anchor.rs`) — Jupiter uses the Anchor framework, so instruction variants are identified by their 8-byte discriminator: `sha256("global:{instruction_name}")[..8]`
+2. **Instruction decoding** (`jupiter.rs`) — Parses 10 swap variants across two data layouts (route-plan-first for v1, amounts-first for v2). Extracts input/output amounts, slippage (bps), and platform fee
+3. **Token identification** (`token_registry.rs`) — Hardcoded list of ~30 well-known tokens (SOL, USDC, JUP, etc.) with symbols and decimals. For shared-accounts variants, mints are read directly from the account list. For non-shared variants (where mints live in address lookup tables and can't be resolved air-gapped), ATA derivation identifies the token
+4. **PDA derivation** (`crypto/pda.rs`) — Derives Associated Token Account addresses offline using `sha256(signer + token_program + mint + bump + ata_program + "ProgramDerivedAddress")`, matching Solana's `find_program_address`
+
+What the user sees on the review screen:
+
+```
+[Jupiter Swap]
+  Type: shared_accounts_route
+  You spend: 1.5 SOL
+  You receive (min): 150 USDC
+  Slippage: 50 bps (0.50%)
+```
+
+When a mint can't be resolved (e.g. token in a lookup table not in the registry), a warning is shown instead of a symbol.
 
 ## Quick Start (Desktop Simulator)
 
