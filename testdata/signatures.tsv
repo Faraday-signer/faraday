@@ -31,8 +31,9 @@ raydium_clmm_1	2XdmHYJmwYe82Bzg7W1Fj1tUu2VsiyT6q2nL2ys4C9sPH5BrkAT7VafHqY5zpRZAh
 raydium_clmm_2	4kDcCmL5UYcWm1cR6rdzfz46FRyFXDgUHpBDGCdgmAgk4iSBeLjU53Jtz3tSZNHdSu1wkhp8oRU8NVw8bubBXapk
 #
 # ── Raydium CPMM ────────────────────────────────────────────────────────────
-raydium_cpmm_1	2Q1CwWvnEkKihbRPjhJwCriwapRzqAX7Pqhpg2rmFFTxvSwBTXC1vqeazB1ecw6eXCYV5AaYehbCzBchDYEerSay
-raydium_cpmm_2	3K6qUzhydhsVpsU5bahGs2nLp7PsqnQwQAMk8P3K59McjnbcLrQiA7ZLWT64J1JtyvB3xEUswzpC7VcspCCc3GwJ
+# No testdata: like AMM v4, CPMM swaps on mainnet are routed via Jupiter
+# or other aggregators (CPI), never as a top-level instruction.
+# Parser covered by unit tests only.
 #
 # ── Orca Whirlpool (not yet supported) ──────────────────────────────────────
 orca_whirlpool_1	8CAoRrLr41RfB7A7nmjknEr2vzttomPXHkZ7RL61L66Ce3fV4jo5aYDFKjHa4rdu6LyZss2VSTWSTrpCrwVhzCD
