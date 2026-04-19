@@ -33,6 +33,9 @@ opt/rootfs-overlay/
 .buildroot-ccache/
 .ccache/
 
+# Test transaction data (generated via testdata/capture.sh)
+testdata/test_txs/*.bin
+
 # Logs
 *.log
 
