@@ -1,0 +1,55 @@
+# Curated transaction signatures for parser testing.
+# Format: name<TAB>signature
+# Lines starting with # are ignored.
+#
+# To find signatures, use:
+#   ./capture.sh search <program_id>
+#   ./capture.sh programs          (list known program IDs)
+#
+# Then add them here and run:
+#   ./capture.sh all
+#
+# ── System ───────────────────────────────────────────────────────────────────
+system_transfer	PmZtFPa12Fn4r2F1zFFFdsfQsG4X31J9DkwadMBbCNooHuW2QhE2U1n4tHm8gQhvfcgoUvorhyKwtM7yjpgG3Tq
+#
+# ── SPL Token ────────────────────────────────────────────────────────────────
+token_transfer	5kjD36SBJRmRJLQte84vDn9bCCwZDDULxnAiQD8PUkdLaKnXSpqzKECHv55GZKkv4VUEy8d7oKLLNuQGiMsozrjN
+#
+# ── Stake ────────────────────────────────────────────────────────────────────
+stake_tx	5uxVCALCZYiYeWQ5BHuiLwpvUz1t62StFxPdDKGAuzUahYPcVZkpT5p7itcJe3ZoTyfwFWUugVW67DmwGZ1TYP5M
+#
+# ── Jupiter ──────────────────────────────────────────────────────────────────
+jupiter_swap_1	5YTYZi3fEMAY6CSnJ1S6Sdqkp4Stn79b3rDwDTZ6AszbCQsTdnDzzcgCMyx4SPN1F5GzRBq7agBCdQWsDi6zcGxM
+jupiter_swap_2	26uyzAoYw63vFUhrwwCmJuGhsKB897g1sKPAkUyBRQSNfdeDVGfqL1audYFbaT4x5REA5h9Miq9a1d7SXZSHVXHw
+#
+# ── Raydium AMM v4 ──────────────────────────────────────────────────────────
+# No testdata: AMM v4 is always invoked via CPI from routers/aggregators,
+# never as a top-level instruction. Parser covered by unit tests only.
+#
+# ── Raydium CLMM ────────────────────────────────────────────────────────────
+raydium_clmm_1	2XdmHYJmwYe82Bzg7W1Fj1tUu2VsiyT6q2nL2ys4C9sPH5BrkAT7VafHqY5zpRZAhohFSo1iadzQoPfxjR6HuhrM
+raydium_clmm_2	4kDcCmL5UYcWm1cR6rdzfz46FRyFXDgUHpBDGCdgmAgk4iSBeLjU53Jtz3tSZNHdSu1wkhp8oRU8NVw8bubBXapk
+#
+# ── Raydium CPMM ────────────────────────────────────────────────────────────
+raydium_cpmm_1	2Q1CwWvnEkKihbRPjhJwCriwapRzqAX7Pqhpg2rmFFTxvSwBTXC1vqeazB1ecw6eXCYV5AaYehbCzBchDYEerSay
+raydium_cpmm_2	3K6qUzhydhsVpsU5bahGs2nLp7PsqnQwQAMk8P3K59McjnbcLrQiA7ZLWT64J1JtyvB3xEUswzpC7VcspCCc3GwJ
+#
+# ── Orca Whirlpool (not yet supported) ──────────────────────────────────────
+orca_whirlpool_1	8CAoRrLr41RfB7A7nmjknEr2vzttomPXHkZ7RL61L66Ce3fV4jo5aYDFKjHa4rdu6LyZss2VSTWSTrpCrwVhzCD
+orca_whirlpool_2	4DigMRkZDFmg5gsmCZJxYePwD4G859qYbKWWCB55BYrcPovpWxpXUXkyuqMMnmBVHpuxtYVjJCUxPXc4Zr2XH6A4
+#
+# ── Marinade (not yet supported) ────────────────────────────────────────────
+marinade_1	eQhR3KtfxfJhNREQAapHqcnwBpdEsFnJapFttkLEa97LCYy753XYLrf6E9gEKNbQT3nYc8fLWUMov6VaB9kTw8R
+marinade_2	4dBhR5YQjsMnHaDgVTGzzHpAUcegfRPrwSLPUNbxwt3T2FFMXsMp4EtMkyFDveofArg6wZTgaxyRvQmQLygMQisr
+#
+# ── Metaplex (not yet supported) ────────────────────────────────────────────
+metaplex_1	3jUWoagYbuftsoTBUuSzAXgjsUXr5WWcSSGqwHNdcierKmvM2dSyY6cdqZUVNk9uCavVrbKXGoQGiuKVVNn1tRda
+metaplex_2	48eeyMuLDDHXKgZhB3dDM3iHtmtabVFc7LwMVD7f6DMqTnmgaWNuCSA9QhQ1mGaTWzdCnKkyJdnAVUzJgaCpnEH3
+#
+# ── Tensor (not yet supported) ──────────────────────────────────────────────
+tensor_1	5svniFjbPJdRnUXBwYg39VkGFoR7ucvaSQhdvzz3ZAPbMUYWFAhLdG7QY3AcErNDY6UGKPWEuJTt5ZC6r2dpBecZ
+tensor_2	5bcFgahRGxbfuEr6zyahKe8DkWd1dxbHtkhSCsioLY9YUg1KZDVQdMdegXgWXGQ1upZn7nNCyrQUut5x1R6FzG5b
+#
+# ── Magic Eden (not yet supported) ──────────────────────────────────────────
+magic_eden_1	3NHqXdagAMbs38q26FhsPbnhkhkaaGpYq1q2h2eBdXF9RQfSxdnwKGBLm6VqFWb7jXzfR4zfRjNLmVWiPJNCTVcD
+magic_eden_2	4n4ov4w25FNgd9wZCZx6b7D729WfJkezpZrqknpLWEUEfkdahymwcniyDZoYK8HhXjV2mduzXpZe1K4shJfCd3LU
