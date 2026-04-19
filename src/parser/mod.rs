@@ -13,6 +13,7 @@ mod system;
 mod token;
 mod stake;
 mod unknown;
+mod lookup_tables;
 
 // Shared modules — reusable across dApp parsers
 pub(crate) mod anchor;
@@ -73,26 +74,32 @@ pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
         },
     };
 
-    let fee_payer = msg.accounts.first()
+    // Expand account list with resolved ALT entries (v0 transactions)
+    let all_accounts = lookup_tables::expand_accounts(
+        &msg.accounts,
+        &msg.address_table_lookups,
+    );
+
+    let fee_payer = all_accounts.first()
         .map(|k| bs58::encode(k).into_string())
         .unwrap_or_else(|| "?".into());
 
     // Build ATA map for offline token resolution (only when Jupiter is present)
-    let needs_ata = msg.accounts.iter().any(|acct| {
+    let needs_ata = all_accounts.iter().any(|acct| {
         matches!(
             programs::identify(acct).as_ref().map(|p| p.name),
             Some("Jupiter" | "Raydium AMM" | "Raydium CLMM" | "Raydium CPMM")
         )
     });
     let ata_map = if needs_ata {
-        let n = (msg.num_required_signers as usize).min(msg.accounts.len());
-        token_registry::build_ata_map(&msg.accounts[..n])
+        let n = (msg.num_required_signers as usize).min(all_accounts.len());
+        token_registry::build_ata_map(&all_accounts[..n])
     } else {
         token_registry::AtaMap::new()
     };
 
     let instructions = msg.instructions.iter()
-        .map(|ix| dispatch(ix, &msg.accounts, &ata_map))
+        .map(|ix| dispatch(ix, &all_accounts, &ata_map))
         .collect();
 
     ParsedTransaction {
