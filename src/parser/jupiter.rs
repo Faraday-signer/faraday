@@ -137,8 +137,9 @@ fn is_known_non_swap(disc: &[u8; 8]) -> bool {
 
 // ── Swap enum byte size calculator ───────────────────────────────────────────
 //
-// Jupiter's `Swap` enum has 64 variants (indices 0-63), each encoding a different
-// AMM. This function returns the total byte size of a Borsh-encoded variant.
+// Jupiter's `Swap` enum encodes which AMM to use for each route step.
+// Jupiter keeps adding new AMMs, so unknown variants default to fieldless
+// (0 extra bytes) — the majority pattern for new integrations.
 
 fn swap_enum_byte_size(data: &[u8]) -> Result<usize, &'static str> {
     if data.is_empty() {
@@ -196,7 +197,8 @@ fn swap_enum_byte_size(data: &[u8]) -> Result<usize, &'static str> {
             }
         }
 
-        _ => return Err("Unknown swap variant"),
+        // Unknown variants: assume fieldless (most new AMM integrations are)
+        _ => 0,
     };
     Ok(1 + extra)
 }

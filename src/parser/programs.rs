@@ -11,6 +11,7 @@ pub fn identify(program_id: &[u8; 32]) -> Option<KnownProgram> {
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" => "Token",
         "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" => "Token-2022",
         "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bVU" => "AssocToken",
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" => "AssocToken",
         "Stake11111111111111111111111111111111111112" => "Stake",
         "Vote111111111111111111111111111111111111111p8HGB" => "Vote",
         "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr" => "Memo",

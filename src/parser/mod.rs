@@ -13,6 +13,7 @@ mod system;
 mod token;
 mod stake;
 mod unknown;
+mod lookup_tables;
 
 // Shared modules — reusable across dApp parsers
 pub(crate) mod anchor;
@@ -73,26 +74,32 @@ pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
         },
     };
 
-    let fee_payer = msg.accounts.first()
+    // Expand account list with resolved ALT entries (v0 transactions)
+    let all_accounts = lookup_tables::expand_accounts(
+        &msg.accounts,
+        &msg.address_table_lookups,
+    );
+
+    let fee_payer = all_accounts.first()
         .map(|k| bs58::encode(k).into_string())
         .unwrap_or_else(|| "?".into());
 
     // Build ATA map for offline token resolution (only when Jupiter is present)
-    let needs_ata = msg.accounts.iter().any(|acct| {
+    let needs_ata = all_accounts.iter().any(|acct| {
         matches!(
             programs::identify(acct).as_ref().map(|p| p.name),
             Some("Jupiter" | "Raydium AMM" | "Raydium CLMM" | "Raydium CPMM")
         )
     });
     let ata_map = if needs_ata {
-        let n = (msg.num_required_signers as usize).min(msg.accounts.len());
-        token_registry::build_ata_map(&msg.accounts[..n])
+        let n = (msg.num_required_signers as usize).min(all_accounts.len());
+        token_registry::build_ata_map(&all_accounts[..n])
     } else {
         token_registry::AtaMap::new()
     };
 
     let instructions = msg.instructions.iter()
-        .map(|ix| dispatch(ix, &msg.accounts, &ata_map))
+        .map(|ix| dispatch(ix, &all_accounts, &ata_map))
         .collect();
 
     ParsedTransaction {
@@ -383,5 +390,65 @@ mod tests {
         // Multi-instruction lines include "1/2" and "2/2" markers
         let has_counter = lines.iter().any(|l| l.contains("1/2"));
         assert!(has_counter);
+    }
+
+    // --- Real transaction tests (from testdata/test_txs/*.bin) ---
+
+    #[test]
+    fn test_real_transactions_parse_without_panic() {
+        let dir = std::path::Path::new("testdata/test_txs");
+        if !dir.exists() {
+            return;
+        }
+
+        let mut entries: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map(|ext| ext == "bin").unwrap_or(false))
+            .collect();
+        entries.sort_by_key(|e| e.file_name());
+
+        if entries.is_empty() {
+            return;
+        }
+
+        let mut passed = 0;
+        for entry in &entries {
+            let path = entry.path();
+            let name = path.file_stem().unwrap().to_string_lossy();
+            let bytes = std::fs::read(&path).unwrap();
+
+            let parsed = parse(&bytes);
+
+            // Must not fail to deserialize the transaction structure
+            assert_ne!(
+                parsed.instructions[0].program, "Error",
+                "{}: failed to deserialize transaction: {:?}",
+                name,
+                parsed.instructions[0].items.iter().find_map(|i| match i {
+                    ReviewItem::Warning(w) => Some(w.as_str()),
+                    _ => None,
+                })
+            );
+
+            assert!(
+                !parsed.instructions.is_empty(),
+                "{}: no instructions parsed",
+                name,
+            );
+
+            // Print decoded output for visual inspection
+            let lines = to_lines(&parsed);
+            let programs: Vec<_> = parsed.instructions.iter().map(|ix| ix.program.as_str()).collect();
+            eprintln!("  {} — {} ix {:?}", name, parsed.instructions.len(), programs);
+            for line in &lines {
+                eprintln!("    {}", line);
+            }
+            eprintln!();
+
+            passed += 1;
+        }
+
+        eprintln!("{} real transactions parsed successfully", passed);
     }
 }

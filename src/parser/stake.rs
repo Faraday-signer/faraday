@@ -17,14 +17,27 @@ pub fn parse(data: &[u8], accounts: &[[u8; 32]]) -> ParsedInstruction {
 }
 
 fn decode(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    if data.len() < 4 { return Err("Instruction data too short"); }
-    let ix_type = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+    if data.is_empty() { return Err("Instruction data too short"); }
+
+    // The Stake program uses bincode varint encoding for the enum discriminator.
+    // Values 0-13 fit in a single byte; try u32 (4-byte) first for compatibility
+    // with older transactions, fall back to u8 (1-byte) for current format.
+    let (ix_type, payload) = if data.len() >= 4 {
+        let u32_disc = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+        if u32_disc <= MAX_VARIANT {
+            (u32_disc, &data[4..])
+        } else {
+            (data[0] as u32, &data[1..])
+        }
+    } else {
+        (data[0] as u32, &data[1..])
+    };
 
     match ix_type {
         0 => parse_initialize(accounts),
         2 => parse_delegate(accounts),
-        3 => parse_split(&data[4..], accounts),
-        4 => parse_withdraw(&data[4..], accounts),
+        3 => parse_split(payload, accounts),
+        4 => parse_withdraw(payload, accounts),
         5 => parse_deactivate(accounts),
         7 => parse_merge(accounts),
         _ => Ok(vec![
@@ -33,6 +46,8 @@ fn decode(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'stati
         ]),
     }
 }
+
+const MAX_VARIANT: u32 = 13;
 
 fn parse_initialize(accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
     let stake_account = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
