@@ -392,11 +392,11 @@ mod tests {
         assert!(has_counter);
     }
 
-    // --- Real transaction tests (from testdata/test_txs/*.bin) ---
+    // --- Real transaction tests (from testdata/test_txs_bin/*.bin) ---
 
     #[test]
     fn test_real_transactions_parse_without_panic() {
-        let dir = std::path::Path::new("testdata/test_txs");
+        let dir = std::path::Path::new("testdata/test_txs_bin");
         if !dir.exists() {
             return;
         }
