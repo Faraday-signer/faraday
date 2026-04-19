@@ -5,9 +5,10 @@ Real Solana transactions captured from mainnet for testing the parser.
 ## How it works
 
 1. **`signatures.tsv`** — list of transaction signatures to capture, one per line, organized by program. Each entry has a name and a signature separated by a tab.
-2. **`capture.sh`** — fetches transactions from a Solana RPC endpoint and saves them as raw bytes in `test_txs/`.
-3. **`test_txs/*.bin`** — the raw transaction bytes. These are the actual input to `parser::parse()`.
-4. **`cargo test`** — the test `test_real_transactions_parse_without_panic` reads every `.bin` file and runs it through the full parser pipeline, printing the decoded output.
+2. **`capture.sh`** — fetches transactions from a Solana RPC endpoint and saves them as:
+   - `test_txs_bin/*.bin` — raw transaction bytes (input to `parser::parse()`)
+   - `test_txs_qr/*.png` — labeled QR images encoding the base64 transaction (for testing with the device camera)
+3. **`cargo test`** — the test `test_real_transactions_parse_without_panic` reads every `.bin` file and runs it through the full parser pipeline, printing the decoded output.
 
 ## Quick start
 
@@ -28,11 +29,26 @@ cd ..
 cargo test test_real_transactions -- --nocapture
 ```
 
+## Dependencies
+
+- **Required:** `curl`, `jq`, `base64`
+- **Optional (for QR images):** `qrencode`, `imagemagick`
+
+If QR dependencies are missing, `capture.sh` still generates `.bin` files and prints the install command for your OS.
+
+```bash
+# Linux
+sudo apt-get install -y qrencode imagemagick
+
+# macOS
+brew install qrencode imagemagick
+```
+
 ## capture.sh commands
 
 | Command | Description |
 |---------|-------------|
-| `grab <name> <signature>` | Fetch a single transaction and save as `test_txs/<name>.bin` |
+| `grab <name> <signature>` | Fetch a single transaction and save as `.bin` + `.png` |
 | `search <program_id> [n]` | List recent transaction signatures for a program (default: 5) |
 | `all` | Fetch all uncommented entries from `signatures.tsv` |
 | `programs` | List known program IDs (supported and not yet supported) |
@@ -62,6 +78,6 @@ export SOLANA_RPC=https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
 
 Transactions from unsupported programs (Orca, Marinade, etc.) are expected to parse as "Unknown" — that's correct behavior. The test verifies that the parser handles them gracefully rather than crashing.
 
-## .bin files are not committed
+## Generated files are not committed
 
-The `.bin` files are generated locally and listed in `.gitignore`. Each developer runs `./capture.sh all` to populate them. This avoids bloating the repo with binary data and ensures test data is always fresh from mainnet.
+Both `test_txs_bin/` and `test_txs_qr/` are in `.gitignore`. Each developer runs `./capture.sh all` to populate them.

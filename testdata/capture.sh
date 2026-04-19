@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Captures Solana transactions as raw bytes for parser testing.
+# Captures Solana transactions as raw bytes and QR images for parser testing.
 #
 # Usage:
 #   ./capture.sh grab <name> <tx_signature>    Save a specific transaction
@@ -8,11 +8,40 @@
 #
 # Environment:
 #   SOLANA_RPC   RPC endpoint (default: mainnet public)
+#
+# Dependencies (for QR generation):
+#   qrencode, imagemagick
 
 set -euo pipefail
 
 RPC="${SOLANA_RPC:-https://api.mainnet-beta.solana.com}"
-OUTDIR="$(cd "$(dirname "$0")" && pwd)/test_txs"
+BASEDIR="$(cd "$(dirname "$0")" && pwd)"
+BIN_DIR="$BASEDIR/test_txs_bin"
+QR_DIR="$BASEDIR/test_txs_qr"
+
+check_qr_deps() {
+    local missing=()
+    command -v qrencode >/dev/null 2>&1 || missing+=(qrencode)
+    command -v magick >/dev/null 2>&1 || command -v convert >/dev/null 2>&1 || missing+=(imagemagick)
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo "Missing dependencies for QR generation: ${missing[*]}" >&2
+        if [[ "${OSTYPE:-}" == linux* ]]; then
+            echo "  sudo apt-get install -y ${missing[*]}" >&2
+        elif [[ "${OSTYPE:-}" == darwin* ]]; then
+            echo "  brew install ${missing[*]}" >&2
+        fi
+        return 1
+    fi
+    return 0
+}
+
+convert_cmd() {
+    if command -v magick >/dev/null 2>&1; then
+        echo "magick"
+    else
+        echo "convert"
+    fi
+}
 
 grab() {
     local name=$1 sig=$2
@@ -29,10 +58,19 @@ grab() {
         local b64
         b64=$(echo "$response" | jq -r '.result.transaction[0] // empty' 2>/dev/null)
         if [ -n "$b64" ]; then
-            echo "$b64" | base64 -d > "$OUTDIR/$name.bin"
+            mkdir -p "$BIN_DIR" "$QR_DIR"
+
+            echo "$b64" | base64 -d > "$BIN_DIR/$name.bin"
             local size
-            size=$(wc -c < "$OUTDIR/$name.bin")
-            echo "OK: $name → test_txs/$name.bin ($size bytes)"
+            size=$(wc -c < "$BIN_DIR/$name.bin")
+
+            # Generate labeled QR image from the base64 payload
+            if check_qr_deps 2>/dev/null; then
+                generate_qr "$name" "$b64"
+                echo "OK: $name → .bin ($size bytes) + .png"
+            else
+                echo "OK: $name → .bin ($size bytes) [no QR — missing deps]"
+            fi
             return 0
         fi
 
@@ -50,6 +88,27 @@ grab() {
     done
 }
 
+generate_qr() {
+    local name=$1 b64=$2
+    local qr_tmp
+    qr_tmp=$(mktemp /tmp/qr_XXXXXX.png)
+
+    echo -n "$b64" | qrencode -o "$qr_tmp" -s 10 -m 2 -l L 2>/dev/null || {
+        echo "  WARN: QR too large for $name, skipping" >&2
+        rm -f "$qr_tmp"
+        return 0
+    }
+
+    local conv
+    conv=$(convert_cmd)
+    "$conv" "$qr_tmp" \
+        -gravity South -background white -splice 0x36 \
+        -gravity South -font Courier -pointsize 24 -annotate +0+8 "$name" \
+        "$QR_DIR/$name.png" 2>/dev/null
+
+    rm -f "$qr_tmp"
+}
+
 search() {
     local program=$1 limit=${2:-5}
 
@@ -64,6 +123,12 @@ search() {
 all() {
     echo "Fetching curated transactions..."
     echo "RPC: $RPC"
+    if check_qr_deps; then
+        echo "QR generation: enabled"
+    else
+        echo ""
+        echo "QR generation: disabled (continuing without QR images)"
+    fi
     echo ""
 
     local ok=0 fail=0
