@@ -40,3 +40,26 @@ pub fn try_decode_qr(frame: &Frame) -> Option<Vec<u8>> {
     }
     None
 }
+
+/// Try to decode a QR from the frame and feed it to the UR accumulator.
+/// Returns the fully reconstructed payload when all fountain parts are received,
+/// or a single-frame payload if the QR is not UR-encoded.
+pub fn try_decode_qr_ur(
+    frame: &Frame,
+    accumulator: &mut crate::qr::ur_decoder::UrAccumulator,
+) -> Option<Vec<u8>> {
+    let raw = try_decode_qr(frame)?;
+    let text = std::str::from_utf8(&raw).ok()?;
+
+    if crate::qr::ur_decoder::UrAccumulator::is_ur(text) {
+        if accumulator.receive(text).ok()? {
+            let msg = accumulator.message()?;
+            accumulator.reset();
+            return Some(msg);
+        }
+        None
+    } else {
+        // Not UR — return raw bytes directly (backward compat with static QR)
+        Some(raw)
+    }
+}

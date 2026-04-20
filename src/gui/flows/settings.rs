@@ -70,11 +70,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         Some(w) => w,
                         None => return Screen::SettingsMenu { selected: 3 },
                     };
-                    #[cfg(any(feature = "simulator", target_os = "linux"))]
+                    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                     let raw: String = app.scanned_qr.take()
                         .and_then(|b| String::from_utf8(b).ok())
                         .unwrap_or_else(|| wallet.address.clone());
-                    #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                    #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                     let raw: String = wallet.address.clone();
 
                     let addr = derivation::normalize_address_input(&raw);

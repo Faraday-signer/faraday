@@ -6,7 +6,11 @@ description = "Air-gapped Solana transaction signer"
 
 [features]
 default = []
-simulator = ["dep:minifb", "dep:nokhwa"]
+# Their refactor splits desktop-sim into webcam vs file-picker variants.
+# Keep that, plus our templates feature on top.
+_desktop_sim = ["dep:minifb"]
+simulator = ["_desktop_sim", "dep:nokhwa"]
+simulator_no_cam = ["_desktop_sim", "dep:rfd", "image/png", "image/jpeg"]
 templates = ["dep:pdf-writer"]
 
 [[bin]]
@@ -43,6 +47,7 @@ zeroize = { version = "1", features = ["zeroize_derive"] }
 hex = "0.4"
 base64 = "0.22"
 qrcode = "0.14"
+ur = { version = "0.4", default-features = false }
 getrandom = "0.2"
 
 # QR decoding + image buffer. Shared by both the macOS simulator (nokhwa)
@@ -53,6 +58,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # Desktop simulator (optional)
 minifb = { version = "0.27", optional = true }
 nokhwa = { version = "0.10", default-features = false, features = ["input-avfoundation"], optional = true }
+rfd = { version = "0.17", optional = true, default-features = false, features = ["xdg-portal"] }
 
 # Printable template generator (optional, dev-only). Cross-compile builds for
 # the Pi don't enable this feature so pdf-writer never ends up in the image.
