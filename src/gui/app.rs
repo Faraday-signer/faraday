@@ -51,6 +51,9 @@ pub enum Screen {
         address: String,
         selected: usize,
     },
+    /// Pre-export warning. Forces the user to read the consequence before the
+    /// seed QR is rendered.
+    ExportSeedWarning { selected: usize, from_settings: bool },
     ExportSeedQr {
         seed_qr_data: String,
         compact_data: Vec<u8>,
@@ -61,6 +64,8 @@ pub enum Screen {
     // Load wallet flow
     LoadMethod { selected: usize },
     LoadScanQr,
+    /// Shown when the 12 or 24 typed words fail the BIP39 checksum.
+    LoadInvalidMnemonic { word_count: usize },
     LoadWordCount { selected: usize },
     LoadEnterWords {
         words: Vec<String>,
@@ -108,7 +113,7 @@ pub struct CharGrid {
     pub caps: bool,
 }
 
-const GRID_CHARS: [[char; 10]; 5] = [
+pub const GRID_CHARS: [[char; 10]; 5] = [
     ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'],
     ['k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't'],
     ['u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3'],
@@ -393,11 +398,12 @@ impl App {
             Screen::Splash => Screen::MainMenu { selected: 0 },
 
             Screen::MainMenu { mut selected } => {
+                const MAIN_MENU_LEN: usize = 4;
                 match event {
-                    InputEvent::Up => { if selected >= 2 { selected -= 2; } }
-                    InputEvent::Down => { if selected < 2 { selected += 2; } }
-                    InputEvent::Left => { if selected % 2 > 0 { selected -= 1; } }
-                    InputEvent::Right => { if selected % 2 < 1 { selected += 1; } }
+                    InputEvent::Up => { selected = selected.saturating_sub(1); }
+                    InputEvent::Down => {
+                        if selected + 1 < MAIN_MENU_LEN { selected += 1; }
+                    }
                     InputEvent::Confirm => return self.menu_select(selected),
                     _ => {}
                 }
@@ -407,7 +413,8 @@ impl App {
             // === Create Wallet Flow ===
             Screen::CreateWordCount { mut selected } => {
                 match event {
-                    InputEvent::Up | InputEvent::Down => { selected = 1 - selected; }
+                    InputEvent::Up => { selected = 0; }
+                    InputEvent::Down => { selected = 1; }
                     InputEvent::Confirm => {
                         let word_count = if selected == 0 { 12 } else { 24 };
                         return Screen::CreateMethod { word_count, selected: 0 };
@@ -531,7 +538,7 @@ impl App {
             }
 
             Screen::CreateShowWords { mnemonic, mut page, word_count } => {
-                let words_per_page = 6usize;
+                let words_per_page = 4usize;
                 let total_pages = (word_count + words_per_page - 1) / words_per_page;
                 match event {
                     InputEvent::Right | InputEvent::Down => {
@@ -588,7 +595,8 @@ impl App {
 
             Screen::CreatePassphrasePrompt { mnemonic, mut selected } => {
                 match event {
-                    InputEvent::Up | InputEvent::Down => { selected = 1 - selected; }
+                    InputEvent::Up => { selected = 0; }
+                    InputEvent::Down => { selected = 1; }
                     InputEvent::Confirm => {
                         if selected == 0 {
                             // Skip passphrase
@@ -660,21 +668,16 @@ impl App {
                 Screen::CreatePassphraseMismatch { mnemonic }
             }
 
-            Screen::CreateConfirm { mnemonic, passphrase, address, mut selected } => {
+            Screen::CreateConfirm { mnemonic, passphrase, address, selected } => {
                 match event {
-                    InputEvent::Left | InputEvent::Right => { selected = 1 - selected; }
                     InputEvent::Confirm => {
-                        if selected == 0 {
-                            // Confirm — load wallet, then offer SeedQR export
-                            let seed_qr_data = crate::models::encode_qr::encode_seed_qr(&mnemonic)
-                                .unwrap_or_default();
-                            let compact_data = crate::models::encode_qr::encode_compact_seed_qr(&mnemonic)
-                                .unwrap_or_default();
-                            self.load_wallet(mnemonic, passphrase);
-                            return Screen::ExportSeedQr { seed_qr_data, compact_data, compact_mode: false, from_settings: false };
-                        } else {
-                            return Screen::MainMenu { selected: 0 };
-                        }
+                        // Confirm — load wallet, then offer SeedQR export
+                        let seed_qr_data = crate::models::encode_qr::encode_seed_qr(&mnemonic)
+                            .unwrap_or_default();
+                        let compact_data = crate::models::encode_qr::encode_compact_seed_qr(&mnemonic)
+                            .unwrap_or_default();
+                        self.load_wallet(mnemonic, passphrase);
+                        return Screen::ExportSeedQr { seed_qr_data, compact_data, compact_mode: false, from_settings: false };
                     }
                     InputEvent::Back => {
                         return Screen::CreatePassphrasePrompt { mnemonic, selected: 0 };
@@ -682,6 +685,41 @@ impl App {
                     _ => {}
                 }
                 Screen::CreateConfirm { mnemonic, passphrase, address, selected }
+            }
+
+            // Row 0 = CANCEL (safe default), Row 1 = SHOW (exposes seed).
+            Screen::ExportSeedWarning { mut selected, from_settings } => {
+                match event {
+                    InputEvent::Up => { selected = 0; }
+                    InputEvent::Down => { selected = 1; }
+                    InputEvent::Confirm => {
+                        if selected == 1 {
+                            let mnemonic = self.wallet.as_ref().map(|w| w.mnemonic.clone());
+                            if let Some(mnemonic) = mnemonic {
+                                let seed_qr_data = crate::models::encode_qr::encode_seed_qr(&mnemonic)
+                                    .unwrap_or_default();
+                                let compact_data = crate::models::encode_qr::encode_compact_seed_qr(&mnemonic)
+                                    .unwrap_or_default();
+                                return Screen::ExportSeedQr {
+                                    seed_qr_data, compact_data,
+                                    compact_mode: false, from_settings,
+                                };
+                            }
+                        }
+                        if from_settings {
+                            return Screen::SettingsMenu { selected: 1 };
+                        }
+                        return Screen::MainMenu { selected: 0 };
+                    }
+                    InputEvent::Back => {
+                        if from_settings {
+                            return Screen::SettingsMenu { selected: 1 };
+                        }
+                        return Screen::MainMenu { selected: 0 };
+                    }
+                    _ => {}
+                }
+                Screen::ExportSeedWarning { selected, from_settings }
             }
 
             Screen::ExportSeedQr { seed_qr_data, compact_data, compact_mode, from_settings } => {
@@ -706,7 +744,8 @@ impl App {
             // === Load Wallet Flow ===
             Screen::LoadMethod { mut selected } => {
                 match event {
-                    InputEvent::Up | InputEvent::Down => { selected = 1 - selected; }
+                    InputEvent::Up => { selected = 0; }
+                    InputEvent::Down => { selected = 1; }
                     InputEvent::Confirm => {
                         if selected == 0 {
                             return Screen::LoadScanQr;
@@ -747,7 +786,8 @@ impl App {
 
             Screen::LoadWordCount { mut selected } => {
                 match event {
-                    InputEvent::Up | InputEvent::Down => { selected = 1 - selected; }
+                    InputEvent::Up => { selected = 0; }
+                    InputEvent::Down => { selected = 1; }
                     InputEvent::Confirm => {
                         let word_count = if selected == 0 { 12 } else { 24 };
                         return Screen::LoadEnterWords {
@@ -780,18 +820,35 @@ impl App {
                         if bip39::validate_mnemonic(&mnemonic) {
                             return Screen::LoadPassphrasePrompt { mnemonic, selected: 0 };
                         }
-                        // Invalid checksum — reset picker for last word
-                        picker.words.pop();
-                        picker.word_index -= 1;
+                        // Invalid checksum — surface an error screen so the
+                        // user knows why nothing advanced.
+                        return Screen::LoadInvalidMnemonic { word_count };
                     }
                     words = entered;
                 }
                 Screen::LoadEnterWords { words, word_count, picker }
             }
 
+            Screen::LoadInvalidMnemonic { word_count } => {
+                match event {
+                    InputEvent::Confirm => {
+                        // Retry — fresh word picker with the same word count.
+                        return Screen::LoadEnterWords {
+                            words: Vec::new(),
+                            word_count,
+                            picker: WordPicker::new(word_count),
+                        };
+                    }
+                    InputEvent::Back => return Screen::LoadMethod { selected: 1 },
+                    _ => {}
+                }
+                Screen::LoadInvalidMnemonic { word_count }
+            }
+
             Screen::LoadPassphrasePrompt { mnemonic, mut selected } => {
                 match event {
-                    InputEvent::Up | InputEvent::Down => { selected = 1 - selected; }
+                    InputEvent::Up => { selected = 0; }
+                    InputEvent::Down => { selected = 1; }
                     InputEvent::Confirm => {
                         if selected == 0 {
                             let passphrase = String::new();
@@ -858,16 +915,11 @@ impl App {
                 Screen::LoadPassphraseMismatch { mnemonic }
             }
 
-            Screen::LoadConfirm { mnemonic, passphrase, address, mut selected } => {
+            Screen::LoadConfirm { mnemonic, passphrase, address, selected } => {
                 match event {
-                    InputEvent::Left | InputEvent::Right => { selected = 1 - selected; }
                     InputEvent::Confirm => {
-                        if selected == 0 {
-                            self.load_wallet(mnemonic, passphrase);
-                            return Screen::MainMenu { selected: 0 };
-                        } else {
-                            return Screen::MainMenu { selected: 0 };
-                        }
+                        self.load_wallet(mnemonic, passphrase);
+                        return Screen::MainMenu { selected: 0 };
                     }
                     InputEvent::Back => {
                         return Screen::LoadPassphrasePrompt { mnemonic, selected: 0 };
@@ -1015,26 +1067,19 @@ impl App {
                         if self.wallet.is_some() {
                             return match selected {
                                 0 => Screen::SettingsShowAddress,
-                                1 => {
-                                    let mnemonic = &self.wallet.as_ref().unwrap().mnemonic;
-                                    let seed_qr_data = crate::models::encode_qr::encode_seed_qr(mnemonic)
-                                        .unwrap_or_default();
-                                    let compact_data = crate::models::encode_qr::encode_compact_seed_qr(mnemonic)
-                                        .unwrap_or_default();
-                                    Screen::ExportSeedQr { seed_qr_data, compact_data, compact_mode: false, from_settings: true }
-                                }
+                                1 => Screen::ExportSeedWarning { selected: 0, from_settings: true },
                                 2 => {
                                     let accounts = self.build_accounts_list();
                                     Screen::SettingsAccounts { accounts, selected: 0 }
                                 }
                                 3 => Screen::SettingsAbout,
-                                4 => Screen::SettingsPowerOff { selected: 1 },
+                                4 => Screen::SettingsPowerOff { selected: 0 },
                                 _ => Screen::SettingsMenu { selected },
                             };
                         } else {
                             return match selected {
                                 0 => Screen::SettingsAbout,
-                                1 => Screen::SettingsPowerOff { selected: 1 },
+                                1 => Screen::SettingsPowerOff { selected: 0 },
                                 _ => Screen::SettingsMenu { selected },
                             };
                         }
@@ -1079,11 +1124,13 @@ impl App {
                 Screen::SettingsAbout
             }
 
+            // Row 0 = NO (safe default), Row 1 = YES (destructive).
             Screen::SettingsPowerOff { mut selected } => {
                 match event {
-                    InputEvent::Left | InputEvent::Right => { selected = 1 - selected; }
+                    InputEvent::Up => { selected = 0; }
+                    InputEvent::Down => { selected = 1; }
                     InputEvent::Confirm => {
-                        if selected == 0 {
+                        if selected == 1 {
                             // Power off — on Pi this would trigger shutdown
                             self.wallet = None;
                             #[cfg(target_os = "linux")]
