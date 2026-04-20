@@ -30,6 +30,14 @@ pub const SUCCESS: Rgb565 = SOLANA_GREEN;
 pub const WARNING: Rgb565 = Rgb565::new(31, 48, 0);         // #FFC107
 pub const DANGER: Rgb565 = Rgb565::new(31, 8, 7);           // #FF453A
 
+/// Faraday brand cyan (#1AF8FF). Used for locator / "you-are-here" overlays
+/// and any place we want the backup UI to visually match the printable
+/// template's accent.
+pub const BRAND_CYAN: Rgb565 = Rgb565::new(3, 61, 31);
+
+/// Neutral separator for drawing visible borders between adjacent QR cells.
+pub const CELL_BORDER: Rgb565 = Rgb565::new(14, 28, 14);    // mid-grey
+
 // Card borders
 pub const BORDER_DEFAULT: Rgb565 = Rgb565::new(4, 8, 5);    // #202828
 pub const BORDER_SELECTED: Rgb565 = SOLANA_PURPLE;

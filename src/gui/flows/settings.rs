@@ -16,12 +16,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             0 => Screen::SettingsShowAddress,
                             1 => {
                                 let mnemonic = &app.wallet.as_ref().unwrap().mnemonic;
-                                let seed_qr_data = crate::qr::encode_qr::encode_seed_qr(mnemonic)
-                                    .unwrap_or_default();
                                 let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(mnemonic)
                                     .unwrap_or_default();
-                                Screen::ExportSeedQr {
-                                    seed_qr_data, compact_data, compact_mode: false, from_settings: true,
+                                Screen::ExportSeedQrMenu {
+                                    compact_data, selected: 0, from_settings: true,
                                 }
                             }
                             2 => {

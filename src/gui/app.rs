@@ -59,12 +59,43 @@ pub enum Screen {
         address: String,
         selected: usize,
     },
-    ExportSeedQr {
-        seed_qr_data: String,
+    /// Landing page for all seed-backup actions.
+    ExportSeedQrMenu {
         compact_data: Vec<u8>,
-        compact_mode: bool,
+        selected: usize,
         from_settings: bool,
     },
+    /// Paged view of the 12/24-word mnemonic for write-it-down backup.
+    ExportShowWords {
+        compact_data: Vec<u8>,
+        mnemonic: String,
+        page: usize,
+        word_count: usize,
+        from_settings: bool,
+    },
+    /// Full QR display — shown as the final check after the paper-backup
+    /// block walkthrough. Not reachable directly from the menu.
+    ExportSeedQr {
+        compact_data: Vec<u8>,
+        from_settings: bool,
+    },
+    /// Zoomed block-by-block view for hand transcription onto the paper
+    /// template. `block_index` is row-major over the 3×3 (21×21) or 5×5
+    /// (25×25) block grid.
+    ExportSeedQrBlock {
+        compact_data: Vec<u8>,
+        block_index: usize,
+        from_settings: bool,
+    },
+
+    // Verify backup flow: scan the paper QR, confirm mnemonic matches the
+    // loaded wallet; if that wallet has a passphrase, also prompt for it
+    // and check the derived address matches.
+    VerifyBackupScan,
+    VerifyBackupSeedMismatch,
+    VerifyBackupPassphrase { grid: CharGrid },
+    VerifyBackupPassphraseMismatch,
+    VerifyBackupSuccess,
 
     // Load wallet flow
     LoadMethod { selected: usize },
@@ -406,6 +437,14 @@ impl App {
         self.wallet.is_some()
     }
 
+    /// Title used for every screen in the SeedQR backup flow. Appends "+P"
+    /// when a passphrase is set, so the user is continuously reminded the
+    /// QR alone isn't enough to restore the wallet.
+    pub fn seedqr_title(&self) -> &'static str {
+        let has_passphrase = self.wallet.as_ref().map_or(false, |w| !w.passphrase.is_empty());
+        if has_passphrase { "SeedQR +P" } else { "SeedQR" }
+    }
+
     pub fn enter_main_menu(&mut self) {
         self.screen = Screen::MainMenu { selected: 0 };
     }
@@ -467,6 +506,7 @@ impl App {
                 | Screen::SignScanTx
                 | Screen::CreateCameraEntropy { .. }
                 | Screen::SettingsVerifyAddressScan
+                | Screen::VerifyBackupScan
         )
     }
 
@@ -494,7 +534,10 @@ impl App {
 
         let is_scan_screen = matches!(
             self.screen,
-            Screen::LoadScanQr | Screen::SignScanTx | Screen::SettingsVerifyAddressScan
+            Screen::LoadScanQr
+                | Screen::SignScanTx
+                | Screen::SettingsVerifyAddressScan
+                | Screen::VerifyBackupScan
         );
         let pending_qr = if let Some(cam) = &self.camera {
             cam.set_decode_enabled(is_scan_screen);
@@ -520,7 +563,10 @@ impl App {
         if let Some(data) = pending_qr {
             if matches!(
                 self.screen,
-                Screen::LoadScanQr | Screen::SignScanTx | Screen::SettingsVerifyAddressScan
+                Screen::LoadScanQr
+                    | Screen::SignScanTx
+                    | Screen::SettingsVerifyAddressScan
+                    | Screen::VerifyBackupScan
             ) {
                 self.scanned_qr = Some(data);
                 self.handle_input(InputEvent::Confirm);
@@ -560,7 +606,10 @@ impl App {
                 | Screen::CreatePassphraseConfirm { .. }
                 | Screen::CreatePassphraseMismatch { .. }
                 | Screen::CreateConfirm { .. }
-                | Screen::ExportSeedQr { .. }) => flows::create::handle(self, s, event),
+                | Screen::ExportSeedQrMenu { .. }
+                | Screen::ExportShowWords { .. }
+                | Screen::ExportSeedQr { .. }
+                | Screen::ExportSeedQrBlock { .. }) => flows::create::handle(self, s, event),
 
             s @ (Screen::LoadMethod { .. }
                 | Screen::LoadScanQr
@@ -586,6 +635,12 @@ impl App {
                 | Screen::SettingsVerifyAddressResult { .. }
                 | Screen::SettingsAbout
                 | Screen::SettingsPowerOff { .. }) => flows::settings::handle(self, s, event),
+
+            s @ (Screen::VerifyBackupScan
+                | Screen::VerifyBackupSeedMismatch
+                | Screen::VerifyBackupPassphrase { .. }
+                | Screen::VerifyBackupPassphraseMismatch
+                | Screen::VerifyBackupSuccess) => flows::verify::handle(self, s, event),
         }
     }
 
