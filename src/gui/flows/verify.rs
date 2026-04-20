@@ -13,14 +13,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         Screen::VerifyBackupScan => {
             match event {
                 InputEvent::Confirm => {
-                    #[cfg(any(feature = "simulator", target_os = "linux"))]
-                    let data: Vec<u8> = app.scanned_qr.take().unwrap_or_default();
-                    #[cfg(not(any(feature = "simulator", target_os = "linux")))]
-                    let data: Vec<u8> = Vec::new();
-
-                    if data.is_empty() {
-                        return Screen::VerifyBackupScan;
-                    }
+                    // Only advance on a real scan.
+                    let data = match app.scanned_qr.take() {
+                        Some(d) if !d.is_empty() => d,
+                        _ => return Screen::VerifyBackupScan,
+                    };
 
                     let decoded = decode_qr::detect_and_decode(&data);
                     let scanned_mn = match decoded.mnemonic {

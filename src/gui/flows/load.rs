@@ -25,13 +25,15 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         Screen::LoadScanQr => {
             match event {
                 InputEvent::Confirm => {
-                    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
-                    let data: Vec<u8> = app.scanned_qr.take().unwrap_or_else(|| {
-                        "000000000000000000000000000000000000000000000003".as_bytes().to_vec()
-                    });
-                    #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
-                    let data: Vec<u8> =
-                        "000000000000000000000000000000000000000000000003".as_bytes().to_vec();
+                    // Only advance when a camera frame actually decoded a QR.
+                    // Previously this fell back to a canonical test mnemonic
+                    // so sim users could press Enter without a real QR, but
+                    // that made the device appear to accept a scan that never
+                    // happened. Stay put instead.
+                    let data = match app.scanned_qr.take() {
+                        Some(d) => d,
+                        None => return Screen::LoadScanQr,
+                    };
                     let decoded = decode_qr::detect_and_decode(&data);
 
                     #[cfg(feature = "_desktop_sim")]
