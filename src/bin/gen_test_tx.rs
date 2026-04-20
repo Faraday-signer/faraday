@@ -1,9 +1,12 @@
 //! Dev helper: build an unsigned Solana System::Transfer (0.01 SOL self-send)
 //! for a given mnemonic, base64-encode it, and render as a PNG QR so you can
-//! scan-test the Sign TX flow on a Pi device.
+//! scan-test the Sign TX flow on a Pi device. Also writes the raw tx bytes
+//! alongside for parser testing.
 //!
-//! Default mnemonic is the one decoded from your hand-drawn backup
-//! (IMG_2311), deriving `GAthe6Gh8xEuJobQWB3cLUBFjsGtyvsk7Y3BeQMkMsfT`.
+//! Outputs land in `testdata/examples/` (committed to the repo so demo
+//! materials are available without re-running this tool).
+//!
+//! Default mnemonic derives `GAthe6Gh8xEuJobQWB3cLUBFjsGtyvsk7Y3BeQMkMsfT`.
 
 #[path = "../crypto/mod.rs"]
 mod crypto;
@@ -81,14 +84,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let out = "/tmp/faraday_test_tx.png";
-    img.save(out)?;
+    let dir = "testdata/examples";
+    std::fs::create_dir_all(dir)?;
+    let png_path = format!("{dir}/self_transfer.png");
+    let bin_path = format!("{dir}/self_transfer.bin");
+    img.save(&png_path)?;
+    std::fs::write(&bin_path, &tx)?;
 
     println!(
-        "wrote {out} ({px} px square, QR {size}x{size}, {} tx bytes, {} base64 chars)",
+        "wrote {png_path} ({px} px square, QR {size}x{size}, {} tx bytes, {} base64 chars)",
         tx.len(),
         tx_b64.len()
     );
+    println!("wrote {bin_path} (raw tx bytes for parser testing)");
     println!("from / to: {address}  (self-transfer)");
     println!("amount:    {} lamports ({} SOL)", LAMPORTS, LAMPORTS as f64 / 1e9);
     println!();
