@@ -23,50 +23,53 @@ pub struct DecodedQr {
 }
 
 /// Detect QR type and decode.
+///
+/// Text-based formats are tried first (SeedQR / address / tx). CompactSeedQR
+/// is a last resort because `mnemonic_from_raw_entropy` accepts *any* 16/32
+/// bytes — without this ordering a 32-char base58 address collides with a
+/// 24-word CompactSeedQR.
 pub fn detect_and_decode(data: &[u8]) -> DecodedQr {
-    // Binary: try CompactSeedQR
-    if data.len() == 17 || data.len() == 33 {
+    if let Ok(s) = std::str::from_utf8(data) {
+        let text = s.trim();
+
+        // SeedQR: all digits, 48 or 96 chars
+        if (text.len() == 48 || text.len() == 96) && text.chars().all(|c| c.is_ascii_digit()) {
+            if let Some(decoded) = try_decode_seed_qr(text) {
+                return decoded;
+            }
+        }
+
+        // Solana address: base58, 32-44 chars
+        if text.len() >= 32 && text.len() <= 44 && is_base58(text) {
+            return DecodedQr {
+                qr_type: QrType::SolanaAddress,
+                raw_data: data.to_vec(),
+                mnemonic: None,
+                tx_bytes: None,
+                address: Some(text.to_string()),
+            };
+        }
+
+        // Base64 transaction: > 50 chars
+        if text.len() > 50 {
+            if let Ok(tx_bytes) = BASE64.decode(text) {
+                if tx_bytes.len() >= 65 {
+                    return DecodedQr {
+                        qr_type: QrType::SolanaTxBase64,
+                        raw_data: data.to_vec(),
+                        mnemonic: None,
+                        tx_bytes: Some(tx_bytes),
+                        address: None,
+                    };
+                }
+            }
+        }
+    }
+
+    // Binary CompactSeedQR (raw entropy, no checksum)
+    if data.len() == 16 || data.len() == 32 {
         if let Some(decoded) = try_decode_compact_seed_qr(data) {
             return decoded;
-        }
-    }
-
-    // Try as UTF-8 string
-    let text = match std::str::from_utf8(data) {
-        Ok(s) => s.trim(),
-        Err(_) => return DecodedQr { qr_type: QrType::Unknown, raw_data: data.to_vec(), mnemonic: None, tx_bytes: None, address: None },
-    };
-
-    // SeedQR: all digits, 48 or 96 chars
-    if (text.len() == 48 || text.len() == 96) && text.chars().all(|c| c.is_ascii_digit()) {
-        if let Some(decoded) = try_decode_seed_qr(text) {
-            return decoded;
-        }
-    }
-
-    // Solana address: base58, 32-44 chars
-    if text.len() >= 32 && text.len() <= 44 && is_base58(text) {
-        return DecodedQr {
-            qr_type: QrType::SolanaAddress,
-            raw_data: data.to_vec(),
-            mnemonic: None,
-            tx_bytes: None,
-            address: Some(text.to_string()),
-        };
-    }
-
-    // Base64 transaction: > 50 chars
-    if text.len() > 50 {
-        if let Ok(tx_bytes) = BASE64.decode(text) {
-            if tx_bytes.len() >= 65 {
-                return DecodedQr {
-                    qr_type: QrType::SolanaTxBase64,
-                    raw_data: data.to_vec(),
-                    mnemonic: None,
-                    tx_bytes: Some(tx_bytes),
-                    address: None,
-                };
-            }
         }
     }
 
@@ -93,29 +96,10 @@ fn try_decode_seed_qr(data: &str) -> Option<DecodedQr> {
 }
 
 fn try_decode_compact_seed_qr(data: &[u8]) -> Option<DecodedQr> {
-    let word_count = match data.len() {
-        17 => 12,
-        33 => 24,
-        _ => return None,
-    };
-
-    let bits: Vec<u8> = data.iter()
-        .flat_map(|byte| (0..8).rev().map(move |i| (byte >> i) & 1))
-        .collect();
-
-    let mut words = Vec::new();
-    for i in 0..word_count {
-        let start = i * 11;
-        let mut idx: usize = 0;
-        for j in 0..11 {
-            idx = (idx << 1) | (bits[start + j] as usize);
-        }
-        if idx >= 2048 { return None; }
-        words.push(bip39::get_word(idx).to_string());
-    }
-
-    let mnemonic = words.join(" ");
-    if !bip39::validate_mnemonic(&mnemonic) { return None; }
+    // Data is raw entropy (16 or 32 bytes). Rebuild the mnemonic via the BIP39
+    // spec — this recomputes the checksum from the entropy and yields a
+    // validated mnemonic.
+    let mnemonic = bip39::mnemonic_from_raw_entropy(data).ok()?;
 
     Some(DecodedQr {
         qr_type: QrType::CompactSeedQr,

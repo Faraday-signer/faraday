@@ -83,12 +83,15 @@ impl App {
                 draw_confirm_address(display, "New Wallet", address, path, *selected, self.seed_loaded())
             }
             Screen::ExportSeedQr { seed_qr_data, compact_data, compact_mode, .. } => {
+                // Seed backup QRs use ECL L: smallest grid possible so manual
+                // transcription onto a paper template has fewer cells to fill.
+                let ec = crate::qr::encode_qr::QrEcLevel::L;
                 if *compact_mode {
                     // Compact SeedQR: binary data displayed as hex for QR
                     let hex_data = hex::encode(compact_data);
-                    draw_qr(display, "Compact SeedQR", &hex_data, self.seed_loaded())
+                    draw_qr(display, "Compact SeedQR", &hex_data, self.seed_loaded(), ec)
                 } else {
-                    draw_qr(display, "SeedQR Backup", seed_qr_data, self.seed_loaded())
+                    draw_qr(display, "SeedQR Backup", seed_qr_data, self.seed_loaded(), ec)
                 }
             }
 
@@ -152,13 +155,13 @@ impl App {
                 draw_tx_review(display, info_lines, *scroll, *selected, *can_sign, self.seed_loaded())
             }
             Screen::SignShowQr { data } => {
-                draw_qr(display, "Signed TX", data, self.seed_loaded())
+                draw_qr(display, "Signed TX", data, self.seed_loaded(), crate::qr::encode_qr::QrEcLevel::M)
             }
             Screen::SignMessageInput { grid } => {
                 draw_char_grid(display, grid, "Sign Message", self.seed_loaded())
             }
             Screen::SignMessageResult { signature_hex } => {
-                draw_qr(display, "Signature", signature_hex, self.seed_loaded())
+                draw_qr(display, "Signature", signature_hex, self.seed_loaded(), crate::qr::encode_qr::QrEcLevel::M)
             }
 
             // Settings
@@ -175,7 +178,7 @@ impl App {
             }
             Screen::SettingsShowAddress => {
                 if let Some(wallet) = &self.wallet {
-                    draw_qr(display, "Address", &wallet.address, true)
+                    draw_qr(display, "Address", &wallet.address, true, crate::qr::encode_qr::QrEcLevel::M)
                 } else {
                     draw_message(display, "Address", "No wallet loaded", false)
                 }

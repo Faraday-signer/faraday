@@ -82,10 +82,4 @@ mod tests {
         assert!(result.is_some());
     }
 
-    #[test]
-    fn test_bump_is_at_most_255() {
-        let program_id = [1u8; 32];
-        let (_addr, bump) = find_program_address(&[b"test"], &program_id).unwrap();
-        assert!(bump <= 255);
-    }
 }
