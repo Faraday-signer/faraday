@@ -609,10 +609,11 @@ fn draw_settings_menu<D: DrawTarget<Color = Rgb565>>(
 
     let theme = Theme::faraday_240();
 
-    let loaded: [ListRow; 5] = [
+    let loaded: [ListRow; 6] = [
         ListRow::new("ADDRESS"),
         ListRow::new("EXPORT QR"),
         ListRow::new("ACCOUNTS"),
+        ListRow::new("VERIFY"),
         ListRow::new("ABOUT"),
         ListRow::new("POWER OFF"),
     ];
