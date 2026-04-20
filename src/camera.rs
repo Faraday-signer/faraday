@@ -49,7 +49,16 @@ pub fn try_decode_qr_ur(
     accumulator: &mut crate::qr::ur_decoder::UrAccumulator,
 ) -> Option<Vec<u8>> {
     let raw = try_decode_qr(frame)?;
-    let text = std::str::from_utf8(&raw).ok()?;
+
+    // Binary payloads (e.g. CompactSeedQR raw entropy) almost always contain
+    // non-UTF-8 bytes. A UR message is by spec a printable `ur:<type>/<seq>`
+    // text string, so if the bytes aren't valid UTF-8 they can't be UR —
+    // return them verbatim. Without this, random entropy bytes look like
+    // "decode failed" to the caller and valid scans get silently dropped.
+    let text = match std::str::from_utf8(&raw) {
+        Ok(t) => t,
+        Err(_) => return Some(raw),
+    };
 
     if crate::qr::ur_decoder::UrAccumulator::is_ur(text) {
         if accumulator.receive(text).ok()? {
