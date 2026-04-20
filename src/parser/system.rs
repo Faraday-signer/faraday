@@ -111,7 +111,7 @@ fn parse_transfer_with_seed(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<Re
     ])
 }
 
-pub fn lamports_to_sol(lamports: u64) -> String {
+pub(crate) fn lamports_to_sol(lamports: u64) -> String {
     let sol = lamports / 1_000_000_000;
     let frac = lamports % 1_000_000_000;
     if frac == 0 {

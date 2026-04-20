@@ -97,12 +97,12 @@ impl App {
                 draw_option_list(display, "Load Wallet", &["Scan SeedQR", "Enter Words"], *selected, self.seed_loaded())
             }
             Screen::LoadScanQr => {
-                #[cfg(any(feature = "simulator", target_os = "linux"))]
+                #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                 {
                     draw_scan_overlay(display, "Scan SeedQR", "Point camera at SeedQR",
                         self.seed_loaded(), self.has_camera_frame(), self.camera_error_str())?;
                 }
-                #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                 {
                     draw_message(display, "Scan SeedQR", "Point camera at\nSeedQR code", self.seed_loaded())?;
                 }
@@ -138,12 +138,12 @@ impl App {
                 draw_message(display, "Sign TX", "Load a wallet first", self.seed_loaded())
             }
             Screen::SignScanTx => {
-                #[cfg(any(feature = "simulator", target_os = "linux"))]
+                #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                 {
                     draw_scan_overlay(display, "Sign TX", "Point camera at TX QR",
                         self.seed_loaded(), self.has_camera_frame(), self.camera_error_str())
                 }
-                #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                 {
                     draw_message(display, "Sign TX", "Scan unsigned TX QR\nX: Sign Message", self.seed_loaded())
                 }
@@ -181,12 +181,12 @@ impl App {
                 }
             }
             Screen::SettingsVerifyAddressScan => {
-                #[cfg(any(feature = "simulator", target_os = "linux"))]
+                #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                 {
                     draw_scan_overlay(display, "Verify Address", "Point camera at address QR",
                         self.seed_loaded(), self.has_camera_frame(), self.camera_error_str())
                 }
-                #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                 {
                     draw_message(display, "Verify Address", "Scan address QR\nto verify it's yours", self.seed_loaded())
                 }
@@ -845,7 +845,7 @@ fn draw_camera_entropy<D: DrawTarget<Color = Rgb565>>(
 /// Overlay for scan screens (LoadScanQr, SignScanTx) when the webcam preview
 /// is active. Paints status bar, a centered reticle, and a bottom hint bar on
 /// top of the already-blitted preview.
-#[cfg(any(feature = "simulator", target_os = "linux"))]
+#[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
 fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     title: &str,

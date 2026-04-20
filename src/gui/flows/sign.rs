@@ -17,11 +17,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             match event {
                 InputEvent::Confirm => {
                     if let Some(wallet) = &app.wallet {
-                        #[cfg(any(feature = "simulator", target_os = "linux"))]
+                        #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                         let tx_base64: String = app.scanned_qr.take()
                             .and_then(|b| String::from_utf8(b).ok())
                             .unwrap_or_else(|| build_test_transaction(&wallet.keypair.public_key));
-                        #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                        #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                         let tx_base64: String = build_test_transaction(&wallet.keypair.public_key);
                         let decoded = decode_qr::detect_and_decode(tx_base64.as_bytes());
                         if let Some(tx_bytes) = decoded.tx_bytes {
@@ -64,7 +64,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                                 &wallet.keypair.private_key,
                                 &wallet.keypair.public_key,
                             ) {
-                                #[cfg(feature = "simulator")]
+                                #[cfg(feature = "_desktop_sim")]
                                 {
                                     println!("Signed by: {}", signed.signer_pubkey);
                                     println!("Signature: {}...", hex::encode(&signed.signature[..16]));
