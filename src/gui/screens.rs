@@ -142,6 +142,9 @@ impl App {
             Screen::LoadInvalidMnemonic { word_count } => {
                 draw_invalid_mnemonic(display, *word_count)
             }
+            Screen::LoadFinalize { preview_address, selected, .. } => {
+                draw_load_finalize(display, preview_address, *selected)
+            }
             Screen::LoadPassphrasePrompt { selected, .. } => {
                 draw_passphrase_prompt(display, *selected)
             }
@@ -511,6 +514,50 @@ fn draw_preview<D: DrawTarget<Color = Rgb565>>(
 }
 
 /// Shared passphrase prompt for the Create and Load flows.
+/// Post-scan / post-word-entry confirmation. Shows the preview Solana address
+/// (derived with no passphrase) so the user can see something was actually
+/// read, then offers DONE (no passphrase) or ADD PASSPHRASE. Replaces the
+/// previous SKIP/ADD prompt which read as a negative framing.
+fn draw_load_finalize<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    preview_address: &str,
+    selected: usize,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{ButtonBar, HeaderKind, ListRow};
+    use crate::ui::{screens::ListScreen, Theme};
+
+    let theme = Theme::faraday_240();
+
+    // Abbreviate the address so it fits the description band: first 6 chars
+    // + ellipsis + last 4 chars. Long enough to visually verify, short
+    // enough to never wrap.
+    let addr_short = if preview_address.len() > 12 {
+        let head = &preview_address[..6];
+        let tail = &preview_address[preview_address.len() - 4..];
+        format!("{head}…{tail}")
+    } else {
+        preview_address.to_string()
+    };
+
+    let rows: [ListRow; 2] = [
+        ListRow::with_subtitle("DONE", "No passphrase"),
+        ListRow::with_subtitle("ADD PASSPHRASE", "Extra security layer"),
+    ];
+    let sel = selected.min(1);
+
+    ListScreen {
+        header: HeaderKind::Title("SEED LOADED"),
+        counter: None,
+        description: Some(&addr_short),
+        items: &rows,
+        selected: sel,
+        max_visible: 2,
+        selectable: true,
+        buttons: ButtonBar::new().back("BACK").confirm("CONFIRM"),
+    }
+    .draw(display, &theme)
+}
+
 fn draw_passphrase_prompt<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     selected: usize,

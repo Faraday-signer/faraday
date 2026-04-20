@@ -113,6 +113,14 @@ pub enum Screen {
         word_count: usize,
         picker: WordPicker,
     },
+    /// After a successful scan or word-entry load, show the preview address
+    /// (no-passphrase derivation) and ask Done / Add passphrase. Replaces the
+    /// old "Skip vs Add" prompt which read as a negative choice.
+    LoadFinalize {
+        mnemonic: String,
+        preview_address: String,
+        selected: usize,
+    },
     LoadPassphrasePrompt { mnemonic: String, selected: usize },
     LoadPassphraseInput { mnemonic: String, grid: CharGrid },
     LoadPassphraseConfirm { mnemonic: String, passphrase: String, grid: CharGrid },
@@ -625,6 +633,7 @@ impl App {
                 | Screen::LoadInvalidMnemonic { .. }
                 | Screen::LoadWordCount { .. }
                 | Screen::LoadEnterWords { .. }
+                | Screen::LoadFinalize { .. }
                 | Screen::LoadPassphrasePrompt { .. }
                 | Screen::LoadPassphraseInput { .. }
                 | Screen::LoadPassphraseConfirm { .. }

@@ -40,7 +40,12 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     println!("QR decoded: {:?} ({} bytes raw)", decoded.qr_type, decoded.raw_data.len());
 
                     if let Some(mnemonic) = decoded.mnemonic {
-                        return Screen::LoadPassphrasePrompt { mnemonic, selected: 0 };
+                        let preview_address = app.derive_address(&mnemonic, "");
+                        return Screen::LoadFinalize {
+                            mnemonic,
+                            preview_address,
+                            selected: 0,
+                        };
                     }
                     if let Some(_addr) = &decoded.address {
                         #[cfg(feature = "_desktop_sim")]
@@ -85,7 +90,12 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 if entered.len() == word_count {
                     let mnemonic = entered.join(" ");
                     if bip39::validate_mnemonic(&mnemonic) {
-                        return Screen::LoadPassphrasePrompt { mnemonic, selected: 0 };
+                        let preview_address = app.derive_address(&mnemonic, "");
+                        return Screen::LoadFinalize {
+                            mnemonic,
+                            preview_address,
+                            selected: 0,
+                        };
                     }
                     // Invalid checksum — surface an error screen so the user
                     // knows why nothing advanced.
@@ -109,6 +119,28 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 _ => {}
             }
             Screen::LoadInvalidMnemonic { word_count }
+        }
+
+        Screen::LoadFinalize { mnemonic, preview_address, mut selected } => {
+            match event {
+                InputEvent::Up => { if selected > 0 { selected -= 1; } }
+                InputEvent::Down => { if selected < 1 { selected += 1; } }
+                InputEvent::Confirm => {
+                    if selected == 0 {
+                        // DONE — load wallet with no passphrase and go home.
+                        app.load_wallet(mnemonic, String::new());
+                        return Screen::MainMenu { selected: 0 };
+                    }
+                    // ADD PASSPHRASE — jump straight into the char grid.
+                    return Screen::LoadPassphraseInput {
+                        mnemonic,
+                        grid: CharGrid::new(),
+                    };
+                }
+                InputEvent::Back => return Screen::LoadMethod { selected: 0 },
+                _ => {}
+            }
+            Screen::LoadFinalize { mnemonic, preview_address, selected }
         }
 
         Screen::LoadPassphrasePrompt { mnemonic, mut selected } => {
