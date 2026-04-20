@@ -277,11 +277,13 @@ fn decoder_loop(
     stop: Arc<AtomicBool>,
     decode_enabled: Arc<AtomicBool>,
 ) {
+    let mut ur_acc = crate::qr::ur_decoder::UrAccumulator::new();
     loop {
         if stop.load(Ordering::Relaxed) {
             return;
         }
         if !decode_enabled.load(Ordering::Relaxed) {
+            ur_acc.reset();
             thread::sleep(Duration::from_millis(100));
             continue;
         }
@@ -300,7 +302,7 @@ fn decoder_loop(
                 continue;
             }
         };
-        if let Some(decoded) = crate::camera::try_decode_qr(&frame) {
+        if let Some(decoded) = crate::camera::try_decode_qr_ur(&frame, &mut ur_acc) {
             if let Ok(mut g) = pending_qr.lock() {
                 *g = Some(decoded);
             }

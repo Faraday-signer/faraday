@@ -8,6 +8,10 @@ Real Solana transactions captured from mainnet for testing the parser.
 2. **`capture.sh`** — fetches transactions from a Solana RPC endpoint and saves them as:
    - `test_txs_bin/*.bin` — raw transaction bytes (input to `parser::parse()`)
    - `test_txs_qr/*.png` — labeled QR images encoding the base64 transaction (for testing with the device camera)
+   - `test_txs_ur/<name>/` — UR-encoded animated QR sequences (for testing with low-res cameras):
+     - `frame_001.png`, `frame_002.png`, ... — individual QR frames (for unit tests and `simulator_no_cam`)
+     - `<name>.gif` — animated GIF with infinite loop (for testing with the physical device)
+     - `<name>.txt` — raw UR strings, one per line (for testing the UR decoder directly without camera)
 3. **`cargo test`** — the test `test_real_transactions_parse_without_panic` reads every `.bin` file and runs it through the full parser pipeline, printing the decoded output.
 
 ## Quick start
@@ -33,8 +37,9 @@ cargo test test_real_transactions -- --nocapture
 
 - **Required:** `curl`, `jq`, `base64`
 - **Optional (for QR images):** `qrencode`, `imagemagick`
+- **Optional (for UR sequences):** `cargo` (Rust toolchain)
 
-If QR dependencies are missing, `capture.sh` still generates `.bin` files and prints the install command for your OS.
+If optional dependencies are missing, `capture.sh` still generates `.bin` files and skips the corresponding step.
 
 ```bash
 # Linux
@@ -80,4 +85,12 @@ Transactions from unsupported programs (Orca, Marinade, etc.) are expected to pa
 
 ## Generated files are not committed
 
-Both `test_txs_bin/` and `test_txs_qr/` are in `.gitignore`. Each developer runs `./capture.sh all` to populate them.
+Both `test_txs_bin/`, `test_txs_qr/`, and `test_txs_ur/` are in `.gitignore`. Each developer runs `./capture.sh all` to populate them.
+
+## UR generation details
+
+The `generate_ur/` directory contains a standalone Rust project that encodes transactions as [Uniform Resource (UR)](https://github.com/BlockchainCommons/Research/blob/master/papers/bcr-2020-005-ur.md) fountain-coded QR sequences. This is built and run automatically by `capture.sh`.
+
+- Fragment size: 100 bytes (produces QR codes of ~49×49 modules, readable by low-res cameras)
+- Animation speed: 200ms per frame
+- Fountain codes allow the decoder to reconstruct the full payload without needing every frame in sequence

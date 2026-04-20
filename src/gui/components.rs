@@ -523,7 +523,7 @@ pub fn draw_word_picker<D: DrawTarget<Color = Rgb565>>(
 pub fn draw_qr<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     title: &str,
-    data: &str,
+    data: &[u8],
     seed_loaded: bool,
     ec: crate::qr::encode_qr::QrEcLevel,
 ) -> Result<(), D::Error> {

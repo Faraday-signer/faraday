@@ -11,6 +11,9 @@
 #
 # Dependencies (for QR generation):
 #   qrencode, imagemagick
+#
+# Dependencies (for UR generation):
+#   cargo (Rust toolchain)
 
 set -euo pipefail
 
@@ -145,6 +148,23 @@ all() {
 
     echo ""
     echo "Done: $ok ok, $fail failed"
+
+    generate_ur
+}
+
+generate_ur() {
+    local ur_dir="$BASEDIR/generate_ur"
+    if ! command -v cargo >/dev/null 2>&1; then
+        echo "UR generation: disabled (cargo not found)" >&2
+        return 0
+    fi
+    echo ""
+    echo "Generating UR sequences..."
+    cargo build --release --manifest-path "$ur_dir/Cargo.toml" --quiet 2>&1 || {
+        echo "  WARN: failed to build generate-ur" >&2
+        return 0
+    }
+    "$ur_dir/target/release/generate-ur"
 }
 
 # ── Program IDs for search ───────────────────────────────────────────────────
@@ -179,6 +199,7 @@ case "${1:-}" in
     grab)
         [[ $# -lt 3 ]] && { echo "Usage: $0 grab <name> <signature>" >&2; exit 1; }
         grab "$2" "$3"
+        generate_ur
         ;;
     search)
         [[ $# -lt 2 ]] && { echo "Usage: $0 search <program_id> [limit]" >&2; exit 1; }

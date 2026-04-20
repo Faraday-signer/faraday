@@ -43,7 +43,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             match event {
                 InputEvent::Confirm => {
                     let mut frame_entropy = [0u8; 16];
-                    #[cfg(any(feature = "simulator", target_os = "linux"))]
+                    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                     {
                         if let Some(frame) = &app.latest_frame {
                             use sha2::{Digest, Sha256};
@@ -53,7 +53,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             getrandom::getrandom(&mut frame_entropy).ok();
                         }
                     }
-                    #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                    #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                     {
                         getrandom::getrandom(&mut frame_entropy).ok();
                     }
@@ -248,13 +248,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 InputEvent::Left | InputEvent::Right => { selected = 1 - selected; }
                 InputEvent::Confirm => {
                     if selected == 0 {
-                        let seed_qr_data = crate::qr::encode_qr::encode_seed_qr(&mnemonic)
-                            .unwrap_or_default();
                         let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(&mnemonic)
                             .unwrap_or_default();
                         app.load_wallet(mnemonic, passphrase);
-                        return Screen::ExportSeedQr {
-                            seed_qr_data, compact_data, compact_mode: false, from_settings: false,
+                        return Screen::ExportSeedQrMenu {
+                            compact_data, selected: 0, from_settings: false,
                         };
                     } else {
                         return Screen::MainMenu { selected: 0 };
@@ -268,56 +266,127 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             Screen::CreateConfirm { mnemonic, passphrase, address, selected }
         }
 
-        // Pre-export warning. Row 0 = CANCEL (default), Row 1 = SHOW.
-        Screen::ExportSeedWarning { mut selected, from_settings } => {
+        Screen::ExportSeedQrMenu { compact_data, mut selected, from_settings } => {
+            const ITEMS: usize = 4; // Show words / Paper backup / Verify / Back
             match event {
-                InputEvent::Up => { selected = 0; }
-                InputEvent::Down => { selected = 1; }
-                InputEvent::Confirm => {
-                    if selected == 1 {
-                        if let Some(mnemonic) = app.wallet.as_ref().map(|w| w.mnemonic.clone()) {
-                            let seed_qr_data = crate::qr::encode_qr::encode_seed_qr(&mnemonic)
-                                .unwrap_or_default();
-                            let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(&mnemonic)
-                                .unwrap_or_default();
-                            return Screen::ExportSeedQr {
-                                seed_qr_data, compact_data,
-                                compact_mode: false, from_settings,
-                            };
-                        }
+                InputEvent::Up => { if selected > 0 { selected -= 1; } }
+                InputEvent::Down => { if selected + 1 < ITEMS { selected += 1; } }
+                InputEvent::Confirm => match selected {
+                    0 => {
+                        let mnemonic = app
+                            .wallet
+                            .as_ref()
+                            .map(|w| w.mnemonic.clone())
+                            .unwrap_or_default();
+                        let word_count = mnemonic.split_whitespace().count();
+                        return Screen::ExportShowWords {
+                            compact_data, mnemonic, page: 0, word_count, from_settings,
+                        };
                     }
-                    if from_settings {
-                        return Screen::SettingsMenu { selected: 1 };
+                    1 => return Screen::ExportSeedQrBlock { compact_data, block_index: 0, from_settings },
+                    2 => return Screen::VerifyBackupScan,
+                    _ => {
+                        return if from_settings {
+                            Screen::SettingsMenu { selected: 0 }
+                        } else {
+                            Screen::MainMenu { selected: 0 }
+                        };
                     }
-                    return Screen::MainMenu { selected: 0 };
-                }
+                },
                 InputEvent::Back => {
-                    if from_settings {
-                        return Screen::SettingsMenu { selected: 1 };
-                    }
-                    return Screen::MainMenu { selected: 0 };
-                }
-                _ => {}
-            }
-            Screen::ExportSeedWarning { selected, from_settings }
-        }
-
-        Screen::ExportSeedQr { seed_qr_data, compact_data, compact_mode, from_settings } => {
-            match event {
-                InputEvent::Confirm | InputEvent::Back => {
-                    if from_settings {
-                        return Screen::SettingsMenu { selected: 0 };
-                    }
-                    return Screen::MainMenu { selected: 0 };
-                }
-                InputEvent::Secondary => {
-                    return Screen::ExportSeedQr {
-                        seed_qr_data, compact_data, compact_mode: !compact_mode, from_settings,
+                    return if from_settings {
+                        Screen::SettingsMenu { selected: 0 }
+                    } else {
+                        Screen::MainMenu { selected: 0 }
                     };
                 }
                 _ => {}
             }
-            Screen::ExportSeedQr { seed_qr_data, compact_data, compact_mode, from_settings }
+            Screen::ExportSeedQrMenu { compact_data, selected, from_settings }
+        }
+
+        Screen::ExportShowWords { compact_data, mnemonic, mut page, word_count, from_settings } => {
+            let words_per_page = 6usize;
+            let total_pages = (word_count + words_per_page - 1) / words_per_page;
+            match event {
+                InputEvent::Right | InputEvent::Down | InputEvent::Confirm => {
+                    if page + 1 < total_pages {
+                        page += 1;
+                    } else {
+                        return Screen::ExportSeedQrMenu {
+                            compact_data, selected: 0, from_settings,
+                        };
+                    }
+                }
+                InputEvent::Left | InputEvent::Up => {
+                    if page > 0 { page -= 1; }
+                }
+                InputEvent::Back => {
+                    return Screen::ExportSeedQrMenu {
+                        compact_data, selected: 0, from_settings,
+                    };
+                }
+                _ => {}
+            }
+            Screen::ExportShowWords { compact_data, mnemonic, page, word_count, from_settings }
+        }
+
+        Screen::ExportSeedQr { compact_data, from_settings } => {
+            match event {
+                // Final review screen shown after the block-by-block walkthrough.
+                // Confirm advances to the scan-based verification; Back returns
+                // to the last block so the user can re-check a cell.
+                InputEvent::Confirm => return Screen::VerifyBackupScan,
+                InputEvent::Back => {
+                    let blocks_per_side: usize = if compact_data.len() == 16 { 3 } else { 5 };
+                    let last = blocks_per_side * blocks_per_side - 1;
+                    return Screen::ExportSeedQrBlock {
+                        compact_data, block_index: last, from_settings,
+                    };
+                }
+                _ => {}
+            }
+            Screen::ExportSeedQr { compact_data, from_settings }
+        }
+
+        Screen::ExportSeedQrBlock { compact_data, mut block_index, from_settings } => {
+            // Derive block-grid size from the QR size: 16 entropy bytes → 21×21
+            // → 3×3 blocks of 7 modules; 32 bytes → 25×25 → 5×5 blocks of 5.
+            let blocks_per_side: usize = if compact_data.len() == 16 { 3 } else { 5 };
+            let total = blocks_per_side * blocks_per_side;
+
+            match event {
+                InputEvent::Right | InputEvent::Confirm => {
+                    // After the final block, show the full QR once as a
+                    // side-by-side check; that screen then advances to the
+                    // scan-based verification.
+                    if block_index + 1 >= total {
+                        return Screen::ExportSeedQr { compact_data, from_settings };
+                    }
+                    block_index += 1;
+                }
+                InputEvent::Left => {
+                    if block_index > 0 {
+                        block_index -= 1;
+                    }
+                }
+                InputEvent::Down => {
+                    let next = block_index + blocks_per_side;
+                    if next < total {
+                        block_index = next;
+                    }
+                }
+                InputEvent::Up => {
+                    block_index = block_index.saturating_sub(blocks_per_side);
+                }
+                InputEvent::Back => {
+                    return Screen::ExportSeedQrMenu {
+                        compact_data, selected: 1, from_settings,
+                    };
+                }
+                _ => {}
+            }
+            Screen::ExportSeedQrBlock { compact_data, block_index, from_settings }
         }
 
         _ => unreachable!("create::handle called with non-create screen"),

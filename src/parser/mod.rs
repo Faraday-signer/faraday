@@ -29,7 +29,10 @@ pub struct ParsedTransaction {
     pub version: TransactionVersion,
     pub fee_payer: String,
     pub num_signers: u8,
+    pub signers: Vec<[u8; 32]>,
     pub instructions: Vec<ParsedInstruction>,
+    pub fee_lamports: u64,
+    pub size: usize,
 }
 
 pub enum TransactionVersion {
@@ -60,10 +63,13 @@ pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
             version: TransactionVersion::Legacy,
             fee_payer: "?".into(),
             num_signers: 0,
+            signers: Vec::new(),
             instructions: vec![ParsedInstruction {
                 program: "Error".into(),
                 items: vec![ReviewItem::Warning(format!("Failed to parse transaction: {}", e))],
             }],
+            fee_lamports: 0,
+            size: tx_bytes.len(),
         },
     };
 
@@ -80,9 +86,18 @@ pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
         &msg.address_table_lookups,
     );
 
+    let n_signers = (msg.num_required_signers as usize).min(all_accounts.len());
+    let signers = all_accounts[..n_signers].to_vec();
+
     let fee_payer = all_accounts.first()
         .map(|k| bs58::encode(k).into_string())
         .unwrap_or_else(|| "?".into());
+
+    // Fee = base (sigs × 5000) + priority (ComputeBudget price × limit / 1_000_000)
+    let base_fee = (signers.len() as u64).saturating_mul(5_000);
+    let (cu_limit, cu_price_micro) = extract_compute_budget_values(&msg.instructions, &all_accounts);
+    let priority = ((cu_price_micro as u128) * (cu_limit as u128) / 1_000_000u128) as u64;
+    let fee_lamports = base_fee.saturating_add(priority);
 
     // Build ATA map for offline token resolution (only when Jupiter is present)
     let needs_ata = all_accounts.iter().any(|acct| {
@@ -92,8 +107,7 @@ pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
         )
     });
     let ata_map = if needs_ata {
-        let n = (msg.num_required_signers as usize).min(all_accounts.len());
-        token_registry::build_ata_map(&all_accounts[..n])
+        token_registry::build_ata_map(&all_accounts[..n_signers])
     } else {
         token_registry::AtaMap::new()
     };
@@ -106,7 +120,10 @@ pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
         version,
         fee_payer,
         num_signers: msg.num_required_signers,
+        signers,
         instructions,
+        fee_lamports,
+        size: tx_bytes.len(),
     }
 }
 
@@ -155,7 +172,92 @@ pub fn to_lines(tx: &ParsedTransaction) -> Vec<String> {
         }
     }
 
+    lines.push(String::new());
+    lines.push(format!("Fee: {}", system::lamports_to_sol(tx.fee_lamports)));
+    lines.push(format!("Size: {} bytes", tx.size));
+
     lines
+}
+
+/// Build review lines for the Sign screen, including a `can_sign` check.
+///
+/// Shows a user-friendly summary of the primary action first, then fee/size,
+/// then detailed instruction breakdown for advanced review.
+pub fn build_review_lines(tx_bytes: &[u8], wallet_pubkey: &[u8; 32]) -> (Vec<String>, bool) {
+    let parsed = parse(tx_bytes);
+    let can_sign = parsed.signers.iter().any(|s| s == wallet_pubkey);
+    let mut lines = Vec::new();
+
+    // Find the primary instruction: prefer known programs over Unknown ones.
+    let non_infra: Vec<&ParsedInstruction> = parsed.instructions.iter()
+        .filter(|ix| ix.program != "ComputeBudget" && ix.program != "Error")
+        .collect();
+    let primary = non_infra.iter()
+        .find(|ix| ix.program != "Unknown")
+        .or(non_infra.first())
+        .copied();
+
+    if let Some(ix) = primary {
+        // Summary header from the primary instruction.
+        for item in &ix.items {
+            match item {
+                ReviewItem::Header(s) => lines.push(s.clone()),
+                ReviewItem::Field { label, value } => {
+                    if label.is_empty() {
+                        lines.push(format!("  {}", value));
+                    } else {
+                        lines.push(format!("{}: {}", label, value));
+                    }
+                }
+                ReviewItem::Warning(s) => lines.push(format!("! {}", s)),
+                ReviewItem::Separator => {}
+            }
+        }
+    } else {
+        // Error or empty — show whatever we have.
+        for ix in &parsed.instructions {
+            for item in &ix.items {
+                if let ReviewItem::Warning(s) = item {
+                    lines.push(format!("! {}", s));
+                }
+            }
+        }
+        if lines.is_empty() {
+            lines.push("! Failed to parse transaction".to_string());
+        }
+    }
+
+    lines.push(String::new());
+    lines.push(format!("Fee: {}", system::lamports_to_sol(parsed.fee_lamports)));
+    lines.push(format!("Size: {} bytes", parsed.size));
+
+    // Count extra instructions (non-ComputeBudget, excluding the primary).
+    let primary_ptr = primary.map(|p| p as *const ParsedInstruction);
+    let extra: Vec<&ParsedInstruction> = parsed.instructions.iter()
+        .filter(|ix| ix.program != "ComputeBudget" && ix.program != "Error")
+        .filter(|ix| Some(*ix as *const ParsedInstruction) != primary_ptr)
+        .collect();
+    if !extra.is_empty() {
+        lines.push(String::new());
+        lines.push(format!("+ {} other instructions:", extra.len()));
+        for ix in &extra {
+            lines.push(format!("  {}", ix.program));
+        }
+    }
+
+    if !can_sign {
+        lines.push(String::new());
+        lines.push("! Cannot sign this TX".to_string());
+        if let Some(needed) = parsed.signers.first() {
+            let addr = bs58::encode(needed).into_string();
+            lines.push("! Need wallet:".to_string());
+            for chunk in addr.as_bytes().chunks(22) {
+                lines.push(format!("!  {}", std::str::from_utf8(chunk).unwrap_or("")));
+            }
+        }
+    }
+
+    (lines, can_sign)
 }
 
 // === Internal dispatcher ===
@@ -245,6 +347,35 @@ fn parse_compute_budget(data: &[u8]) -> ParsedInstruction {
 fn pubkey_short(key: &[u8; 32]) -> String {
     let b58 = bs58::encode(key).into_string();
     format!("{}..{}", &b58[..4], &b58[b58.len() - 4..])
+}
+
+/// Extract CU limit and price from raw instructions (before dispatch).
+fn extract_compute_budget_values(
+    instructions: &[message::RawInstruction],
+    all_accounts: &[[u8; 32]],
+) -> (u32, u64) {
+    let mut limit: u32 = 200_000;
+    let mut price_micro: u64 = 0;
+    for ix in instructions {
+        let pid = match all_accounts.get(ix.program_id_index) {
+            Some(id) => id,
+            None => continue,
+        };
+        let is_cb = programs::identify(pid).as_ref().map(|p| p.name) == Some("ComputeBudget");
+        if !is_cb || ix.data.is_empty() {
+            continue;
+        }
+        match ix.data[0] {
+            2 if ix.data.len() >= 5 => {
+                limit = u32::from_le_bytes(ix.data[1..5].try_into().unwrap_or([0; 4]));
+            }
+            3 if ix.data.len() >= 9 => {
+                price_micro = u64::from_le_bytes(ix.data[1..9].try_into().unwrap_or([0; 8]));
+            }
+            _ => {}
+        }
+    }
+    (limit, price_micro)
 }
 
 #[cfg(test)]

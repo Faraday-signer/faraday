@@ -2,39 +2,39 @@
 
 mod crypto;
 
-#[cfg(any(feature = "simulator", target_os = "linux"))]
+#[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
 mod camera;
-#[cfg(any(feature = "simulator", target_os = "linux"))]
+#[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
 mod ui;
-#[cfg(any(feature = "simulator", target_os = "linux"))]
+#[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
 mod gui;
 #[cfg(target_os = "linux")]
 mod hardware;
-#[cfg(any(feature = "simulator", target_os = "linux"))]
+#[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
 mod qr;
-#[cfg(any(feature = "simulator", target_os = "linux"))]
+#[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
 mod signer;
-#[cfg(any(feature = "simulator", target_os = "linux"))]
+#[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
 mod parser;
 
-#[cfg(any(feature = "simulator", target_os = "linux"))]
+#[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
 use gui::app::{App, InputEvent};
 
 fn main() {
     println!("Faraday v0.1.0");
 
-    #[cfg(feature = "simulator")]
+    #[cfg(feature = "_desktop_sim")]
     run_simulator();
 
-    #[cfg(all(target_os = "linux", not(feature = "simulator")))]
+    #[cfg(all(target_os = "linux", not(feature = "_desktop_sim")))]
     run_pi();
 
-    #[cfg(all(not(target_os = "linux"), not(feature = "simulator")))]
+    #[cfg(all(not(target_os = "linux"), not(feature = "_desktop_sim")))]
     run_headless();
 }
 
 /// Desktop simulator: renders to a minifb window.
-#[cfg(feature = "simulator")]
+#[cfg(feature = "_desktop_sim")]
 fn run_simulator() {
     use gui::framebuffer::Framebuffer;
     use minifb::{Key, Window, WindowOptions, Scale};
@@ -123,7 +123,7 @@ fn run_simulator() {
 }
 
 /// Pi hardware: ST7789 display + GPIO buttons.
-#[cfg(all(target_os = "linux", not(feature = "simulator")))]
+#[cfg(all(target_os = "linux", not(feature = "_desktop_sim")))]
 fn run_pi() {
     use crate::hardware::buttons::{Button, Buttons};
     use crate::hardware::st7789::ST7789;
@@ -194,7 +194,7 @@ fn run_pi() {
 }
 
 /// Headless mode: just run crypto sanity check.
-#[cfg(all(not(target_os = "linux"), not(feature = "simulator")))]
+#[cfg(all(not(target_os = "linux"), not(feature = "_desktop_sim")))]
 fn run_headless() {
     println!("No display available. Run with --features simulator for desktop UI.");
     println!("Running crypto sanity check...");

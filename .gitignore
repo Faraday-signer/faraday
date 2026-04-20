@@ -36,6 +36,7 @@ opt/rootfs-overlay/
 # Test transaction data (generated via testdata/capture.sh)
 testdata/test_txs_bin/
 testdata/test_txs_qr/
+testdata/test_txs_ur/
 
 # Logs
 *.log

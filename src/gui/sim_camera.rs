@@ -56,6 +56,7 @@ impl SimCamera {
             }
             let _ = init_tx.send(Ok(()));
 
+            let mut ur_acc = crate::qr::ur_decoder::UrAccumulator::new();
             while !stop_w.load(Ordering::Relaxed) {
                 let buf = match camera.frame() {
                     Ok(b) => b,
@@ -75,7 +76,7 @@ impl SimCamera {
                 let should_decode = decode_w.load(Ordering::Relaxed)
                     && qr_w.lock().ok().map(|g| g.is_none()).unwrap_or(false);
                 if should_decode {
-                    if let Some(decoded) = crate::camera::try_decode_qr(&frame) {
+                    if let Some(decoded) = crate::camera::try_decode_qr_ur(&frame, &mut ur_acc) {
                         if let Ok(mut g) = qr_w.lock() {
                             *g = Some(decoded);
                         }

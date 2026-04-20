@@ -83,15 +83,36 @@ impl App {
             Screen::ExportSeedWarning { selected, .. } => {
                 draw_export_seed_warning(display, *selected)
             }
-            Screen::ExportSeedQr { seed_qr_data, compact_data, compact_mode, .. } => {
-                let hex_data;
-                let data: &str = if *compact_mode {
-                    hex_data = hex::encode(compact_data);
-                    &hex_data
-                } else {
-                    seed_qr_data
-                };
-                draw_seed_qr(display, data)
+            Screen::ExportSeedQrMenu { selected, .. } => {
+                let title = self.seedqr_title();
+                draw_option_list(
+                    display,
+                    title,
+                    &["Show seed words", "Paper backup", "Verify backup", "Back"],
+                    *selected,
+                    self.seed_loaded(),
+                )
+            }
+            Screen::ExportShowWords { mnemonic, page, word_count, .. } => {
+                draw_show_words(display, mnemonic, *page, *word_count, self.seed_loaded())
+            }
+            Screen::ExportSeedQr { compact_data, .. } => {
+                // CompactSeedQR: raw 16/32 entropy bytes, byte-mode QR at ECL L
+                // so the grid stays as small as possible for hand-transcription
+                // (12w → V1 21×21, 24w → V2 25×25). Ale's `draw_seed_qr` is a
+                // simpler wrapper that doesn't take an ECL parameter; once the
+                // design-system QR widget accepts ECL we can switch over.
+                let title = self.seedqr_title();
+                draw_qr(
+                    display,
+                    title,
+                    compact_data,
+                    self.seed_loaded(),
+                    crate::qr::encode_qr::QrEcLevel::L,
+                )
+            }
+            Screen::ExportSeedQrBlock { compact_data, block_index, .. } => {
+                draw_qr_block(display, compact_data, *block_index, self.seed_loaded())
             }
 
             // Load flow
@@ -99,12 +120,12 @@ impl App {
                 draw_load_method(display, *selected)
             }
             Screen::LoadScanQr => {
-                #[cfg(any(feature = "simulator", target_os = "linux"))]
+                #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                 {
                     draw_scan_overlay(display, "Scan SeedQR", "Point camera at SeedQR",
                         self.seed_loaded(), self.has_camera_frame(), self.camera_error_str())?;
                 }
-                #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                 {
                     draw_message(display, "Scan SeedQR", "Point camera at\nSeedQR code", self.seed_loaded())?;
                 }
@@ -142,12 +163,12 @@ impl App {
                 draw_message(display, "Sign TX", "Load a wallet first", self.seed_loaded())
             }
             Screen::SignScanTx => {
-                #[cfg(any(feature = "simulator", target_os = "linux"))]
+                #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                 {
                     draw_scan_overlay(display, "Sign TX", "Point camera at TX QR",
                         self.seed_loaded(), self.has_camera_frame(), self.camera_error_str())
                 }
-                #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                 {
                     draw_message(display, "Sign TX", "Scan unsigned TX QR\nX: Sign Message", self.seed_loaded())
                 }
@@ -156,13 +177,13 @@ impl App {
                 draw_tx_review(display, info_lines, *scroll, *selected, *can_sign, self.seed_loaded())
             }
             Screen::SignShowQr { data } => {
-                draw_qr(display, "Signed TX", data, self.seed_loaded(), crate::qr::encode_qr::QrEcLevel::M)
+                draw_qr(display, "Signed TX", data.as_bytes(), self.seed_loaded(), crate::qr::encode_qr::QrEcLevel::M)
             }
             Screen::SignMessageInput { grid } => {
                 draw_passphrase_grid(display, grid, "SIGN MSG")
             }
             Screen::SignMessageResult { signature_hex } => {
-                draw_qr(display, "Signature", signature_hex, self.seed_loaded(), crate::qr::encode_qr::QrEcLevel::M)
+                draw_qr(display, "Signature", signature_hex.as_bytes(), self.seed_loaded(), crate::qr::encode_qr::QrEcLevel::M)
             }
 
             // Settings
@@ -176,12 +197,12 @@ impl App {
                 draw_show_address(display, self.wallet.as_ref().map(|w| w.address.as_str()))
             }
             Screen::SettingsVerifyAddressScan => {
-                #[cfg(any(feature = "simulator", target_os = "linux"))]
+                #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                 {
                     draw_scan_overlay(display, "Verify Address", "Point camera at address QR",
                         self.seed_loaded(), self.has_camera_frame(), self.camera_error_str())
                 }
-                #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                 {
                     draw_message(display, "Verify Address", "Scan address QR\nto verify it's yours", self.seed_loaded())
                 }
@@ -194,6 +215,47 @@ impl App {
             }
             Screen::SettingsPowerOff { selected } => {
                 draw_power_off(display, *selected)
+            }
+
+            // Verify backup flow
+            Screen::VerifyBackupScan => {
+                #[cfg(any(feature = "simulator", target_os = "linux"))]
+                {
+                    draw_scan_overlay(display, "Verify Backup", "Scan your paper SeedQR",
+                        self.seed_loaded(), self.has_camera_frame(), self.camera_error_str())
+                }
+                #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                {
+                    draw_message(display, "Verify Backup", "Scan your paper\nSeedQR", self.seed_loaded())
+                }
+            }
+            Screen::VerifyBackupSeedMismatch => {
+                draw_message(
+                    display,
+                    "Verify Backup",
+                    "Seed does not match\nthe loaded wallet",
+                    self.seed_loaded(),
+                )
+            }
+            Screen::VerifyBackupPassphrase { grid } => {
+                draw_char_grid(display, grid, "Enter Passphrase", self.seed_loaded())
+            }
+            Screen::VerifyBackupPassphraseMismatch => {
+                draw_message(
+                    display,
+                    "Verify Backup",
+                    "Passphrase does not\nmatch this wallet",
+                    self.seed_loaded(),
+                )
+            }
+            Screen::VerifyBackupSuccess => {
+                let has_passphrase = self.wallet.as_ref().map_or(false, |w| !w.passphrase.is_empty());
+                let msg = if has_passphrase {
+                    "Seed and passphrase\nverified OK"
+                } else {
+                    "Seed verified OK"
+                };
+                draw_message(display, "Verify Backup", msg, self.seed_loaded())
             }
         }
     }
@@ -778,6 +840,150 @@ fn draw_confirm_address<D: DrawTarget<Color = Rgb565>>(
 }
 
 /// Generic message screen.
+/// Zoomed single-block view of the CompactSeedQR for hand transcription onto
+/// the paper template. `block_index` is row-major over the block grid
+/// (3×3 for 21×21 QR, 5×5 for 25×25 QR). A minimap at the bottom shows the
+/// full QR with the current block highlighted.
+fn draw_qr_block<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    compact_data: &[u8],
+    block_index: usize,
+    seed_loaded: bool,
+) -> Result<(), D::Error> {
+    display.clear(colors::BG_DARK)?;
+
+    // Must match the ECL used by `draw_qr` for the full seed QR so the block
+    // view shows the same matrix the user is transcribing.
+    let (matrix, qr_size) = match crate::qr::encode_qr::generate_qr_matrix(
+        compact_data,
+        crate::qr::encode_qr::QrEcLevel::L,
+    ) {
+        Ok(m) => m,
+        Err(_) => {
+            draw_status_bar(display, "Transcribe", seed_loaded)?;
+            return Ok(());
+        }
+    };
+
+    // Block grid: 3×3 for 21×21, 5×5 for 25×25.
+    let block_side: usize = if qr_size == 21 { 7 } else { 5 };
+    let blocks_per_side = qr_size / block_side;
+    let total = blocks_per_side * blocks_per_side;
+    let clamped = block_index.min(total - 1);
+    let br = clamped / blocks_per_side;
+    let bc = clamped % blocks_per_side;
+
+    let title = format!("Block ({},{})  {}/{}", br + 1, bc + 1, clamped + 1, total);
+    draw_status_bar(display, &title, seed_loaded)?;
+
+    // Zoomed block: fit within a 160×160 area below the status bar.
+    let zoom_area = 160i32;
+    let cell_size = (zoom_area / block_side as i32).max(1);
+    let block_pixel = cell_size * block_side as i32;
+    let zoom_x = (240 - block_pixel) / 2;
+    let zoom_y = 30i32;
+
+    // Grey backing under the zoomed block. Each cell is then filled at a
+    // 1px inset, so the backing shows through as a thin border around every
+    // module — stops runs of consecutive blacks (or whites) from visually
+    // merging into one big rectangle.
+    Rectangle::new(
+        Point::new(zoom_x - 2, zoom_y - 2),
+        Size::new((block_pixel + 4) as u32, (block_pixel + 4) as u32),
+    )
+    .into_styled(PrimitiveStyle::with_fill(colors::CELL_BORDER))
+    .draw(display)?;
+
+    let inner = (cell_size - 1).max(1);
+    for r in 0..block_side {
+        for c in 0..block_side {
+            let module_r = br * block_side + r;
+            let module_c = bc * block_side + c;
+            let on = module_r < qr_size
+                && module_c < qr_size
+                && matrix[module_r * qr_size + module_c];
+            let fill = if on { colors::BLACK } else { colors::WHITE };
+            Rectangle::new(
+                Point::new(
+                    zoom_x + c as i32 * cell_size,
+                    zoom_y + r as i32 * cell_size,
+                ),
+                Size::new(inner as u32, inner as u32),
+            )
+            .into_styled(PrimitiveStyle::with_fill(fill))
+            .draw(display)?;
+        }
+    }
+
+    // Minimap: full QR at 2px per module, current block highlighted in
+    // brand cyan. We skip drawing modules that fall inside the current block
+    // — the zoomed view above already shows those, and a blank highlighted
+    // area makes "you-are-here" unambiguous at a glance.
+    let mini_scale = 2i32;
+    let mini_size = qr_size as i32 * mini_scale;
+    let mini_x = (240 - mini_size) / 2;
+    let mini_y = 240 - mini_size - 4;
+
+    Rectangle::new(
+        Point::new(mini_x - 2, mini_y - 2),
+        Size::new((mini_size + 4) as u32, (mini_size + 4) as u32),
+    )
+    .into_styled(PrimitiveStyle::with_fill(colors::WHITE))
+    .draw(display)?;
+
+    let block_row_start = br * block_side;
+    let block_row_end = block_row_start + block_side;
+    let block_col_start = bc * block_side;
+    let block_col_end = block_col_start + block_side;
+    for r in 0..qr_size {
+        for c in 0..qr_size {
+            if r >= block_row_start
+                && r < block_row_end
+                && c >= block_col_start
+                && c < block_col_end
+            {
+                continue;
+            }
+            if matrix[r * qr_size + c] {
+                Rectangle::new(
+                    Point::new(mini_x + c as i32 * mini_scale, mini_y + r as i32 * mini_scale),
+                    Size::new(mini_scale as u32, mini_scale as u32),
+                )
+                .into_styled(PrimitiveStyle::with_fill(colors::BLACK))
+                .draw(display)?;
+            }
+        }
+    }
+
+    // Current block highlight: thick brand-cyan stroke + a centred filled
+    // dot inside. The dot gives a clean "you-are-here" marker without
+    // relying on the block's actual QR data to fill the area.
+    let hl_x = mini_x + block_col_start as i32 * mini_scale;
+    let hl_y = mini_y + block_row_start as i32 * mini_scale;
+    let hl_size = block_side as i32 * mini_scale;
+    Rectangle::new(
+        Point::new(hl_x, hl_y),
+        Size::new(hl_size as u32, hl_size as u32),
+    )
+    .into_styled(
+        PrimitiveStyleBuilder::new()
+            .stroke_color(colors::BRAND_CYAN)
+            .stroke_width(2)
+            .build(),
+    )
+    .draw(display)?;
+
+    let dot = 4i32;
+    Rectangle::new(
+        Point::new(hl_x + (hl_size - dot) / 2, hl_y + (hl_size - dot) / 2),
+        Size::new(dot as u32, dot as u32),
+    )
+    .into_styled(PrimitiveStyle::with_fill(colors::BRAND_CYAN))
+    .draw(display)?;
+
+    Ok(())
+}
+
 fn draw_message<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     title: &str,

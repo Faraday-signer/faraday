@@ -5,5 +5,5 @@ pub mod st7789;
 #[cfg(target_os = "linux")]
 pub mod buttons;
 #[allow(dead_code)]
-#[cfg(all(target_os = "linux", not(feature = "simulator")))]
+#[cfg(all(target_os = "linux", not(feature = "_desktop_sim")))]
 pub mod pi_camera;

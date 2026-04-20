@@ -10,7 +10,9 @@ use zeroize::Zeroize;
 // (e.g. headless cross-platform builds) the camera fields on `App` are absent.
 #[cfg(feature = "simulator")]
 type Camera = crate::gui::sim_camera::SimCamera;
-#[cfg(all(target_os = "linux", not(feature = "simulator")))]
+#[cfg(feature = "simulator_no_cam")]
+type Camera = crate::gui::file_camera::FileCamera;
+#[cfg(all(target_os = "linux", not(feature = "_desktop_sim")))]
 type Camera = crate::hardware::pi_camera::PiCamera;
 
 /// Platform-independent input event.
@@ -59,15 +61,46 @@ pub enum Screen {
         address: String,
         selected: usize,
     },
-    /// Pre-export warning. Forces the user to read the consequence before the
-    /// seed QR is rendered.
+    /// Pre-export warning. Forces the user to read the consequence before any
+    /// seed-backup action (menu entry, show-words, block view, etc.).
     ExportSeedWarning { selected: usize, from_settings: bool },
-    ExportSeedQr {
-        seed_qr_data: String,
+    /// Landing page for all seed-backup actions.
+    ExportSeedQrMenu {
         compact_data: Vec<u8>,
-        compact_mode: bool,
+        selected: usize,
         from_settings: bool,
     },
+    /// Paged view of the 12/24-word mnemonic for write-it-down backup.
+    ExportShowWords {
+        compact_data: Vec<u8>,
+        mnemonic: String,
+        page: usize,
+        word_count: usize,
+        from_settings: bool,
+    },
+    /// Full QR display — shown as the final check after the paper-backup
+    /// block walkthrough. Not reachable directly from the menu.
+    ExportSeedQr {
+        compact_data: Vec<u8>,
+        from_settings: bool,
+    },
+    /// Zoomed block-by-block view for hand transcription onto the paper
+    /// template. `block_index` is row-major over the 3×3 (21×21) or 5×5
+    /// (25×25) block grid.
+    ExportSeedQrBlock {
+        compact_data: Vec<u8>,
+        block_index: usize,
+        from_settings: bool,
+    },
+
+    // Verify backup flow: scan the paper QR, confirm mnemonic matches the
+    // loaded wallet; if that wallet has a passphrase, also prompt for it
+    // and check the derived address matches.
+    VerifyBackupScan,
+    VerifyBackupSeedMismatch,
+    VerifyBackupPassphrase { grid: CharGrid },
+    VerifyBackupPassphraseMismatch,
+    VerifyBackupSuccess,
 
     // Load wallet flow
     LoadMethod { selected: usize },
@@ -379,13 +412,13 @@ pub struct App {
     pub wallet: Option<LoadedWallet>,
     pub last_activity: std::time::Instant,
     pub blank_timeout_ms: u64,
-    #[cfg(any(feature = "simulator", target_os = "linux"))]
+    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
     pub camera: Option<Camera>,
-    #[cfg(any(feature = "simulator", target_os = "linux"))]
+    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
     pub latest_frame: Option<crate::camera::Frame>,
-    #[cfg(any(feature = "simulator", target_os = "linux"))]
+    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
     pub camera_error: Option<String>,
-    #[cfg(any(feature = "simulator", target_os = "linux"))]
+    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
     pub scanned_qr: Option<Vec<u8>>,
 }
 
@@ -396,19 +429,27 @@ impl App {
             wallet: None,
             last_activity: std::time::Instant::now(),
             blank_timeout_ms: DEFAULT_BLANK_TIMEOUT_MS,
-            #[cfg(any(feature = "simulator", target_os = "linux"))]
+            #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
             camera: None,
-            #[cfg(any(feature = "simulator", target_os = "linux"))]
+            #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
             latest_frame: None,
-            #[cfg(any(feature = "simulator", target_os = "linux"))]
+            #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
             camera_error: None,
-            #[cfg(any(feature = "simulator", target_os = "linux"))]
+            #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
             scanned_qr: None,
         }
     }
 
     pub fn seed_loaded(&self) -> bool {
         self.wallet.is_some()
+    }
+
+    /// Title used for every screen in the SeedQR backup flow. Appends "+P"
+    /// when a passphrase is set, so the user is continuously reminded the
+    /// QR alone isn't enough to restore the wallet.
+    pub fn seedqr_title(&self) -> &'static str {
+        let has_passphrase = self.wallet.as_ref().map_or(false, |w| !w.passphrase.is_empty());
+        if has_passphrase { "SeedQR +P" } else { "SeedQR" }
     }
 
     pub fn enter_main_menu(&mut self) {
@@ -431,9 +472,9 @@ impl App {
     pub fn is_blanked(&self) -> bool {
         let idle_ms = self.last_activity.elapsed().as_millis().min(u64::MAX as u128) as u64;
         let on_camera = {
-            #[cfg(any(feature = "simulator", target_os = "linux"))]
+            #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
             { self.wants_camera() }
-            #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+            #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
             { false }
         };
         should_blank(idle_ms, self.blank_timeout_ms, on_camera)
@@ -441,11 +482,11 @@ impl App {
 
     /// Camera error message, if any. None when camera isn't supported on this build.
     pub fn camera_error_str(&self) -> Option<&str> {
-        #[cfg(any(feature = "simulator", target_os = "linux"))]
+        #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
         {
             self.camera_error.as_deref()
         }
-        #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+        #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
         {
             None
         }
@@ -453,18 +494,18 @@ impl App {
 
     /// True if a webcam frame is currently available.
     pub fn has_camera_frame(&self) -> bool {
-        #[cfg(any(feature = "simulator", target_os = "linux"))]
+        #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
         {
             self.latest_frame.is_some()
         }
-        #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+        #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
         {
             false
         }
     }
 
     /// True when the current screen wants the webcam.
-    #[cfg(any(feature = "simulator", target_os = "linux"))]
+    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
     pub fn wants_camera(&self) -> bool {
         matches!(
             &self.screen,
@@ -472,12 +513,13 @@ impl App {
                 | Screen::SignScanTx
                 | Screen::CreateCameraEntropy { .. }
                 | Screen::SettingsVerifyAddressScan
+                | Screen::VerifyBackupScan
         )
     }
 
     /// Per-frame update — manages camera lifecycle and auto-advances on QR detect.
     /// Shared between simulator (macOS nokhwa) and Pi (V4L2) via the `Camera` type alias.
-    #[cfg(any(feature = "simulator", target_os = "linux"))]
+    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
     pub fn tick(&mut self) {
         let wants = self.wants_camera();
         if wants && self.camera.is_none() && self.camera_error.is_none() {
@@ -499,7 +541,10 @@ impl App {
 
         let is_scan_screen = matches!(
             self.screen,
-            Screen::LoadScanQr | Screen::SignScanTx | Screen::SettingsVerifyAddressScan
+            Screen::LoadScanQr
+                | Screen::SignScanTx
+                | Screen::SettingsVerifyAddressScan
+                | Screen::VerifyBackupScan
         );
         let pending_qr = if let Some(cam) = &self.camera {
             cam.set_decode_enabled(is_scan_screen);
@@ -525,7 +570,10 @@ impl App {
         if let Some(data) = pending_qr {
             if matches!(
                 self.screen,
-                Screen::LoadScanQr | Screen::SignScanTx | Screen::SettingsVerifyAddressScan
+                Screen::LoadScanQr
+                    | Screen::SignScanTx
+                    | Screen::SettingsVerifyAddressScan
+                    | Screen::VerifyBackupScan
             ) {
                 self.scanned_qr = Some(data);
                 self.handle_input(InputEvent::Confirm);
@@ -567,7 +615,10 @@ impl App {
                 | Screen::CreatePassphraseMismatch { .. }
                 | Screen::CreateConfirm { .. }
                 | Screen::ExportSeedWarning { .. }
-                | Screen::ExportSeedQr { .. }) => flows::create::handle(self, s, event),
+                | Screen::ExportSeedQrMenu { .. }
+                | Screen::ExportShowWords { .. }
+                | Screen::ExportSeedQr { .. }
+                | Screen::ExportSeedQrBlock { .. }) => flows::create::handle(self, s, event),
 
             s @ (Screen::LoadMethod { .. }
                 | Screen::LoadScanQr
@@ -594,6 +645,12 @@ impl App {
                 | Screen::SettingsVerifyAddressResult { .. }
                 | Screen::SettingsAbout
                 | Screen::SettingsPowerOff { .. }) => flows::settings::handle(self, s, event),
+
+            s @ (Screen::VerifyBackupScan
+                | Screen::VerifyBackupSeedMismatch
+                | Screen::VerifyBackupPassphrase { .. }
+                | Screen::VerifyBackupPassphraseMismatch
+                | Screen::VerifyBackupSuccess) => flows::verify::handle(self, s, event),
         }
     }
 
@@ -624,134 +681,11 @@ impl App {
 /// Build the Review TX `info_lines` from a parsed tx. Returns the lines plus
 /// `can_sign` — true only when the loaded wallet's pubkey is in the tx's
 /// required-signer set. Lines starting with `!` render in danger red.
+///
+/// Delegates to the unified parser (`crate::parser`) which supports both
+/// legacy and v0 transactions.
 pub fn build_review_lines(tx_bytes: &[u8], wallet_pubkey: &[u8; 32]) -> (Vec<String>, bool) {
-    use crate::qr::tx_parser::{
-        format_sol, format_token_amount, summarize, TxKind,
-    };
-
-    fn push_wrapped(lines: &mut Vec<String>, label: &str, addr: &str, prefix: &str) {
-        lines.push(format!("{label}:"));
-        for chunk in addr.as_bytes().chunks(22) {
-            lines.push(format!("{prefix}  {}", std::str::from_utf8(chunk).unwrap_or("")));
-        }
-    }
-    fn push_addr(lines: &mut Vec<String>, label: &str, addr: &str) {
-        push_wrapped(lines, label, addr, "");
-    }
-
-    let mut lines: Vec<String> = Vec::with_capacity(16);
-
-    let summary = match summarize(tx_bytes) {
-        Some(s) => s,
-        None => {
-            lines.push("Type: Unparseable".to_string());
-            lines.push(format!("Size: {} bytes", tx_bytes.len()));
-            lines.push("! Cannot sign this TX".to_string());
-            return (lines, false);
-        }
-    };
-    let can_sign = summary.signers.iter().any(|s| s == wallet_pubkey);
-
-    match &summary.kind {
-        TxKind::SolTransfer { from, to, lamports } => {
-            lines.push("Type: Send SOL".to_string());
-            push_addr(&mut lines, "From", from);
-            push_addr(&mut lines, "To", to);
-            lines.push(format!("Amount: {} SOL", format_sol(*lamports)));
-        }
-        TxKind::SplTransfer { source, dest, amount_raw, mint, decimals, symbol } => {
-            match symbol {
-                Some(sym) => lines.push(format!("Type: Send {}", sym)),
-                None => lines.push("Type: Send Token".to_string()),
-            }
-            if symbol.is_none() {
-                if let Some(m) = mint {
-                    push_addr(&mut lines, "Mint", m);
-                }
-            }
-            push_addr(&mut lines, "From", source);
-            push_addr(&mut lines, "To", dest);
-            let amt = format_token_amount(*amount_raw, *decimals);
-            match symbol {
-                Some(sym) => lines.push(format!("Amount: {} {}", amt, sym)),
-                None => lines.push(format!("Amount: {}", amt)),
-            }
-            if decimals.is_none() {
-                lines.push("(legacy: decimals unknown)".to_string());
-            }
-        }
-        TxKind::SplApprove { source, delegate, amount_raw, mint, decimals, symbol } => {
-            match symbol {
-                Some(sym) => lines.push(format!("Type: Approve {}", sym)),
-                None => lines.push("Type: Approve Token".to_string()),
-            }
-            if symbol.is_none() {
-                if let Some(m) = mint {
-                    push_addr(&mut lines, "Mint", m);
-                }
-            }
-            push_addr(&mut lines, "Owner", source);
-            push_addr(&mut lines, "Delegate", delegate);
-            let amt = format_token_amount(*amount_raw, *decimals);
-            match symbol {
-                Some(sym) => lines.push(format!("Amount: {} {}", amt, sym)),
-                None => lines.push(format!("Amount: {}", amt)),
-            }
-        }
-        TxKind::StakeDelegate { stake_account, vote_account } => {
-            lines.push("Type: Stake (Delegate)".to_string());
-            push_addr(&mut lines, "Stake acct", stake_account);
-            push_addr(&mut lines, "Validator", vote_account);
-        }
-        TxKind::StakeDeactivate { stake_account } => {
-            lines.push("Type: Unstake (Deactivate)".to_string());
-            push_addr(&mut lines, "Stake acct", stake_account);
-        }
-        TxKind::StakeWithdraw { stake_account, to, lamports } => {
-            lines.push("Type: Unstake (Withdraw)".to_string());
-            push_addr(&mut lines, "Stake acct", stake_account);
-            push_addr(&mut lines, "To", to);
-            lines.push(format!("Amount: {} SOL", format_sol(*lamports)));
-        }
-        TxKind::Memo { text } => {
-            lines.push("Type: Memo".to_string());
-            if text.is_empty() {
-                lines.push("(empty)".to_string());
-            } else {
-                lines.push("Text:".to_string());
-                for chunk in text.as_bytes().chunks(36) {
-                    lines.push(format!("  {}", std::str::from_utf8(chunk).unwrap_or("?")));
-                }
-            }
-        }
-        TxKind::Other { programs } => {
-            lines.push("Type: Unknown".to_string());
-            if programs.is_empty() {
-                lines.push("(no program info)".to_string());
-            } else {
-                lines.push(format!("Programs ({}):", programs.len()));
-                for p in programs {
-                    for chunk in p.as_bytes().chunks(22) {
-                        lines.push(format!("  {}", std::str::from_utf8(chunk).unwrap_or("")));
-                    }
-                }
-            }
-        }
-    }
-
-    lines.push(format!("Fee: {} SOL", format_sol(summary.fee_lamports)));
-    lines.push(format!("Size: {} bytes", summary.size));
-
-    if !can_sign {
-        lines.push(String::new());
-        lines.push("! Cannot sign this TX".to_string());
-        if let Some(needed) = summary.signers.first() {
-            let addr = bs58::encode(needed).into_string();
-            push_wrapped(&mut lines, "! Need wallet", &addr, "!");
-        }
-    }
-
-    (lines, can_sign)
+    crate::parser::build_review_lines(tx_bytes, wallet_pubkey)
 }
 
 #[cfg(test)]
@@ -839,8 +773,7 @@ mod review_lines_tests {
         let tx = build_tx_for(&kp.public_key);
         let (lines, can_sign) = build_review_lines(&tx, &kp.public_key);
         assert!(can_sign);
-        assert!(lines.iter().any(|l| l == "Type: Send SOL"));
-        // No warning lines when we can sign.
+        assert!(lines.iter().any(|l| l.contains("SOL Transfer")));
         assert!(!lines.iter().any(|l| l.starts_with('!')));
     }
 
@@ -872,7 +805,7 @@ mod review_lines_tests {
         let garbage = vec![0xFFu8; 10];
         let (lines, can_sign) = build_review_lines(&garbage, &kp.public_key);
         assert!(!can_sign);
-        assert!(lines.iter().any(|l| l == "Type: Unparseable"));
+        assert!(lines.iter().any(|l| l.contains("Failed to parse")));
     }
 
     #[test]
@@ -884,7 +817,7 @@ mod review_lines_tests {
         let kp = loaded_keypair();
         let (lines, can_sign) = build_review_lines(&tx, &kp.public_key);
         assert!(!can_sign, "abandon-abandon wallet should not match EfZr signer");
-        assert!(lines.iter().any(|l| l.contains("Amount: 0.01 SOL")));
-        assert!(lines.iter().any(|l| l == "Type: Send SOL"));
+        assert!(lines.iter().any(|l| l.contains("0.01 SOL")));
+        assert!(lines.iter().any(|l| l.contains("SOL Transfer")));
     }
 }

@@ -14,7 +14,14 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     if app.wallet.is_some() {
                         return match selected {
                             0 => Screen::SettingsShowAddress,
-                            1 => Screen::ExportSeedWarning { selected: 0, from_settings: true },
+                            1 => {
+                                let mnemonic = &app.wallet.as_ref().unwrap().mnemonic;
+                                let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(mnemonic)
+                                    .unwrap_or_default();
+                                Screen::ExportSeedQrMenu {
+                                    compact_data, selected: 0, from_settings: true,
+                                }
+                            }
                             2 => {
                                 let accounts = build_accounts_list(app);
                                 Screen::SettingsAccounts { accounts, selected: 0 }
@@ -63,11 +70,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         Some(w) => w,
                         None => return Screen::SettingsMenu { selected: 3 },
                     };
-                    #[cfg(any(feature = "simulator", target_os = "linux"))]
+                    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                     let raw: String = app.scanned_qr.take()
                         .and_then(|b| String::from_utf8(b).ok())
                         .unwrap_or_else(|| wallet.address.clone());
-                    #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                    #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                     let raw: String = wallet.address.clone();
 
                     let addr = derivation::normalize_address_input(&raw);

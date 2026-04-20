@@ -24,10 +24,8 @@ pub struct DecodedQr {
 
 /// Detect QR type and decode.
 ///
-/// Text-based formats are tried first (SeedQR / address / tx). CompactSeedQR
-/// is a last resort because `mnemonic_from_raw_entropy` accepts *any* 16/32
-/// bytes — without this ordering a 32-char base58 address collides with a
-/// 24-word CompactSeedQR.
+/// Text formats are tried first so a 32-char base58 Solana address isn't
+/// ambiguously classified as a 24-word CompactSeedQR (both are 32 bytes).
 pub fn detect_and_decode(data: &[u8]) -> DecodedQr {
     if let Ok(s) = std::str::from_utf8(data) {
         let text = s.trim();
@@ -66,7 +64,7 @@ pub fn detect_and_decode(data: &[u8]) -> DecodedQr {
         }
     }
 
-    // Binary CompactSeedQR (raw entropy, no checksum)
+    // Binary CompactSeedQR: raw entropy, 16 bytes (12 words) or 32 (24 words)
     if data.len() == 16 || data.len() == 32 {
         if let Some(decoded) = try_decode_compact_seed_qr(data) {
             return decoded;
@@ -96,11 +94,10 @@ fn try_decode_seed_qr(data: &str) -> Option<DecodedQr> {
 }
 
 fn try_decode_compact_seed_qr(data: &[u8]) -> Option<DecodedQr> {
-    // Data is raw entropy (16 or 32 bytes). Rebuild the mnemonic via the BIP39
-    // spec — this recomputes the checksum from the entropy and yields a
-    // validated mnemonic.
+    // Raw entropy (16 or 32 bytes); rebuild the mnemonic via the BIP39 spec,
+    // which recomputes the checksum from the entropy and yields a validated
+    // mnemonic.
     let mnemonic = bip39::mnemonic_from_raw_entropy(data).ok()?;
-
     Some(DecodedQr {
         qr_type: QrType::CompactSeedQr,
         raw_data: data.to_vec(),
