@@ -85,12 +85,28 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     if bip39::validate_mnemonic(&mnemonic) {
                         return Screen::LoadPassphrasePrompt { mnemonic, selected: 0 };
                     }
-                    picker.words.pop();
-                    picker.word_index -= 1;
+                    // Invalid checksum — surface an error screen so the user
+                    // knows why nothing advanced.
+                    return Screen::LoadInvalidMnemonic { word_count };
                 }
                 words = entered;
             }
             Screen::LoadEnterWords { words, word_count, picker }
+        }
+
+        Screen::LoadInvalidMnemonic { word_count } => {
+            match event {
+                InputEvent::Confirm => {
+                    return Screen::LoadEnterWords {
+                        words: Vec::new(),
+                        word_count,
+                        picker: WordPicker::new(word_count),
+                    };
+                }
+                InputEvent::Back => return Screen::LoadMethod { selected: 1 },
+                _ => {}
+            }
+            Screen::LoadInvalidMnemonic { word_count }
         }
 
         Screen::LoadPassphrasePrompt { mnemonic, mut selected } => {

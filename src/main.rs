@@ -5,6 +5,8 @@ mod crypto;
 #[cfg(any(feature = "simulator", target_os = "linux"))]
 mod camera;
 #[cfg(any(feature = "simulator", target_os = "linux"))]
+mod ui;
+#[cfg(any(feature = "simulator", target_os = "linux"))]
 mod gui;
 #[cfg(target_os = "linux")]
 mod hardware;

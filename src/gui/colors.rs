@@ -34,6 +34,12 @@ pub const DANGER: Rgb565 = Rgb565::new(31, 8, 7);           // #FF453A
 pub const BORDER_DEFAULT: Rgb565 = Rgb565::new(4, 8, 5);    // #202828
 pub const BORDER_SELECTED: Rgb565 = SOLANA_PURPLE;
 
+// Faraday brand (from .faraday-design-bundle/.../colors_and_type.css)
+pub const FD_BG: Rgb565 = Rgb565::new(0, 5, 4);           // #001721 deep navy
+pub const FD_ACCENT: Rgb565 = Rgb565::new(3, 62, 31);     // #1AF8FF cyan
+pub const FD_TEXT: Rgb565 = Rgb565::new(28, 57, 28);      // #E7E7E7 off-white
+pub const FD_TEXT_MUTED: Rgb565 = Rgb565::new(17, 39, 21); // #8C9CA8 navy-gray
+
 /// Blend two colors by a factor (0-255). 0 = full a, 255 = full b.
 pub fn blend(a: Rgb565, b: Rgb565, factor: u8) -> Rgb565 {
     let f = factor as u16;

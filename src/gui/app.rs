@@ -59,6 +59,9 @@ pub enum Screen {
         address: String,
         selected: usize,
     },
+    /// Pre-export warning. Forces the user to read the consequence before the
+    /// seed QR is rendered.
+    ExportSeedWarning { selected: usize, from_settings: bool },
     ExportSeedQr {
         seed_qr_data: String,
         compact_data: Vec<u8>,
@@ -69,6 +72,8 @@ pub enum Screen {
     // Load wallet flow
     LoadMethod { selected: usize },
     LoadScanQr,
+    /// Shown when the 12 or 24 typed words fail the BIP39 checksum.
+    LoadInvalidMnemonic { word_count: usize },
     LoadWordCount { selected: usize },
     LoadEnterWords {
         words: Vec<String>,
@@ -124,7 +129,7 @@ pub struct CharGrid {
     pub caps: bool,
 }
 
-const GRID_CHARS: [[char; 10]; 5] = [
+pub const GRID_CHARS: [[char; 10]; 5] = [
     ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'],
     ['k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't'],
     ['u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3'],
@@ -535,12 +540,13 @@ impl App {
             Screen::MainMenu { mut selected } => {
                 // Vertical list: Up/Down move one item at a time; Left/Right
                 // behave like Up/Down for joystick ergonomics.
+                const MAIN_MENU_LEN: usize = 4;
                 match event {
                     InputEvent::Up | InputEvent::Left => {
-                        if selected > 0 { selected -= 1; }
+                        selected = selected.saturating_sub(1);
                     }
                     InputEvent::Down | InputEvent::Right => {
-                        if selected < 3 { selected += 1; }
+                        if selected + 1 < MAIN_MENU_LEN { selected += 1; }
                     }
                     InputEvent::Confirm => return self.menu_select(selected),
                     _ => {}
@@ -560,10 +566,12 @@ impl App {
                 | Screen::CreatePassphraseConfirm { .. }
                 | Screen::CreatePassphraseMismatch { .. }
                 | Screen::CreateConfirm { .. }
+                | Screen::ExportSeedWarning { .. }
                 | Screen::ExportSeedQr { .. }) => flows::create::handle(self, s, event),
 
             s @ (Screen::LoadMethod { .. }
                 | Screen::LoadScanQr
+                | Screen::LoadInvalidMnemonic { .. }
                 | Screen::LoadWordCount { .. }
                 | Screen::LoadEnterWords { .. }
                 | Screen::LoadPassphrasePrompt { .. }

@@ -14,16 +14,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     if app.wallet.is_some() {
                         return match selected {
                             0 => Screen::SettingsShowAddress,
-                            1 => {
-                                let mnemonic = &app.wallet.as_ref().unwrap().mnemonic;
-                                let seed_qr_data = crate::qr::encode_qr::encode_seed_qr(mnemonic)
-                                    .unwrap_or_default();
-                                let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(mnemonic)
-                                    .unwrap_or_default();
-                                Screen::ExportSeedQr {
-                                    seed_qr_data, compact_data, compact_mode: false, from_settings: true,
-                                }
-                            }
+                            1 => Screen::ExportSeedWarning { selected: 0, from_settings: true },
                             2 => {
                                 let accounts = build_accounts_list(app);
                                 Screen::SettingsAccounts { accounts, selected: 0 }

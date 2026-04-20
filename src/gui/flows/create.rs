@@ -268,6 +268,40 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             Screen::CreateConfirm { mnemonic, passphrase, address, selected }
         }
 
+        // Pre-export warning. Row 0 = CANCEL (default), Row 1 = SHOW.
+        Screen::ExportSeedWarning { mut selected, from_settings } => {
+            match event {
+                InputEvent::Up => { selected = 0; }
+                InputEvent::Down => { selected = 1; }
+                InputEvent::Confirm => {
+                    if selected == 1 {
+                        if let Some(mnemonic) = app.wallet.as_ref().map(|w| w.mnemonic.clone()) {
+                            let seed_qr_data = crate::qr::encode_qr::encode_seed_qr(&mnemonic)
+                                .unwrap_or_default();
+                            let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(&mnemonic)
+                                .unwrap_or_default();
+                            return Screen::ExportSeedQr {
+                                seed_qr_data, compact_data,
+                                compact_mode: false, from_settings,
+                            };
+                        }
+                    }
+                    if from_settings {
+                        return Screen::SettingsMenu { selected: 1 };
+                    }
+                    return Screen::MainMenu { selected: 0 };
+                }
+                InputEvent::Back => {
+                    if from_settings {
+                        return Screen::SettingsMenu { selected: 1 };
+                    }
+                    return Screen::MainMenu { selected: 0 };
+                }
+                _ => {}
+            }
+            Screen::ExportSeedWarning { selected, from_settings }
+        }
+
         Screen::ExportSeedQr { seed_qr_data, compact_data, compact_mode, from_settings } => {
             match event {
                 InputEvent::Confirm | InputEvent::Back => {

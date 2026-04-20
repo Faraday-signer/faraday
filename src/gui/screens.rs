@@ -7,6 +7,7 @@ use embedded_graphics::{
     primitives::{PrimitiveStyle, PrimitiveStyleBuilder, Rectangle, RoundedRectangle},
     text::{Alignment, Text},
 };
+use u8g2_fonts::{fonts, U8g2TextStyle};
 
 use crate::gui::app::{App, Screen};
 use crate::gui::colors;
@@ -15,18 +16,19 @@ use crate::gui::components::{
     draw_qr, draw_status_bar, draw_text_centered, draw_word_picker,
 };
 use crate::gui::icons;
+use crate::gui::logo;
 
-/// Menu item for the 2x2 grid.
+/// Menu item. Brutalist layout: one hero label + subtitle at a time.
 struct MenuItem {
     label: &'static str,
-    icon_fn: fn() -> icons::Icon,
+    subtitle: &'static str,
 }
 
 const MENU_ITEMS: [MenuItem; 4] = [
-    MenuItem { label: "Create", icon_fn: icons::key },
-    MenuItem { label: "Load", icon_fn: icons::camera },
-    MenuItem { label: "Sign TX", icon_fn: icons::transaction },
-    MenuItem { label: "Settings", icon_fn: icons::tools },
+    MenuItem { label: "CREATE",   subtitle: "a new wallet" },
+    MenuItem { label: "LOAD",     subtitle: "an existing wallet" },
+    MenuItem { label: "SIGN TX",  subtitle: "a transaction" },
+    MenuItem { label: "SETTINGS", subtitle: "and device info" },
 ];
 
 impl App {
@@ -42,14 +44,13 @@ impl App {
 
             // Create flow
             Screen::CreateWordCount { selected } => {
-                draw_option_list(display, "Create Wallet", &["12 Words", "24 Words"], *selected, self.seed_loaded())
+                draw_create_word_count(display, *selected)
             }
-            Screen::CreateMethod { word_count, selected } => {
-                let title = alloc::format!("Create {} Words", word_count);
-                draw_option_list(display, &title, &["Random", "Camera", "Coin Flips", "Dice Rolls"], *selected, self.seed_loaded())
+            Screen::CreateMethod { selected, .. } => {
+                draw_create_method(display, *selected)
             }
             Screen::CreateCameraEntropy { word_count, frames_collected, .. } => {
-                draw_camera_entropy(display, *word_count, *frames_collected, self.seed_loaded(), self.has_camera_frame())
+                draw_camera_entropy(display, *word_count, *frames_collected, self.seed_loaded())
             }
             Screen::CreateCoinFlips { word_count, bits, selected } => {
                 draw_coin_flips(display, *word_count, bits, *selected, self.seed_loaded())
@@ -62,42 +63,40 @@ impl App {
             }
             Screen::CreateVerify { checks, current, options, correct_idx: _, selected, mnemonic: _ } => {
                 let word_num = checks[*current] + 1;
-                draw_verify_word(display, word_num, options, *selected, *current + 1, checks.len(), self.seed_loaded())
+                draw_verify_word(display, word_num, options, *selected, *current + 1, checks.len())
             }
             Screen::CreatePassphrasePrompt { selected, .. } => {
-                draw_option_list(display, "Passphrase", &["Skip", "Enter Passphrase"], *selected, self.seed_loaded())
+                draw_passphrase_prompt(display, *selected)
             }
             Screen::CreatePassphraseInput { grid, .. } => {
-                draw_char_grid(display, grid, "Passphrase", self.seed_loaded())
+                draw_passphrase_grid(display, grid, "PASSPHRASE")
             }
             Screen::CreatePassphraseConfirm { grid, .. } => {
-                draw_char_grid(display, grid, "Confirm Passphrase", self.seed_loaded())
+                draw_passphrase_grid(display, grid, "CONFIRM")
             }
             Screen::CreatePassphraseMismatch { .. } => {
                 draw_passphrase_mismatch(display, self.seed_loaded())
             }
-            Screen::CreateConfirm { address, selected, .. } => {
-                let path = self.wallet.as_ref()
-                    .map(|w| w.keypair.derivation_path.as_str())
-                    .unwrap_or("m/44'/501'/0'/0'");
-                draw_confirm_address(display, "New Wallet", address, path, *selected, self.seed_loaded())
+            Screen::CreateConfirm { address, .. } => {
+                draw_wallet_confirm(display, "NEW WALLET", address)
+            }
+            Screen::ExportSeedWarning { selected, .. } => {
+                draw_export_seed_warning(display, *selected)
             }
             Screen::ExportSeedQr { seed_qr_data, compact_data, compact_mode, .. } => {
-                // Seed backup QRs use ECL L: smallest grid possible so manual
-                // transcription onto a paper template has fewer cells to fill.
-                let ec = crate::qr::encode_qr::QrEcLevel::L;
-                if *compact_mode {
-                    // Compact SeedQR: binary data displayed as hex for QR
-                    let hex_data = hex::encode(compact_data);
-                    draw_qr(display, "Compact SeedQR", &hex_data, self.seed_loaded(), ec)
+                let hex_data;
+                let data: &str = if *compact_mode {
+                    hex_data = hex::encode(compact_data);
+                    &hex_data
                 } else {
-                    draw_qr(display, "SeedQR Backup", seed_qr_data, self.seed_loaded(), ec)
-                }
+                    seed_qr_data
+                };
+                draw_seed_qr(display, data)
             }
 
             // Load flow
             Screen::LoadMethod { selected } => {
-                draw_option_list(display, "Load Wallet", &["Scan SeedQR", "Enter Words"], *selected, self.seed_loaded())
+                draw_load_method(display, *selected)
             }
             Screen::LoadScanQr => {
                 #[cfg(any(feature = "simulator", target_os = "linux"))]
@@ -112,28 +111,30 @@ impl App {
                 Ok(())
             }
             Screen::LoadWordCount { selected } => {
-                draw_option_list(display, "Word Count", &["12 Words", "24 Words"], *selected, self.seed_loaded())
+                // Same visual as Create's word-count picker — the choice is
+                // the same, only the state-machine edges differ.
+                draw_create_word_count(display, *selected)
             }
             Screen::LoadEnterWords { picker, .. } => {
                 draw_word_picker(display, picker, self.seed_loaded())
             }
+            Screen::LoadInvalidMnemonic { word_count } => {
+                draw_invalid_mnemonic(display, *word_count)
+            }
             Screen::LoadPassphrasePrompt { selected, .. } => {
-                draw_option_list(display, "Passphrase", &["Skip", "Enter Passphrase"], *selected, self.seed_loaded())
+                draw_passphrase_prompt(display, *selected)
             }
             Screen::LoadPassphraseInput { grid, .. } => {
-                draw_char_grid(display, grid, "Passphrase", self.seed_loaded())
+                draw_passphrase_grid(display, grid, "PASSPHRASE")
             }
             Screen::LoadPassphraseConfirm { grid, .. } => {
-                draw_char_grid(display, grid, "Confirm Passphrase", self.seed_loaded())
+                draw_passphrase_grid(display, grid, "CONFIRM")
             }
             Screen::LoadPassphraseMismatch { .. } => {
                 draw_passphrase_mismatch(display, self.seed_loaded())
             }
-            Screen::LoadConfirm { address, selected, .. } => {
-                let path = self.wallet.as_ref()
-                    .map(|w| w.keypair.derivation_path.as_str())
-                    .unwrap_or("m/44'/501'/0'/0'");
-                draw_confirm_address(display, "Load Wallet", address, path, *selected, self.seed_loaded())
+            Screen::LoadConfirm { address, .. } => {
+                draw_wallet_confirm(display, "LOAD WALLET", address)
             }
 
             // Sign TX flow
@@ -158,7 +159,7 @@ impl App {
                 draw_qr(display, "Signed TX", data, self.seed_loaded(), crate::qr::encode_qr::QrEcLevel::M)
             }
             Screen::SignMessageInput { grid } => {
-                draw_char_grid(display, grid, "Sign Message", self.seed_loaded())
+                draw_passphrase_grid(display, grid, "SIGN MSG")
             }
             Screen::SignMessageResult { signature_hex } => {
                 draw_qr(display, "Signature", signature_hex, self.seed_loaded(), crate::qr::encode_qr::QrEcLevel::M)
@@ -166,22 +167,13 @@ impl App {
 
             // Settings
             Screen::SettingsMenu { selected } => {
-                let opts: Vec<&str> = if self.seed_loaded() {
-                    vec!["Show Address", "Export SeedQR", "Accounts", "Verify Address", "About", "Power Off"]
-                } else {
-                    vec!["About", "Power Off"]
-                };
-                draw_option_list(display, "Settings", &opts, *selected, self.seed_loaded())
+                draw_settings_menu(display, *selected, self.seed_loaded())
             }
             Screen::SettingsAccounts { accounts, selected } => {
                 draw_accounts(display, accounts, *selected, self.seed_loaded())
             }
             Screen::SettingsShowAddress => {
-                if let Some(wallet) = &self.wallet {
-                    draw_qr(display, "Address", &wallet.address, true, crate::qr::encode_qr::QrEcLevel::M)
-                } else {
-                    draw_message(display, "Address", "No wallet loaded", false)
-                }
+                draw_show_address(display, self.wallet.as_ref().map(|w| w.address.as_str()))
             }
             Screen::SettingsVerifyAddressScan => {
                 #[cfg(any(feature = "simulator", target_os = "linux"))]
@@ -207,136 +199,442 @@ impl App {
     }
 }
 
-/// Splash screen shown at boot.
+/// Splash / reposo screen. Full-pixel-art Faraday logo, centered, at 2x scale
+/// on the dark-navy background. Doubles as the idle screen.
 pub fn draw_splash<D: DrawTarget<Color = Rgb565>>(display: &mut D) -> Result<(), D::Error> {
-    display.clear(colors::BG_DARK)?;
+    display.clear(colors::FD_BG)?;
 
-    // Gradient accent at top
-    for x in 0..240i32 {
-        let factor = ((x as f32 / 240.0) * 255.0) as u8;
-        let color = colors::blend(colors::SOLANA_PURPLE, colors::SOLANA_GREEN, factor);
-        Rectangle::new(Point::new(x, 0), Size::new(1, 3))
-            .into_styled(PrimitiveStyle::with_fill(color))
-            .draw(display)?;
-    }
-
-    draw_text_centered(display, "Faraday", 110, colors::TEXT_PRIMARY)?;
-    draw_text_centered(display, "Air-gapped Signer", 135, colors::TEXT_SECONDARY)?;
-
-    let style = MonoTextStyle::new(&FONT_9X15, colors::TEXT_MUTED);
-    Text::with_alignment("v0.1.0", Point::new(120, 165), style, Alignment::Center)
-        .draw(display)?;
-
-    // Gradient accent at bottom
-    for x in 0..240i32 {
-        let factor = ((x as f32 / 240.0) * 255.0) as u8;
-        let color = colors::blend(colors::SOLANA_GREEN, colors::SOLANA_PURPLE, factor);
-        Rectangle::new(Point::new(x, 237), Size::new(1, 3))
-            .into_styled(PrimitiveStyle::with_fill(color))
-            .draw(display)?;
-    }
+    let scale: u32 = 2;
+    let logo_w = logo::LOGO_WIDTH * scale;
+    let logo_h = logo::LOGO_HEIGHT * scale;
+    let x = (240 - logo_w as i32) / 2;
+    let y = (240 - logo_h as i32) / 2;
+    logo::draw_logo(display, x, y, scale, colors::FD_ACCENT)?;
 
     Ok(())
 }
 
-/// Main menu: 4 full-width rows with bold label + icon, sized for the 240x240
-/// screen so text is legible without squinting.
+/// Main menu: list register (Header + List + ButtonBar) via `src/ui/`.
 fn draw_main_menu<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     selected: usize,
-    seed_loaded: bool,
-    address: Option<&str>,
+    _seed_loaded: bool,
+    _address: Option<&str>,
 ) -> Result<(), D::Error> {
-    display.clear(colors::BG_DARK)?;
-    draw_status_bar(display, "Faraday", seed_loaded)?;
+    use crate::ui::widgets::{ButtonBar, HeaderKind, ListRow};
+    use crate::ui::{screens::ListScreen, Theme};
 
-    // Truncated address under the status bar when a wallet is loaded.
-    let (top_offset, has_addr) = if let Some(addr) = address {
-        let truncated = if addr.len() > 12 {
-            alloc::format!("{}...{}", &addr[..4], &addr[addr.len() - 4..])
-        } else {
-            addr.to_string()
-        };
-        let addr_style = MonoTextStyle::new(&FONT_6X10, colors::SOLANA_GREEN);
-        Text::with_alignment(&truncated, Point::new(120, 30), addr_style, Alignment::Center)
-            .draw(display)?;
-        (40i32, true)
-    } else {
-        (26i32, false)
+    let theme = Theme::faraday_240();
+    let total = MENU_ITEMS.len();
+    let sel = selected.min(total - 1);
+
+    let rows: [ListRow; 4] = [
+        ListRow::with_subtitle(MENU_ITEMS[0].label, MENU_ITEMS[0].subtitle),
+        ListRow::with_subtitle(MENU_ITEMS[1].label, MENU_ITEMS[1].subtitle),
+        ListRow::with_subtitle(MENU_ITEMS[2].label, MENU_ITEMS[2].subtitle),
+        ListRow::with_subtitle(MENU_ITEMS[3].label, MENU_ITEMS[3].subtitle),
+    ];
+
+    ListScreen {
+        header: HeaderKind::Brand,
+        counter: None,
+        description: None,
+        items: &rows,
+        selected: sel,
+        max_visible: 3,
+        selectable: true,
+        buttons: ButtonBar::new().back("BACK").confirm("SELECT"),
+    }
+    .draw(display, &theme)
+}
+
+/// Invalid mnemonic card. Shown when the 12/24 entered words don't form a
+/// valid BIP39 seed. CONFIRM retries from scratch, BACK bails out of Load.
+fn draw_invalid_mnemonic<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    word_count: usize,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{ButtonBar, CardRow, HeaderKind};
+    use crate::ui::{screens::CardScreen, Theme};
+
+    let theme = Theme::faraday_240();
+    let count_str = if word_count == 12 { "12 WORDS" } else { "24 WORDS" };
+    let rows: [CardRow; 2] = [
+        CardRow::new("ENTERED", count_str),
+        CardRow::new("CHECK", "BIP39 failed"),
+    ];
+    let body = [
+        "Those words do not form",
+        "a valid recovery seed.",
+        "Check spelling and order.",
+    ];
+
+    CardScreen {
+        header: HeaderKind::Title("INVALID SEED"),
+        counter: None,
+        title: Some("NO MATCH"),
+        subtitle: Some("Mnemonic checksum invalid"),
+        body_lines: &body,
+        rows: &rows,
+        buttons: ButtonBar::new().back("CANCEL").confirm("RETRY"),
+    }
+    .draw(display, &theme)
+}
+
+/// Passphrase / message character grid. First input-register screen.
+/// Layout: header + dot/count preview + 5-row char grid + action row + button bar.
+/// The selected cell renders full-bleed cyan with the char in bg color (inverted).
+fn draw_passphrase_grid<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    grid: &crate::gui::app::CharGrid,
+    title: &str,
+) -> Result<(), D::Error> {
+    use crate::gui::app::{GRID_COLS, GridAction};
+    use crate::ui::layout::{split_bottom, split_top};
+    use crate::ui::widgets::{ButtonBar, Header, HeaderKind};
+    use crate::ui::Theme;
+    use embedded_graphics::{
+        geometry::{Point, Size},
+        primitives::Rectangle,
     };
 
-    let margin = 10i32;
-    let gap = 6i32;
-    // Fit 4 rows in the remaining vertical space.
-    let available = 240 - top_offset - margin;
-    let row_h = ((available - gap * 3) / 4) as u32;
-    let row_w = (240 - margin * 2) as u32;
-    let _ = has_addr;
+    let theme = Theme::faraday_240();
+    let screen = Rectangle::new(
+        Point::zero(),
+        Size::new(theme.width, theme.height),
+    );
+    display.fill_solid(&screen, theme.bg)?;
 
-    for (i, item) in MENU_ITEMS.iter().enumerate() {
-        let y = top_offset + (i as i32) * (row_h as i32 + gap);
-        let is_selected = i == selected;
+    let (header_rect, rest) = split_top(screen, theme.header_h as i32);
+    let (body_rect, footer_rect) = split_bottom(rest, theme.footer_h as i32);
 
-        let (bg, border, text_color) = if is_selected {
-            (colors::BG_CARD_SELECTED, colors::BORDER_SELECTED, colors::TEXT_PRIMARY)
-        } else {
-            (colors::BG_CARD, colors::BORDER_DEFAULT, colors::TEXT_SECONDARY)
-        };
+    Header {
+        kind: HeaderKind::Title(title),
+        counter: None,
+    }
+    .draw(display, &theme, header_rect)?;
 
-        let style = PrimitiveStyleBuilder::new()
-            .fill_color(bg)
-            .stroke_color(border)
-            .stroke_width(1)
-            .build();
-        RoundedRectangle::with_equal_corners(
-            Rectangle::new(Point::new(margin, y), Size::new(row_w, row_h)),
-            Size::new(8, 8),
-        )
-        .into_styled(style)
-        .draw(display)?;
+    // Preview band.
+    let preview_h = 28i32;
+    let (preview_rect, grid_rect) = split_top(body_rect, preview_h);
+    draw_preview(display, &theme, preview_rect, &grid.text)?;
 
+    // Grid: 6 rows (5 char rows + 1 action row), 10 cols each, edge-to-edge.
+    let cell_w = (theme.width / GRID_COLS as u32) as i32;
+    let row_h = grid_rect.size.height as i32 / 6;
+
+    // Character cells (rows 0-4).
+    for row in 0..5usize {
+        for col in 0..GRID_COLS {
+            let x = grid_rect.top_left.x + col as i32 * cell_w;
+            let y = grid_rect.top_left.y + row as i32 * row_h;
+            let cell = Rectangle::new(
+                Point::new(x, y),
+                Size::new(cell_w as u32, row_h as u32),
+            );
+            let is_selected = grid.row == row && grid.col == col;
+
+            if is_selected {
+                cell.into_styled(PrimitiveStyle::with_fill(theme.accent))
+                    .draw(display)?;
+            }
+
+            let mut ch = crate::gui::app::GRID_CHARS[row][col];
+            if grid.caps && ch.is_ascii_lowercase() {
+                ch = ch.to_ascii_uppercase();
+            }
+            let color = if is_selected { theme.bg } else { theme.text };
+            let mut buf = [0u8; 4];
+            let s = ch.encode_utf8(&mut buf);
+            Text::with_alignment(
+                s,
+                Point::new(x + cell_w / 2, y + row_h / 2 + 5),
+                theme.style_sm(color),
+                Alignment::Center,
+            )
+            .draw(display)?;
+        }
+    }
+
+    // Action row (row 5). Four buttons of widths [2, 2, 3, 3] cells.
+    let action_y = grid_rect.top_left.y + 5 * row_h;
+    let actions: [(usize, usize, GridAction, &str); 4] = [
+        (0, 2, GridAction::Space, "SPC"),
+        (2, 2, GridAction::Caps, "CAPS"),
+        (4, 3, GridAction::Delete, "DEL"),
+        (7, 3, GridAction::Done, "DONE"),
+    ];
+    let current_action = grid.action_region();
+    for (start_col, span, action, label) in actions {
+        let x = grid_rect.top_left.x + start_col as i32 * cell_w;
+        let w = span as i32 * cell_w;
+        let rect = Rectangle::new(
+            Point::new(x, action_y),
+            Size::new(w as u32, row_h as u32),
+        );
+        let is_selected = current_action == Some(action);
         if is_selected {
-            let glow = colors::blend(colors::BG_CARD_SELECTED, colors::ACCENT, 80);
-            Rectangle::new(Point::new(margin + 2, y + 1), Size::new(row_w - 4, 2))
-                .into_styled(PrimitiveStyle::with_fill(glow))
+            rect.into_styled(PrimitiveStyle::with_fill(theme.accent))
                 .draw(display)?;
         }
-
-        // Icon on the left, 2x scaled (32x32).
-        let icon = (item.icon_fn)();
-        let icon_x = margin + 12;
-        let icon_y = y + (row_h as i32 - 32) / 2;
-        let icon_color = if is_selected { colors::SOLANA_GREEN } else { colors::SOLANA_TEAL };
-        let data = icon.data;
-        for row in 0..16i32 {
-            let hi = data[row as usize * 2];
-            let lo = data[row as usize * 2 + 1];
-            let word = ((hi as u16) << 8) | (lo as u16);
-            for col in 0..16i32 {
-                if (word >> (15 - col)) & 1 == 1 {
-                    Rectangle::new(
-                        Point::new(icon_x + col * 2, icon_y + row * 2),
-                        Size::new(2, 2),
-                    )
-                    .into_styled(PrimitiveStyle::with_fill(icon_color))
-                    .draw(display)?;
-                }
-            }
-        }
-
-        // Label to the right of the icon, FONT_10X20 (big).
-        let label_style = MonoTextStyle::new(&FONT_10X20, text_color);
-        let text_x = icon_x + 32 + 14;
+        let color = if is_selected { theme.bg } else { theme.muted };
         Text::with_alignment(
-            item.label,
-            Point::new(text_x, y + row_h as i32 / 2 + 7),
-            label_style,
-            Alignment::Left,
+            label,
+            Point::new(x + w / 2, action_y + row_h / 2 + 5),
+            theme.style_sm(color),
+            Alignment::Center,
         )
         .draw(display)?;
     }
 
+    ButtonBar::new()
+        .back("BACK")
+        .confirm("SELECT")
+        .draw(display, &theme, footer_rect)?;
+
     Ok(())
+}
+
+/// Preview band for the passphrase grid: `••••• 5 CHARS` style.
+fn draw_preview<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    theme: &crate::ui::Theme,
+    rect: Rectangle,
+    text: &str,
+) -> Result<(), D::Error> {
+    let n = text.chars().count();
+    let cx = rect.top_left.x + rect.size.width as i32 / 2;
+    let cy = rect.top_left.y + rect.size.height as i32 / 2;
+
+    if n == 0 {
+        Text::with_alignment(
+            "—",
+            Point::new(cx, cy + 6),
+            theme.style_sm(theme.dim),
+            Alignment::Center,
+        )
+        .draw(display)?;
+        return Ok(());
+    }
+
+    // Draw up to 12 square dots + a count label.
+    let show = n.min(12);
+    let dot = 5i32;
+    let gap = 3i32;
+    let dots_w = show as i32 * (dot + gap) - gap;
+    let count_str = alloc::format!("{}", n);
+    // Approximate label width (profont17 glyph ~10px) for centering.
+    let label_w = count_str.len() as i32 * 11 + 40; // "N CHARS"
+    let total_w = dots_w + 12 + label_w;
+    let start_x = cx - total_w / 2;
+
+    let dot_y = cy - dot / 2;
+    for i in 0..show {
+        let x = start_x + i as i32 * (dot + gap);
+        Rectangle::new(Point::new(x, dot_y), Size::new(dot as u32, dot as u32))
+            .into_styled(PrimitiveStyle::with_fill(theme.accent))
+            .draw(display)?;
+    }
+
+    let label = alloc::format!("{} CHARS", n);
+    Text::with_alignment(
+        &label,
+        Point::new(start_x + dots_w + 12, cy + 6),
+        theme.style_sm(theme.muted),
+        Alignment::Left,
+    )
+    .draw(display)?;
+
+    Ok(())
+}
+
+/// Shared passphrase prompt for the Create and Load flows.
+fn draw_passphrase_prompt<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    selected: usize,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{ButtonBar, HeaderKind, ListRow};
+    use crate::ui::{screens::ListScreen, Theme};
+
+    let theme = Theme::faraday_240();
+    let rows: [ListRow; 2] = [
+        ListRow::with_subtitle("SKIP", "No passphrase"),
+        ListRow::with_subtitle("ADD", "Extra security layer"),
+    ];
+    let sel = selected.min(1);
+
+    ListScreen {
+        header: HeaderKind::Title("PASSPHRASE"),
+        counter: Some((sel + 1, 2)),
+        description: None,
+        items: &rows,
+        selected: sel,
+        max_visible: 2,
+        selectable: true,
+        buttons: ButtonBar::new().back("BACK").confirm("SELECT"),
+    }
+    .draw(display, &theme)
+}
+
+/// Wallet confirmation. Card register — shows derived address so the user
+/// can verify before the wallet is committed. Decision is driven by the
+/// button bar (BACK = cancel, CONFIRM = accept) — no row selection needed.
+fn draw_wallet_confirm<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    title: &str,
+    address: &str,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{ButtonBar, CardRow, HeaderKind};
+    use crate::ui::{screens::CardScreen, Theme};
+
+    let theme = Theme::faraday_240();
+
+    // Split the 32–44 char address into two halves so it wraps inside the
+    // card body. Rendered via `body_lines` (not rows) because 22+ base58
+    // chars don't fit in the right-aligned value slot.
+    let mid = address.len() / 2;
+    let first = &address[..mid];
+    let second = &address[mid..];
+    let body = [first, second];
+
+    let rows: [CardRow; 1] = [CardRow::new("PATH", "m/44'/501'/0'/0'")];
+
+    CardScreen {
+        header: HeaderKind::Title(title),
+        counter: None,
+        title: Some("CONFIRM"),
+        subtitle: Some("Verify the address"),
+        body_lines: &body,
+        rows: &rows,
+        buttons: ButtonBar::new().back("CANCEL").confirm("CONFIRM"),
+    }
+    .draw(display, &theme)
+}
+
+/// Load-method picker. Scan an existing SeedQR or type the words in manually.
+fn draw_load_method<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    selected: usize,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{ButtonBar, HeaderKind, ListRow};
+    use crate::ui::{screens::ListScreen, Theme};
+
+    let theme = Theme::faraday_240();
+    let rows: [ListRow; 2] = [
+        ListRow::with_subtitle("SCAN QR", "From SeedQR backup"),
+        ListRow::with_subtitle("TYPE", "Enter BIP39 words"),
+    ];
+    let sel = selected.min(1);
+
+    ListScreen {
+        header: HeaderKind::Title("LOAD WALLET"),
+        counter: Some((sel + 1, 2)),
+        description: None,
+        items: &rows,
+        selected: sel,
+        max_visible: 2,
+        selectable: true,
+        buttons: ButtonBar::new().back("BACK").confirm("SELECT"),
+    }
+    .draw(display, &theme)
+}
+
+/// Word-count picker (step 1 of create). 12 or 24 BIP39 words.
+fn draw_create_word_count<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    selected: usize,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{ButtonBar, HeaderKind, ListRow};
+    use crate::ui::{screens::ListScreen, Theme};
+
+    let theme = Theme::faraday_240();
+    let rows: [ListRow; 2] = [
+        ListRow::with_subtitle("12 WORDS", "128-bit entropy"),
+        ListRow::with_subtitle("24 WORDS", "256-bit entropy"),
+    ];
+    let sel = selected.min(1);
+
+    ListScreen {
+        header: HeaderKind::Title("WORD COUNT"),
+        counter: Some((sel + 1, 2)),
+        description: None,
+        items: &rows,
+        selected: sel,
+        max_visible: 2,
+        selectable: true,
+        buttons: ButtonBar::new().back("BACK").confirm("SELECT"),
+    }
+    .draw(display, &theme)
+}
+
+/// Entropy-method picker (step 2 of create).
+fn draw_create_method<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    selected: usize,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{ButtonBar, HeaderKind, ListRow};
+    use crate::ui::{screens::ListScreen, Theme};
+
+    let theme = Theme::faraday_240();
+    let rows: [ListRow; 4] = [
+        ListRow::with_subtitle("RANDOM", "Device entropy"),
+        ListRow::with_subtitle("CAMERA", "Sensor entropy"),
+        ListRow::with_subtitle("COINS", "Flip your own"),
+        ListRow::with_subtitle("DICE", "Roll your own"),
+    ];
+    let sel = selected.min(3);
+
+    ListScreen {
+        header: HeaderKind::Title("METHOD"),
+        counter: Some((sel + 1, 4)),
+        description: None,
+        items: &rows,
+        selected: sel,
+        max_visible: 3,
+        selectable: true,
+        buttons: ButtonBar::new().back("BACK").confirm("SELECT"),
+    }
+    .draw(display, &theme)
+}
+
+/// Settings menu: list register with Title header. Items depend on whether
+/// a wallet is loaded.
+fn draw_settings_menu<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    selected: usize,
+    seed_loaded: bool,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{ButtonBar, HeaderKind, ListRow};
+    use crate::ui::{screens::ListScreen, Theme};
+
+    let theme = Theme::faraday_240();
+
+    let loaded: [ListRow; 5] = [
+        ListRow::new("ADDRESS"),
+        ListRow::new("EXPORT QR"),
+        ListRow::new("ACCOUNTS"),
+        ListRow::new("ABOUT"),
+        ListRow::new("POWER OFF"),
+    ];
+    let empty: [ListRow; 2] = [
+        ListRow::new("ABOUT"),
+        ListRow::new("POWER OFF"),
+    ];
+    let items: &[ListRow] = if seed_loaded { &loaded } else { &empty };
+    let total = items.len();
+    let sel = selected.min(total - 1);
+
+    ListScreen {
+        header: HeaderKind::Title("SETTINGS"),
+        counter: Some((sel + 1, total)),
+        description: None,
+        items,
+        selected: sel,
+        max_visible: 3,
+        selectable: true,
+        buttons: ButtonBar::new().back("BACK").confirm("SELECT"),
+    }
+    .draw(display, &theme)
 }
 
 /// Show mnemonic words, 6 per page in a 2x3 card grid.
@@ -345,86 +643,69 @@ fn draw_show_words<D: DrawTarget<Color = Rgb565>>(
     mnemonic: &str,
     page: usize,
     word_count: usize,
-    seed_loaded: bool,
+    _seed_loaded: bool,
 ) -> Result<(), D::Error> {
-    let words_per_page = 6usize;
-    display.clear(colors::BG_DARK)?;
+    use crate::ui::widgets::{ButtonBar, HeaderKind, ListRow};
+    use crate::ui::{screens::ListScreen, Theme};
 
+    let theme = Theme::faraday_240();
+    let words_per_page = 4usize;
     let total_pages = (word_count + words_per_page - 1) / words_per_page;
+    let page = page.min(total_pages - 1);
     let start = page * words_per_page;
     let end = (start + words_per_page).min(word_count);
-    let title = alloc::format!("Words {}-{}", start + 1, end);
-    draw_status_bar(display, &title, seed_loaded)?;
+    let is_last = page + 1 == total_pages;
 
     let words: Vec<&str> = mnemonic.split_whitespace().collect();
 
-    // 2x3 grid of word cards
-    let margin = 8i32;
-    let gap = 6i32;
-    let card_w = ((240 - margin * 2 - gap) / 2) as u32; // ~109px
-    let card_h = 56u32;
-    let top_offset = 26i32;
+    // Own the number strings so the `ListRow` borrows have a stable lifetime.
+    let nums: Vec<String> = (start..end)
+        .map(|i| alloc::format!("{:02}", i + 1))
+        .collect();
+    let rows: Vec<ListRow> = (0..nums.len())
+        .map(|i| ListRow::with_prefix(&nums[i], words[start + i]))
+        .collect();
 
-    let num_style = MonoTextStyle::new(&FONT_6X10, colors::SOLANA_GREEN);
-    let word_style = MonoTextStyle::new(&FONT_9X15_BOLD, colors::TEXT_PRIMARY);
-
-    for i in 0..words_per_page {
-        let word_idx = start + i;
-        if word_idx >= words.len() { break; }
-
-        let col = (i % 2) as i32;
-        let row = (i / 2) as i32;
-        let x = margin + col * (card_w as i32 + gap);
-        let y = top_offset + row * (card_h as i32 + gap);
-
-        // Card background
-        let card_style = embedded_graphics::primitives::PrimitiveStyleBuilder::new()
-            .fill_color(colors::BG_CARD)
-            .stroke_color(colors::BORDER_DEFAULT)
-            .stroke_width(1)
-            .build();
-
-        embedded_graphics::primitives::RoundedRectangle::with_equal_corners(
-            Rectangle::new(Point::new(x, y), Size::new(card_w, card_h)),
-            Size::new(5, 5),
-        )
-        .into_styled(card_style)
-        .draw(display)?;
-
-        // Word number (top-left of card)
-        let num_str = alloc::format!("#{}", word_idx + 1);
-        Text::new(&num_str, Point::new(x + 6, y + 14), num_style)
-            .draw(display)?;
-
-        // Word (centered in card)
-        Text::with_alignment(
-            words[word_idx],
-            Point::new(x + card_w as i32 / 2, y + 40),
-            word_style,
-            Alignment::Center,
-        )
-        .draw(display)?;
+    ListScreen {
+        header: HeaderKind::Title("SEED"),
+        counter: Some((page + 1, total_pages)),
+        description: None,
+        items: &rows,
+        selected: 0,
+        max_visible: words_per_page,
+        selectable: false,
+        buttons: ButtonBar::new()
+            .back("BACK")
+            .confirm(if is_last { "VERIFY" } else { "NEXT" }),
     }
-
-    // Navigation hint
-    let hint_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    let hint = if page + 1 == total_pages {
-        "Enter: verify  Esc: back"
-    } else {
-        "</>: page  Enter: next"
-    };
-    Text::with_alignment(hint, Point::new(120, 232), hint_style, Alignment::Center)
-        .draw(display)?;
-
-    // Page indicator
-    let page_str = alloc::format!("{}/{}", page + 1, total_pages);
-    Text::with_alignment(&page_str, Point::new(230, 232), hint_style, Alignment::Right)
-        .draw(display)?;
-
-    Ok(())
+    .draw(display, &theme)
 }
 
-/// Word verification quiz.
+/// Format `n` as a zero-padded 2-digit string in a stack buffer.
+fn fmt_num(buf: &mut [u8; 4], n: usize) -> &str {
+    use core::fmt::Write;
+    struct W<'a> {
+        buf: &'a mut [u8; 4],
+        pos: usize,
+    }
+    impl core::fmt::Write for W<'_> {
+        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+            let b = s.as_bytes();
+            let n = b.len().min(self.buf.len() - self.pos);
+            self.buf[self.pos..self.pos + n].copy_from_slice(&b[..n]);
+            self.pos += n;
+            Ok(())
+        }
+    }
+    let mut w = W { buf, pos: 0 };
+    let _ = write!(&mut w, "{:02}", n);
+    core::str::from_utf8(&w.buf[..w.pos]).unwrap_or("")
+}
+
+/// Word verification quiz. List register — the question is the header title
+/// (e.g. "WORD 04?"), the check counter sits in the header's counter slot,
+/// and the 4 options are list rows. Selected row gets the cyan highlight as
+/// usual.
 fn draw_verify_word<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     word_num: usize,
@@ -432,52 +713,26 @@ fn draw_verify_word<D: DrawTarget<Color = Rgb565>>(
     selected: usize,
     check_num: usize,
     total_checks: usize,
-    seed_loaded: bool,
 ) -> Result<(), D::Error> {
-    display.clear(colors::BG_DARK)?;
+    use crate::ui::widgets::{ButtonBar, HeaderKind, ListRow};
+    use crate::ui::{screens::ListScreen, Theme};
 
-    let title = alloc::format!("Verify {}/{}", check_num, total_checks);
-    draw_status_bar(display, &title, seed_loaded)?;
+    let theme = Theme::faraday_240();
+    let title = alloc::format!("WORD {:02}?", word_num);
+    let rows: Vec<ListRow> = options.iter().map(|s| ListRow::new(s)).collect();
+    let sel = selected.min(options.len().saturating_sub(1));
 
-    // Question
-    let question = alloc::format!("Word #{}?", word_num);
-    let q_style = MonoTextStyle::new(&FONT_10X20, colors::TEXT_PRIMARY);
-    Text::with_alignment(&question, Point::new(120, 50), q_style, Alignment::Center)
-        .draw(display)?;
-
-    // Options
-    let opt_refs: Vec<&str> = options.iter().map(|s| s.as_str()).collect();
-    let start_y = 70i32;
-
-    for (i, opt) in opt_refs.iter().enumerate() {
-        let y = start_y + i as i32 * 38;
-        let is_selected = i == selected;
-
-        let (bg, border, text_color) = if is_selected {
-            (colors::BG_CARD_SELECTED, colors::BORDER_SELECTED, colors::TEXT_PRIMARY)
-        } else {
-            (colors::BG_CARD, colors::BORDER_DEFAULT, colors::TEXT_SECONDARY)
-        };
-
-        let style = embedded_graphics::primitives::PrimitiveStyleBuilder::new()
-            .fill_color(bg)
-            .stroke_color(border)
-            .stroke_width(1)
-            .build();
-
-        embedded_graphics::primitives::RoundedRectangle::with_equal_corners(
-            Rectangle::new(Point::new(30, y), Size::new(180, 32)),
-            Size::new(4, 4),
-        )
-        .into_styled(style)
-        .draw(display)?;
-
-        let text_style = MonoTextStyle::new(&FONT_9X15_BOLD, text_color);
-        Text::with_alignment(opt, Point::new(120, y + 22), text_style, Alignment::Center)
-            .draw(display)?;
+    ListScreen {
+        header: HeaderKind::Title(&title),
+        counter: Some((check_num, total_checks)),
+        description: None,
+        items: &rows,
+        selected: sel,
+        max_visible: 4,
+        selectable: true,
+        buttons: ButtonBar::new().back("BACK").confirm("SELECT"),
     }
-
-    Ok(())
+    .draw(display, &theme)
 }
 
 /// Address confirmation screen.
@@ -661,434 +916,438 @@ fn draw_verify_address_result<D: DrawTarget<Color = Rgb565>>(
     Ok(())
 }
 
-/// About screen.
-fn draw_about<D: DrawTarget<Color = Rgb565>>(
+/// Show the wallet's public address as a QR. Users verify the QR in a hot
+/// wallet; the truncated caption is for a quick visual double-check.
+fn draw_show_address<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
-    seed_loaded: bool,
+    address: Option<&str>,
 ) -> Result<(), D::Error> {
-    display.clear(colors::BG_DARK)?;
-    draw_status_bar(display, "About", seed_loaded)?;
+    use crate::ui::widgets::{ButtonBar, CardRow, HeaderKind};
+    use crate::ui::{screens::CardScreen, Theme};
 
-    draw_text_centered(display, "Faraday", 70, colors::TEXT_PRIMARY)?;
+    let theme = Theme::faraday_240();
 
-    let style = MonoTextStyle::new(&FONT_9X15, colors::TEXT_SECONDARY);
-    Text::with_alignment("v0.1.0", Point::new(120, 95), style, Alignment::Center)
-        .draw(display)?;
-    Text::with_alignment("Air-gapped Solana", Point::new(120, 120), style, Alignment::Center)
-        .draw(display)?;
-    Text::with_alignment("transaction signer", Point::new(120, 140), style, Alignment::Center)
-        .draw(display)?;
+    match address {
+        Some(addr) => {
+            // Render a Solana URI envelope so third-party wallets can scan it.
+            // Full-screen QR — any chrome shrinks the scan target; BACK button
+            // returns to settings.
+            use crate::ui::widgets::Qr;
+            use embedded_graphics::{geometry::{Point, Size}, primitives::Rectangle};
 
-    let muted = MonoTextStyle::new(&FONT_6X10, colors::SOLANA_TEAL);
-    Text::with_alignment("Air-gapped Solana signer", Point::new(120, 175), muted, Alignment::Center)
-        .draw(display)?;
-    Text::with_alignment("Pure Rust on Pi Zero", Point::new(120, 190), muted, Alignment::Center)
-        .draw(display)?;
-
-    let hint = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    Text::with_alignment("Press any key to return", Point::new(120, 230), hint, Alignment::Center)
-        .draw(display)?;
-
-    Ok(())
+            let uri = alloc::format!("solana:{}", addr);
+            let screen = Rectangle::new(
+                Point::zero(),
+                Size::new(theme.width, theme.height),
+            );
+            display.fill_solid(&screen, theme.bg)?;
+            Qr { data: &uri }.draw(display, &theme, screen)
+        }
+        None => {
+            // No wallet loaded — card with a single info row.
+            let rows: [CardRow; 1] = [CardRow::new("STATUS", "No wallet loaded")];
+            CardScreen {
+                header: HeaderKind::Title("ADDRESS"),
+                counter: None,
+                title: Some("NO WALLET"),
+                subtitle: Some("Create or load one first"),
+                body_lines: &[],
+                rows: &rows,
+                buttons: ButtonBar::new().back("BACK"),
+            }
+            .draw(display, &theme)
+        }
+    }
 }
 
-/// Power off confirmation.
+/// About screen. Card register — hero title + key/value reference rows.
+fn draw_about<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    _seed_loaded: bool,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{ButtonBar, CardRow, HeaderKind};
+    use crate::ui::{screens::CardScreen, Theme};
+
+    let theme = Theme::faraday_240();
+    let rows: [CardRow; 4] = [
+        CardRow::new("VERSION", "v0.1.0"),
+        CardRow::new("NETWORK", "Solana"),
+        CardRow::new("HARDWARE", "Pi Zero 1.3"),
+        CardRow::new("KEYS", "RAM only"),
+    ];
+
+    CardScreen {
+        header: HeaderKind::Title("ABOUT"),
+        counter: None,
+        title: Some("FARADAY"),
+        subtitle: Some("Air-gapped Solana signer"),
+        body_lines: &[],
+        rows: &rows,
+        buttons: ButtonBar::new().back("BACK"),
+    }
+    .draw(display, &theme)
+}
+
+/// Seed-export warning. Shown before the SeedQR to force the user to
+/// acknowledge that the QR reveals the full recovery seed. Default
+/// selection is CANCEL.
+fn draw_export_seed_warning<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    selected: usize,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{ButtonBar, HeaderKind, ListRow};
+    use crate::ui::{screens::ListScreen, Theme};
+
+    let theme = Theme::faraday_240();
+    let rows: [ListRow; 2] = [
+        ListRow::with_subtitle("CANCEL", "Keep the seed private"),
+        ListRow::with_subtitle("SHOW", "I accept the risk"),
+    ];
+    let sel = selected.min(1);
+
+    ListScreen {
+        header: HeaderKind::Title("EXPORT SEED"),
+        counter: None,
+        description: Some("Reveals your seed"),
+        items: &rows,
+        selected: sel,
+        max_visible: 2,
+        selectable: true,
+        buttons: ButtonBar::new().back("BACK").confirm("CONFIRM"),
+    }
+    .draw(display, &theme)
+}
+
+/// Power-off confirmation. List register with the destructive consequence
+/// exposed as the subtitle on the YES row. Default selection is NO.
 fn draw_power_off<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     selected: usize,
 ) -> Result<(), D::Error> {
-    display.clear(colors::BG_DARK)?;
-    draw_status_bar(display, "Power Off", false)?;
+    use crate::ui::widgets::{ButtonBar, HeaderKind, ListRow};
+    use crate::ui::{screens::ListScreen, Theme};
 
-    // Power icon (scaled 3x)
-    let icon = icons::power();
-    let icon_x = 108i32;
-    let icon_y = 50i32;
-    let scale = 3i32;
-    let data = icon.data;
-    for row in 0..16i32 {
-        let byte_hi = data[row as usize * 2];
-        let byte_lo = data[row as usize * 2 + 1];
-        let word = ((byte_hi as u16) << 8) | (byte_lo as u16);
-        for col in 0..16i32 {
-            if (word >> (15 - col)) & 1 == 1 {
-                Rectangle::new(
-                    Point::new(icon_x + col * scale, icon_y + row * scale),
-                    Size::new(scale as u32, scale as u32),
-                )
-                .into_styled(PrimitiveStyle::with_fill(colors::WARNING))
-                .draw(display)?;
-            }
-        }
+    let theme = Theme::faraday_240();
+    let rows: [ListRow; 2] = [
+        ListRow::with_subtitle("NO", "Back to settings"),
+        ListRow::with_subtitle("YES", "Wipes wallet from RAM"),
+    ];
+    let sel = selected.min(1);
+
+    ListScreen {
+        header: HeaderKind::Title("POWER OFF"),
+        counter: None,
+        description: None,
+        items: &rows,
+        selected: sel,
+        max_visible: 2,
+        selectable: true,
+        buttons: ButtonBar::new().back("BACK").confirm("CONFIRM"),
     }
-
-    let style = MonoTextStyle::new(&FONT_10X20, colors::WARNING);
-    Text::with_alignment("Power off?", Point::new(120, 115), style, Alignment::Center)
-        .draw(display)?;
-
-    let sub = MonoTextStyle::new(&FONT_9X15, colors::TEXT_MUTED);
-    Text::with_alignment("Wallet will be cleared", Point::new(120, 130), sub, Alignment::Center)
-        .draw(display)?;
-
-    draw_button_bar(display, "Yes", "No", selected)?;
-
-    Ok(())
+    .draw(display, &theme)
 }
 
 /// Passphrase mismatch error screen.
+/// Full-screen SeedQR export. Chromeless — the QR fills the display so a
+/// phone camera has the largest possible scan target. CONFIRM / BACK exit,
+/// SECONDARY (Key2) toggles standard vs compact mode (handled by the state
+/// machine).
+fn draw_seed_qr<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    data: &str,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::Qr;
+    use crate::ui::Theme;
+    use embedded_graphics::{geometry::{Point, Size}, primitives::Rectangle};
+
+    let theme = Theme::faraday_240();
+    let screen = Rectangle::new(
+        Point::zero(),
+        Size::new(theme.width, theme.height),
+    );
+    display.fill_solid(&screen, theme.bg)?;
+    Qr { data }.draw(display, &theme, screen)
+}
+
+/// Passphrase mismatch error card. Any key retries the input.
 fn draw_passphrase_mismatch<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
-    seed_loaded: bool,
+    _seed_loaded: bool,
 ) -> Result<(), D::Error> {
-    display.clear(colors::BG_DARK)?;
-    draw_status_bar(display, "Error", seed_loaded)?;
+    use crate::ui::widgets::{ButtonBar, CardRow, HeaderKind};
+    use crate::ui::{screens::CardScreen, Theme};
 
-    // Red X icon (drawn manually)
-    let cx = 120i32;
-    let cy = 80i32;
-    let size = 20i32;
-    for i in -2..=2i32 {
-        for d in 0..size {
-            // Draw two crossing lines
-            Pixel(Point::new(cx - size + d + i, cy - size + d), colors::DANGER).draw(display)?;
-            Pixel(Point::new(cx + size - d + i, cy - size + d), colors::DANGER).draw(display)?;
-        }
+    let theme = Theme::faraday_240();
+    let body = [
+        "Your two entries did",
+        "not match. Try again.",
+    ];
+    let rows: [CardRow; 0] = [];
+
+    CardScreen {
+        header: HeaderKind::Title("MISMATCH"),
+        counter: None,
+        title: Some("NO MATCH"),
+        subtitle: Some("Passphrases don't match"),
+        body_lines: &body,
+        rows: &rows,
+        buttons: ButtonBar::new().confirm("RETRY"),
     }
-
-    let msg_style = MonoTextStyle::new(&FONT_10X20, colors::DANGER);
-    Text::with_alignment("Passphrases", Point::new(120, 130), msg_style, Alignment::Center)
-        .draw(display)?;
-    Text::with_alignment("don't match!", Point::new(120, 155), msg_style, Alignment::Center)
-        .draw(display)?;
-
-    let sub = MonoTextStyle::new(&FONT_9X15, colors::TEXT_SECONDARY);
-    Text::with_alignment("Try again", Point::new(120, 185), sub, Alignment::Center)
-        .draw(display)?;
-
-    let hint = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    Text::with_alignment("Press any key", Point::new(120, 230), hint, Alignment::Center)
-        .draw(display)?;
-
-    Ok(())
+    .draw(display, &theme)
 }
 
 /// Camera entropy collection screen.
-///
-/// When `preview_active` is true, the background has already been painted
-/// with a live webcam frame — we skip the clear and the big icon so the
-/// preview remains visible behind a translucent overlay.
+/// Camera entropy capture. No value picker — user just presses CAPTURE to
+/// collect a frame of sensor noise.
 fn draw_camera_entropy<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     word_count: usize,
     frames_collected: usize,
-    seed_loaded: bool,
-    preview_active: bool,
+    _seed_loaded: bool,
 ) -> Result<(), D::Error> {
-    let total = if word_count == 12 { 10 } else { 20 };
-    if !preview_active {
-        display.clear(colors::BG_DARK)?;
+    use crate::ui::layout::{split_bottom, split_top};
+    use crate::ui::widgets::{ButtonBar, Header, HeaderKind};
+    use crate::ui::Theme;
+    use embedded_graphics::{
+        geometry::{Point, Size},
+        primitives::Rectangle,
+    };
+
+    let theme = Theme::faraday_240();
+    let target = if word_count == 12 { 10 } else { 20 };
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
+    display.fill_solid(&screen, theme.bg)?;
+
+    let (header_rect, rest) = split_top(screen, theme.header_h as i32);
+    let (body_rect, footer_rect) = split_bottom(rest, theme.footer_h as i32);
+
+    Header {
+        kind: HeaderKind::Title("CAMERA"),
+        counter: Some((frames_collected, target)),
     }
+    .draw(display, &theme, header_rect)?;
 
-    let title = alloc::format!("Capture {}/{}", frames_collected, total);
-    draw_status_bar(display, &title, seed_loaded)?;
+    let (progress_rect, rest) = split_top(body_rect, 20);
+    draw_progress_bar(display, &theme, progress_rect, frames_collected, target)?;
 
-    // Progress bar
-    let progress = (frames_collected as f32 / total as f32 * 200.0) as u32;
-    Rectangle::new(Point::new(20, 30), Size::new(200, 6))
-        .into_styled(PrimitiveStyle::with_fill(colors::BG_CARD))
-        .draw(display)?;
-    if progress > 0 {
-        Rectangle::new(Point::new(20, 30), Size::new(progress, 6))
-            .into_styled(PrimitiveStyle::with_fill(colors::SOLANA_GREEN))
-            .draw(display)?;
-    }
+    // Big instructional text, centered in the remaining region.
+    let cx = rest.top_left.x + rest.size.width as i32 / 2;
+    let cy = rest.top_left.y + rest.size.height as i32 / 2;
+    Text::with_alignment(
+        "CAPTURE",
+        Point::new(cx, cy - 10),
+        theme.style_lg(theme.accent),
+        Alignment::Center,
+    )
+    .draw(display)?;
+    Text::with_alignment(
+        "Move the device",
+        Point::new(cx, cy + 14),
+        theme.style_sm(theme.muted),
+        Alignment::Center,
+    )
+    .draw(display)?;
 
-    if !preview_active {
-        // Pi / no-preview: draw the large camera icon as a visual anchor.
-        let icon = icons::camera();
-        let icon_x = 88i32;
-        let icon_y = 70i32;
-        let scale = 4i32;
-        let data = icon.data;
-        for row in 0..16i32 {
-            let byte_hi = data[row as usize * 2];
-            let byte_lo = data[row as usize * 2 + 1];
-            let word = ((byte_hi as u16) << 8) | (byte_lo as u16);
-            for col in 0..16i32 {
-                if (word >> (15 - col)) & 1 == 1 {
-                    Rectangle::new(
-                        Point::new(icon_x + col * scale, icon_y + row * scale),
-                        Size::new(scale as u32, scale as u32),
-                    )
-                    .into_styled(PrimitiveStyle::with_fill(colors::SOLANA_GREEN))
-                    .draw(display)?;
-                }
-            }
-        }
-    }
-
-    // Bottom instruction strip — painted opaque so text stays legible over preview.
-    Rectangle::new(Point::new(0, 190), Size::new(240, 50))
-        .into_styled(PrimitiveStyle::with_fill(colors::BG_DARK))
-        .draw(display)?;
-
-    let style = MonoTextStyle::new(&FONT_9X15, colors::TEXT_SECONDARY);
-    Text::with_alignment("Press Enter to capture", Point::new(120, 208), style, Alignment::Center)
-        .draw(display)?;
-
-    let sub = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    Text::with_alignment("Move camera for randomness", Point::new(120, 222), sub, Alignment::Center)
-        .draw(display)?;
-    Text::with_alignment("Esc: cancel", Point::new(120, 234), sub, Alignment::Center)
-        .draw(display)?;
+    ButtonBar::new()
+        .back("CANCEL")
+        .confirm("CAPTURE")
+        .draw(display, &theme, footer_rect)?;
 
     Ok(())
 }
 
-/// Overlay for scan screens (LoadScanQr, SignScanTx) when the webcam preview
-/// is active. Paints status bar, a centered reticle, and a bottom hint bar on
-/// top of the already-blitted preview.
-#[cfg(any(feature = "simulator", target_os = "linux"))]
-fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
+/// Filled cyan progress bar over a dim track. Uses the full width of `rect`,
+/// fills a 6px strip with current/target ratio.
+fn draw_progress_bar<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
-    title: &str,
-    hint: &str,
-    seed_loaded: bool,
-    has_frame: bool,
-    error: Option<&str>,
+    theme: &crate::ui::Theme,
+    rect: Rectangle,
+    current: usize,
+    total: usize,
 ) -> Result<(), D::Error> {
-    if !has_frame {
-        display.clear(colors::BG_DARK)?;
-    }
-    draw_status_bar(display, title, seed_loaded)?;
-
-    if let Some(err) = error {
-        // Camera unavailable — show a dark panel with the full error wrapped
-        // across multiple lines. Diagnostics are critical on a device with no
-        // shell/logs; truncation here would hide the MMAL/V4L2 failure reason.
-        Rectangle::new(Point::new(5, 50), Size::new(230, 140))
-            .into_styled(PrimitiveStyle::with_fill(colors::BG_CARD))
-            .draw(display)?;
-        let style = MonoTextStyle::new(&FONT_9X15, colors::DANGER);
-        Text::with_alignment("Camera unavailable", Point::new(120, 70), style, Alignment::Center)
-            .draw(display)?;
-        let sub = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-        // 37 chars/line fits within the 230-px panel at 6px/char. Wrap hard
-        // at char boundaries — MMAL errors tend to be comma-separated already.
-        const LINE_CHARS: usize = 37;
-        const MAX_LINES: usize = 5;
-        let mut y = 88i32;
-        let mut remaining = err.as_bytes();
-        for _ in 0..MAX_LINES {
-            if remaining.is_empty() {
-                break;
-            }
-            let take = remaining.len().min(LINE_CHARS);
-            let line = std::str::from_utf8(&remaining[..take]).unwrap_or("");
-            Text::with_alignment(line, Point::new(120, y), sub, Alignment::Center)
-                .draw(display)?;
-            y += 12;
-            remaining = &remaining[take..];
-        }
-        Text::with_alignment("Press Enter for test data", Point::new(120, 170), sub, Alignment::Center)
-            .draw(display)?;
-        Text::with_alignment("Esc: back", Point::new(120, 185), sub, Alignment::Center)
-            .draw(display)?;
+    let inset_x = theme.space_md;
+    let track_w = rect.size.width as i32 - inset_x * 2;
+    if track_w <= 0 {
         return Ok(());
     }
+    let bar_h = 6u32;
+    let y = rect.top_left.y + (rect.size.height as i32 - bar_h as i32) / 2;
 
-    if !has_frame {
-        let style = MonoTextStyle::new(&FONT_9X15, colors::TEXT_SECONDARY);
-        Text::with_alignment("Opening camera...", Point::new(120, 120), style, Alignment::Center)
-            .draw(display)?;
-        return Ok(());
+    // Track.
+    Rectangle::new(
+        Point::new(rect.top_left.x + inset_x, y),
+        Size::new(track_w as u32, bar_h),
+    )
+    .into_styled(PrimitiveStyle::with_fill(theme.border))
+    .draw(display)?;
+
+    // Fill.
+    let filled = if total == 0 {
+        0
+    } else {
+        (current.min(total) as i32 * track_w) / total as i32
+    };
+    if filled > 0 {
+        Rectangle::new(
+            Point::new(rect.top_left.x + inset_x, y),
+            Size::new(filled as u32, bar_h),
+        )
+        .into_styled(PrimitiveStyle::with_fill(theme.accent))
+        .draw(display)?;
     }
-
-    // Centered reticle — simple outline rectangle where the QR should go.
-    let reticle = Rectangle::new(Point::new(40, 40), Size::new(160, 160));
-    reticle
-        .into_styled(PrimitiveStyle::with_stroke(colors::SOLANA_GREEN, 2))
-        .draw(display)?;
-
-    // Bottom hint bar (opaque) with the instruction + fallback.
-    Rectangle::new(Point::new(0, 210), Size::new(240, 30))
-        .into_styled(PrimitiveStyle::with_fill(colors::BG_DARK))
-        .draw(display)?;
-    let hint_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
-    Text::with_alignment(hint, Point::new(120, 224), hint_style, Alignment::Center)
-        .draw(display)?;
-    let sub = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    Text::with_alignment("Enter: test data  Esc: back", Point::new(120, 235), sub, Alignment::Center)
-        .draw(display)?;
 
     Ok(())
 }
 
 /// Coin flip entropy input screen.
+/// Coin-flip entropy collector. H / T picker, selected gets the cyan highlight.
 fn draw_coin_flips<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     word_count: usize,
     bits: &[bool],
     selected: usize,
-    seed_loaded: bool,
+    _seed_loaded: bool,
 ) -> Result<(), D::Error> {
-    let total = if word_count == 12 { 128 } else { 256 };
-    display.clear(colors::BG_DARK)?;
-
-    let title = alloc::format!("Flip {} of {}", bits.len() + 1, total);
-    draw_status_bar(display, &title, seed_loaded)?;
-
-    // Progress bar
-    let progress = (bits.len() as f32 / total as f32 * 200.0) as u32;
-    Rectangle::new(Point::new(20, 30), Size::new(200, 6))
-        .into_styled(PrimitiveStyle::with_fill(colors::BG_CARD))
-        .draw(display)?;
-    if progress > 0 {
-        Rectangle::new(Point::new(20, 30), Size::new(progress, 6))
-            .into_styled(PrimitiveStyle::with_fill(colors::SOLANA_GREEN))
-            .draw(display)?;
-    }
-
-    // Recent flips display (last 16)
-    let recent_start = if bits.len() > 16 { bits.len() - 16 } else { 0 };
-    let recent: String = bits[recent_start..].iter().map(|&b| if b { 'H' } else { 'T' }).collect();
-    let recent_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    Text::with_alignment(&recent, Point::new(120, 50), recent_style, Alignment::Center)
-        .draw(display)?;
-
-    // Two big buttons: H and T
-    let btn_w = 100u32;
-    let btn_h = 100u32;
-    let gap = 10i32;
-    let total_w = btn_w as i32 * 2 + gap;
-    let start_x = (240 - total_w) / 2;
-    let y = 65i32;
-
-    for (i, label) in ["H", "T"].iter().enumerate() {
-        let x = start_x + i as i32 * (btn_w as i32 + gap);
-        let is_selected = i == selected;
-
-        let (bg, border, text_color) = if is_selected {
-            (colors::BG_CARD_SELECTED, colors::BORDER_SELECTED, colors::TEXT_PRIMARY)
-        } else {
-            (colors::BG_CARD, colors::BORDER_DEFAULT, colors::TEXT_SECONDARY)
-        };
-
-        let style = embedded_graphics::primitives::PrimitiveStyleBuilder::new()
-            .fill_color(bg)
-            .stroke_color(border)
-            .stroke_width(2)
-            .build();
-
-        embedded_graphics::primitives::RoundedRectangle::with_equal_corners(
-            Rectangle::new(Point::new(x, y), Size::new(btn_w, btn_h)),
-            Size::new(8, 8),
-        )
-        .into_styled(style)
-        .draw(display)?;
-
-        if is_selected {
-            let glow = colors::blend(colors::BG_CARD_SELECTED, colors::ACCENT, 80);
-            Rectangle::new(Point::new(x + 3, y + 1), Size::new(btn_w - 6, 3))
-                .into_styled(PrimitiveStyle::with_fill(glow))
-                .draw(display)?;
-        }
-
-        let text_style = MonoTextStyle::new(&FONT_10X20, text_color);
-        Text::with_alignment(label, Point::new(x + btn_w as i32 / 2, y + btn_h as i32 / 2 + 7), text_style, Alignment::Center)
-            .draw(display)?;
-
-        // Sub-label
-        let sub = if i == 0 { "Heads" } else { "Tails" };
-        let sub_style = MonoTextStyle::new(&FONT_6X10, if is_selected { colors::TEXT_SECONDARY } else { colors::TEXT_MUTED });
-        Text::with_alignment(sub, Point::new(x + btn_w as i32 / 2, y + btn_h as i32 / 2 + 22), sub_style, Alignment::Center)
-            .draw(display)?;
-    }
-
-    // Hints
-    let hint = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    Text::with_alignment("Esc: undo last flip", Point::new(120, 232), hint, Alignment::Center)
-        .draw(display)?;
-
-    Ok(())
+    let target = if word_count == 12 { 128 } else { 256 };
+    let start = bits.len().saturating_sub(20);
+    let recent: String = bits[start..]
+        .iter()
+        .map(|&b| if b { 'H' } else { 'T' })
+        .collect();
+    draw_entropy_picker(
+        display,
+        "COIN FLIPS",
+        bits.len(),
+        target,
+        &recent,
+        &["HEADS", "TAILS"],
+        selected,
+        PickerLayout::Row,
+    )
 }
 
-/// Dice roll entropy input screen.
+/// Dice-roll entropy collector. 1–6 picker, selected gets the cyan highlight.
 fn draw_dice_rolls<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     word_count: usize,
     rolls: &[u8],
     selected: usize,
-    seed_loaded: bool,
+    _seed_loaded: bool,
 ) -> Result<(), D::Error> {
-    let total = if word_count == 12 { 50 } else { 99 };
-    display.clear(colors::BG_DARK)?;
+    let target = if word_count == 12 { 50 } else { 99 };
+    let start = rolls.len().saturating_sub(20);
+    let recent: String = rolls[start..]
+        .iter()
+        .map(|r| alloc::format!("{}", r + 1))
+        .collect();
+    draw_entropy_picker(
+        display,
+        "DICE ROLLS",
+        rolls.len(),
+        target,
+        &recent,
+        &["1", "2", "3", "4", "5", "6"],
+        selected,
+        PickerLayout::Grid { cols: 3, rows: 2 },
+    )
+}
 
-    let title = alloc::format!("Roll {} of {}", rolls.len() + 1, total);
-    draw_status_bar(display, &title, seed_loaded)?;
+/// How the picker cells are arranged inside the body.
+#[derive(Clone, Copy)]
+enum PickerLayout {
+    /// Single row of `choices.len()` equal-width cells.
+    Row,
+    /// `cols × rows` grid. `cols * rows` must be >= choices.len().
+    Grid { cols: usize, rows: usize },
+}
 
-    // Progress bar
-    let progress = (rolls.len() as f32 / total as f32 * 200.0) as u32;
-    Rectangle::new(Point::new(20, 30), Size::new(200, 6))
-        .into_styled(PrimitiveStyle::with_fill(colors::BG_CARD))
-        .draw(display)?;
-    if progress > 0 {
-        Rectangle::new(Point::new(20, 30), Size::new(progress, 6))
-            .into_styled(PrimitiveStyle::with_fill(colors::SOLANA_GREEN))
+/// Shared entropy-collection layout: header + progress bar + recent-history
+/// strip + N-way value picker + button bar. Drives both the coin-flip and
+/// dice-roll screens.
+fn draw_entropy_picker<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    title: &str,
+    progress: usize,
+    target: usize,
+    recent: &str,
+    choices: &[&str],
+    selected: usize,
+    layout: PickerLayout,
+) -> Result<(), D::Error> {
+    use crate::ui::layout::{split_bottom, split_top};
+    use crate::ui::widgets::{ButtonBar, Header, HeaderKind};
+    use crate::ui::Theme;
+    use embedded_graphics::{
+        geometry::{Point, Size},
+        primitives::Rectangle,
+    };
+
+    let theme = Theme::faraday_240();
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
+    display.fill_solid(&screen, theme.bg)?;
+
+    let (header_rect, rest) = split_top(screen, theme.header_h as i32);
+    let (body_rect, footer_rect) = split_bottom(rest, theme.footer_h as i32);
+
+    Header {
+        kind: HeaderKind::Title(title),
+        counter: Some((progress, target)),
+    }
+    .draw(display, &theme, header_rect)?;
+
+    // Progress bar band, then recent-history strip, then picker fills the rest.
+    let (progress_rect, rest) = split_top(body_rect, 16);
+    draw_progress_bar(display, &theme, progress_rect, progress, target)?;
+
+    let (recent_rect, picker_rect) = split_top(rest, 22);
+    let cx = recent_rect.top_left.x + recent_rect.size.width as i32 / 2;
+    let cy = recent_rect.top_left.y + recent_rect.size.height as i32 - 6;
+    Text::with_alignment(
+        recent,
+        Point::new(cx, cy),
+        theme.style_sm(theme.dim),
+        Alignment::Center,
+    )
+    .draw(display)?;
+
+    // Picker cells: full-bleed cyan for selected, with inverted text.
+    // Layout chooses whether to line them up or grid them.
+    let (cols, rows) = match layout {
+        PickerLayout::Row => (choices.len(), 1),
+        PickerLayout::Grid { cols, rows } => (cols, rows),
+    };
+    if cols > 0 && rows > 0 {
+        let cell_w = picker_rect.size.width as i32 / cols as i32;
+        let cell_h = picker_rect.size.height as i32 / rows as i32;
+        for (i, label) in choices.iter().enumerate() {
+            let col = (i % cols) as i32;
+            let row = (i / cols) as i32;
+            let x = picker_rect.top_left.x + col * cell_w;
+            let y = picker_rect.top_left.y + row * cell_h;
+            let cell = Rectangle::new(
+                Point::new(x, y),
+                Size::new(cell_w as u32, cell_h as u32),
+            );
+            let is_selected = i == selected;
+            if is_selected {
+                cell.into_styled(PrimitiveStyle::with_fill(theme.accent))
+                    .draw(display)?;
+            }
+            let color = if is_selected { theme.bg } else { theme.text };
+            Text::with_alignment(
+                label,
+                Point::new(x + cell_w / 2, y + cell_h / 2 + 10),
+                theme.style_lg(color),
+                Alignment::Center,
+            )
             .draw(display)?;
+        }
     }
 
-    // Recent rolls display (last 20)
-    let recent_start = if rolls.len() > 20 { rolls.len() - 20 } else { 0 };
-    let recent: String = rolls[recent_start..].iter().map(|r| r.to_string()).collect();
-    let recent_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    Text::with_alignment(&recent, Point::new(120, 50), recent_style, Alignment::Center)
-        .draw(display)?;
-
-    // 2x3 grid of dice faces
-    let die_size = 60u32;
-    let gap = 8i32;
-    let grid_w = 3 * die_size as i32 + 2 * gap;
-    let start_x = (240 - grid_w) / 2;
-    let start_y = 58i32;
-
-    for i in 0..6usize {
-        let col = (i % 3) as i32;
-        let row = (i / 3) as i32;
-        let x = start_x + col * (die_size as i32 + gap);
-        let y = start_y + row * (die_size as i32 + gap);
-        let is_selected = i == selected;
-
-        let (bg, border, text_color) = if is_selected {
-            (colors::BG_CARD_SELECTED, colors::BORDER_SELECTED, colors::TEXT_PRIMARY)
-        } else {
-            (colors::BG_CARD, colors::BORDER_DEFAULT, colors::TEXT_SECONDARY)
-        };
-
-        let style = embedded_graphics::primitives::PrimitiveStyleBuilder::new()
-            .fill_color(bg)
-            .stroke_color(border)
-            .stroke_width(if is_selected { 2 } else { 1 })
-            .build();
-
-        embedded_graphics::primitives::RoundedRectangle::with_equal_corners(
-            Rectangle::new(Point::new(x, y), Size::new(die_size, die_size)),
-            Size::new(6, 6),
-        )
-        .into_styled(style)
-        .draw(display)?;
-
-        // Die number
-        let num = alloc::format!("{}", i + 1);
-        let text_style = MonoTextStyle::new(&FONT_10X20, text_color);
-        Text::with_alignment(&num, Point::new(x + die_size as i32 / 2, y + die_size as i32 / 2 + 7), text_style, Alignment::Center)
-            .draw(display)?;
-    }
-
-    // Hints
-    let hint = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    Text::with_alignment("Esc: undo last roll", Point::new(120, 232), hint, Alignment::Center)
-        .draw(display)?;
+    ButtonBar::new()
+        .back("UNDO")
+        .confirm("SELECT")
+        .draw(display, &theme, footer_rect)?;
 
     Ok(())
 }
@@ -1153,3 +1412,72 @@ fn draw_accounts<D: DrawTarget<Color = Rgb565>>(
 }
 
 extern crate alloc;
+
+/// Camera-backed scan overlay. Ported unchanged from the image-shrink branch —
+/// diagnostic panel when the camera fails, "Opening camera..." placeholder
+/// while warming up, and a centered reticle + hint bar once a frame is live.
+fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    title: &str,
+    hint: &str,
+    seed_loaded: bool,
+    has_frame: bool,
+    error: Option<&str>,
+) -> Result<(), D::Error> {
+    if !has_frame {
+        display.clear(colors::BG_DARK)?;
+    }
+    draw_status_bar(display, title, seed_loaded)?;
+
+    if let Some(err) = error {
+        Rectangle::new(Point::new(5, 50), Size::new(230, 140))
+            .into_styled(PrimitiveStyle::with_fill(colors::BG_CARD))
+            .draw(display)?;
+        let style = MonoTextStyle::new(&FONT_9X15, colors::DANGER);
+        Text::with_alignment("Camera unavailable", Point::new(120, 70), style, Alignment::Center)
+            .draw(display)?;
+        let sub = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
+        const LINE_CHARS: usize = 37;
+        const MAX_LINES: usize = 5;
+        let mut y = 88i32;
+        let mut remaining = err.as_bytes();
+        for _ in 0..MAX_LINES {
+            if remaining.is_empty() { break; }
+            let take = remaining.len().min(LINE_CHARS);
+            let line = std::str::from_utf8(&remaining[..take]).unwrap_or("");
+            Text::with_alignment(line, Point::new(120, y), sub, Alignment::Center)
+                .draw(display)?;
+            y += 12;
+            remaining = &remaining[take..];
+        }
+        Text::with_alignment("Press Enter for test data", Point::new(120, 170), sub, Alignment::Center)
+            .draw(display)?;
+        Text::with_alignment("Esc: back", Point::new(120, 185), sub, Alignment::Center)
+            .draw(display)?;
+        return Ok(());
+    }
+
+    if !has_frame {
+        let style = MonoTextStyle::new(&FONT_9X15, colors::TEXT_SECONDARY);
+        Text::with_alignment("Opening camera...", Point::new(120, 120), style, Alignment::Center)
+            .draw(display)?;
+        return Ok(());
+    }
+
+    let reticle = Rectangle::new(Point::new(40, 40), Size::new(160, 160));
+    reticle
+        .into_styled(PrimitiveStyle::with_stroke(colors::SOLANA_GREEN, 2))
+        .draw(display)?;
+
+    Rectangle::new(Point::new(0, 210), Size::new(240, 30))
+        .into_styled(PrimitiveStyle::with_fill(colors::BG_DARK))
+        .draw(display)?;
+    let hint_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
+    Text::with_alignment(hint, Point::new(120, 224), hint_style, Alignment::Center)
+        .draw(display)?;
+    let sub = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
+    Text::with_alignment("Enter: test data  Esc: back", Point::new(120, 235), sub, Alignment::Center)
+        .draw(display)?;
+
+    Ok(())
+}
