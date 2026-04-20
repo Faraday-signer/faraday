@@ -17,12 +17,18 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             match event {
                 InputEvent::Confirm => {
                     if let Some(wallet) = &app.wallet {
-                        #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
-                        let tx_base64: String = app.scanned_qr.take()
+                        // Only advance on a real scan. `build_test_transaction`
+                        // was dev-only fallthrough that made the device appear
+                        // to accept a scan that never happened.
+                        let tx_base64: String = match app
+                            .scanned_qr
+                            .take()
                             .and_then(|b| String::from_utf8(b).ok())
-                            .unwrap_or_else(|| build_test_transaction(&wallet.keypair.public_key));
-                        #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
-                        let tx_base64: String = build_test_transaction(&wallet.keypair.public_key);
+                        {
+                            Some(t) => t,
+                            None => return Screen::SignScanTx,
+                        };
+                        let _ = &wallet; // keep borrow alive without unused-var warning
                         let decoded = decode_qr::detect_and_decode(tx_base64.as_bytes());
                         if let Some(tx_bytes) = decoded.tx_bytes {
                             let (info_lines, can_sign) =

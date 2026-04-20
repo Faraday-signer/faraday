@@ -6,8 +6,6 @@ description = "Air-gapped Solana transaction signer"
 
 [features]
 default = []
-# Their refactor splits desktop-sim into webcam vs file-picker variants.
-# Keep that, plus our templates feature on top.
 _desktop_sim = ["dep:minifb"]
 simulator = ["_desktop_sim", "dep:nokhwa"]
 simulator_no_cam = ["_desktop_sim", "dep:rfd", "image/png", "image/jpeg"]
@@ -36,6 +34,7 @@ required-features = ["simulator"]
 # Display rendering
 embedded-graphics = "0.8"
 embedded-graphics-core = "0.4"
+u8g2-fonts = { version = "0.5", features = ["embedded_graphics_textstyle"] }
 
 # Crypto (all pure Rust)
 sha2 = "0.10"

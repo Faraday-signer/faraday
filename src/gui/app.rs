@@ -61,6 +61,9 @@ pub enum Screen {
         address: String,
         selected: usize,
     },
+    /// Pre-export warning. Forces the user to read the consequence before any
+    /// seed-backup action (menu entry, show-words, block view, etc.).
+    ExportSeedWarning { selected: usize, from_settings: bool },
     /// Landing page for all seed-backup actions.
     ExportSeedQrMenu {
         compact_data: Vec<u8>,
@@ -102,11 +105,21 @@ pub enum Screen {
     // Load wallet flow
     LoadMethod { selected: usize },
     LoadScanQr,
+    /// Shown when the 12 or 24 typed words fail the BIP39 checksum.
+    LoadInvalidMnemonic { word_count: usize },
     LoadWordCount { selected: usize },
     LoadEnterWords {
         words: Vec<String>,
         word_count: usize,
         picker: WordPicker,
+    },
+    /// After a successful scan or word-entry load, show the preview address
+    /// (no-passphrase derivation) and ask Done / Add passphrase. Replaces the
+    /// old "Skip vs Add" prompt which read as a negative choice.
+    LoadFinalize {
+        mnemonic: String,
+        preview_address: String,
+        selected: usize,
     },
     LoadPassphrasePrompt { mnemonic: String, selected: usize },
     LoadPassphraseInput { mnemonic: String, grid: CharGrid },
@@ -157,7 +170,7 @@ pub struct CharGrid {
     pub caps: bool,
 }
 
-const GRID_CHARS: [[char; 10]; 5] = [
+pub const GRID_CHARS: [[char; 10]; 5] = [
     ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'],
     ['k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't'],
     ['u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3'],
@@ -583,12 +596,13 @@ impl App {
             Screen::MainMenu { mut selected } => {
                 // Vertical list: Up/Down move one item at a time; Left/Right
                 // behave like Up/Down for joystick ergonomics.
+                const MAIN_MENU_LEN: usize = 4;
                 match event {
                     InputEvent::Up | InputEvent::Left => {
-                        if selected > 0 { selected -= 1; }
+                        selected = selected.saturating_sub(1);
                     }
                     InputEvent::Down | InputEvent::Right => {
-                        if selected < 3 { selected += 1; }
+                        if selected + 1 < MAIN_MENU_LEN { selected += 1; }
                     }
                     InputEvent::Confirm => return self.menu_select(selected),
                     _ => {}
@@ -608,6 +622,7 @@ impl App {
                 | Screen::CreatePassphraseConfirm { .. }
                 | Screen::CreatePassphraseMismatch { .. }
                 | Screen::CreateConfirm { .. }
+                | Screen::ExportSeedWarning { .. }
                 | Screen::ExportSeedQrMenu { .. }
                 | Screen::ExportShowWords { .. }
                 | Screen::ExportSeedQr { .. }
@@ -615,8 +630,10 @@ impl App {
 
             s @ (Screen::LoadMethod { .. }
                 | Screen::LoadScanQr
+                | Screen::LoadInvalidMnemonic { .. }
                 | Screen::LoadWordCount { .. }
                 | Screen::LoadEnterWords { .. }
+                | Screen::LoadFinalize { .. }
                 | Screen::LoadPassphrasePrompt { .. }
                 | Screen::LoadPassphraseInput { .. }
                 | Screen::LoadPassphraseConfirm { .. }
