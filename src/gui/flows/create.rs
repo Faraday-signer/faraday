@@ -43,7 +43,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             match event {
                 InputEvent::Confirm => {
                     let mut frame_entropy = [0u8; 16];
-                    #[cfg(any(feature = "simulator", target_os = "linux"))]
+                    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                     {
                         if let Some(frame) = &app.latest_frame {
                             use sha2::{Digest, Sha256};
@@ -53,7 +53,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             getrandom::getrandom(&mut frame_entropy).ok();
                         }
                     }
-                    #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                    #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                     {
                         getrandom::getrandom(&mut frame_entropy).ok();
                     }
