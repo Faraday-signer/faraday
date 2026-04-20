@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Faraday · Deck</title>
+<style>
+  @font-face {
+    font-family: "Departure Mono";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("/fonts/DepartureMono-Regular.woff2") format("woff2");
+  }
+
+  :root {
+    --bg: #001721;
+    --panel: #002536;
+    --border-strong: #114358;
+    --text: #e7e7e7;
+    --muted: #8c9ca8;
+    --dim: #5e7180;
+    --accent: #1af8ff;
+    --font-display: "Departure Mono", ui-monospace, Menlo, monospace;
+    --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  .deck {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    padding: clamp(48px, 7vh, 96px) clamp(48px, 7vw, 140px);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(8px);
+    transition: opacity 260ms ease, transform 260ms ease;
+  }
+  .slide.active {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+
+  /* single accent bracket at bottom-left */
+  .slide::after {
+    content: "";
+    position: absolute;
+    width: clamp(24px, 2vw, 40px);
+    height: clamp(24px, 2vw, 40px);
+    bottom: clamp(32px, 4vh, 64px);
+    left: clamp(48px, 7vw, 140px);
+    border-left: 2px solid var(--accent);
+    border-bottom: 2px solid var(--accent);
+  }
+
+  .tag {
+    font-family: var(--font-display);
+    font-size: clamp(11px, 0.9vw, 14px);
+    letter-spacing: 0.3em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: clamp(16px, 2.5vh, 32px);
+  }
+
+  h1.hero {
+    font-family: var(--font-display);
+    font-size: clamp(72px, 13vw, 200px);
+    line-height: 0.92;
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+  }
+  h1.hero .accent { color: var(--accent); }
+
+  h2.title {
+    font-family: var(--font-display);
+    font-size: clamp(40px, 6vw, 96px);
+    line-height: 1.02;
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+    max-width: 1600px;
+  }
+  h2.title .accent { color: var(--accent); }
+
+  p.lede {
+    font-size: clamp(16px, 1.6vw, 28px);
+    line-height: 1.5;
+    color: var(--muted);
+    max-width: 1200px;
+    margin-top: clamp(20px, 3vh, 40px);
+  }
+
+  .rows {
+    margin-top: clamp(32px, 5vh, 64px);
+    display: flex;
+    flex-direction: column;
+    gap: clamp(16px, 2.2vh, 28px);
+    max-width: 1600px;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: clamp(100px, 11vw, 200px) 1fr;
+    gap: clamp(24px, 3vw, 56px);
+    align-items: baseline;
+    padding-bottom: clamp(16px, 2vh, 24px);
+    border-bottom: 1px solid var(--border-strong);
+  }
+  .row:last-child { border-bottom: none; padding-bottom: 0; }
+  .row .k {
+    font-family: var(--font-display);
+    font-size: clamp(12px, 1.1vw, 20px);
+    color: var(--accent);
+    letter-spacing: 0.08em;
+  }
+  .row .v {
+    font-size: clamp(14px, 1.3vw, 24px);
+    line-height: 1.4;
+    color: var(--text);
+  }
+  .row .v small {
+    display: block;
+    font-size: clamp(11px, 1vw, 17px);
+    color: var(--muted);
+    margin-top: 6px;
+  }
+  .row code.kbd {
+    font-family: var(--font-display);
+    color: var(--accent);
+    font-size: 0.95em;
+  }
+
+  /* --- flow track (solution slide) --- */
+  .flow {
+    margin-top: clamp(28px, 4vh, 56px);
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: clamp(8px, 0.8vw, 14px);
+    max-width: 1600px;
+  }
+  .step {
+    position: relative;
+    padding: clamp(14px, 1.6vh, 22px) clamp(14px, 1.2vw, 22px);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: rgba(0, 37, 54, 0.4);
+  }
+  .step .n {
+    font-family: var(--font-display);
+    font-size: clamp(10px, 0.85vw, 13px);
+    letter-spacing: 0.3em;
+    color: var(--dim);
+    margin-bottom: 8px;
+  }
+  .step .ttl {
+    font-family: var(--font-display);
+    font-size: clamp(13px, 1.15vw, 19px);
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+  }
+  .step .d {
+    font-size: clamp(11px, 0.9vw, 15px);
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  .step::after {
+    content: "→";
+    position: absolute;
+    right: -14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--accent);
+    font-family: var(--font-display);
+    font-size: clamp(12px, 1vw, 16px);
+    pointer-events: none;
+  }
+  .step:last-child::after { content: none; }
+  .step.offline {
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px rgba(26, 248, 255, 0.25);
+  }
+  .step.offline .n { color: var(--accent); }
+
+  /* --- chrome (counter, nav) --- */
+  .counter {
+    position: fixed;
+    top: clamp(24px, 3vh, 40px);
+    right: clamp(24px, 3vw, 48px);
+    font-family: var(--font-display);
+    font-size: clamp(11px, 0.9vw, 14px);
+    letter-spacing: 0.3em;
+    color: var(--dim);
+    text-transform: uppercase;
+    z-index: 10;
+  }
+  .counter b { color: var(--accent); font-weight: 400; }
+
+  .brand {
+    position: fixed;
+    top: clamp(24px, 3vh, 40px);
+    left: clamp(24px, 3vw, 48px);
+    font-family: var(--font-display);
+    font-size: clamp(11px, 0.9vw, 14px);
+    letter-spacing: 0.3em;
+    color: var(--dim);
+    text-transform: uppercase;
+    z-index: 10;
+  }
+
+  .nav {
+    position: fixed;
+    bottom: clamp(20px, 3vh, 40px);
+    right: clamp(24px, 3vw, 48px);
+    display: flex;
+    gap: 12px;
+    z-index: 10;
+  }
+  .nav button {
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    padding: 10px 16px;
+    font-family: var(--font-display);
+    font-size: clamp(11px, 0.9vw, 13px);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+  }
+  .nav button:hover:not([disabled]) {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(26, 248, 255, 0.06);
+  }
+  .nav button[disabled] {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .progress {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    background: var(--accent);
+    transition: width 200ms ease;
+    z-index: 10;
+  }
+</style>
+</head>
+<body>
+
+<div class="brand">FARADAY</div>
+<div class="counter"><b id="count-now">01</b> / <span id="count-total">06</span></div>
+
+<div class="deck">
+
+  <!-- 1. COVER -->
+  <section class="slide" data-i="1">
+    <div class="tag">Air-gapped Solana signer</div>
+    <h1 class="hero">FARA<span class="accent">DAY</span></h1>
+    <p class="lede">Your private keys never touch the internet. Ever.</p>
+  </section>
+
+  <!-- 2. PROBLEM -->
+  <section class="slide" data-i="2">
+    <div class="tag">Problem</div>
+    <h2 class="title">Hot wallets <span class="accent">bleed</span>.<br/>Hardware wallets <span class="accent">compromise</span>.</h2>
+    <div class="rows">
+      <div class="row"><div class="k">HOT</div><div class="v">Keys live online. One malicious extension drains the wallet.</div></div>
+      <div class="row"><div class="k">HARDWARE</div><div class="v">Closed firmware, vendor trust, USB &amp; Bluetooth attack surface.<small>Ledger Connect Kit exploit, Dec 2023.</small></div></div>
+      <div class="row"><div class="k">SOLANA</div><div class="v">Generic devices show opaque transaction blobs. Users approve what they can't read.</div></div>
+    </div>
+  </section>
+
+  <!-- 3. SOLUTION -->
+  <section class="slide" data-i="3">
+    <div class="tag">Solution</div>
+    <h2 class="title">An air gap you can <span class="accent">see</span>.</h2>
+    <p class="lede">A Raspberry Pi Zero 1.3 with no WiFi and no Bluetooth. Device and dapp exchange only QR codes. The air gap is physical, not a setting.</p>
+
+    <div class="flow">
+      <div class="step">
+        <div class="n">01</div>
+        <div class="ttl">Build</div>
+        <div class="d">Dapp builds the unsigned transaction in the browser.</div>
+      </div>
+      <div class="step">
+        <div class="n">02</div>
+        <div class="ttl">Display</div>
+        <div class="d">Extension renders it as a <code class="kbd">faraday:unsigned</code> QR.</div>
+      </div>
+      <div class="step offline">
+        <div class="n">03 · OFFLINE</div>
+        <div class="ttl">Review</div>
+        <div class="d">Pi scans, decodes, shows the tx. User approves on-device.</div>
+      </div>
+      <div class="step offline">
+        <div class="n">04 · OFFLINE</div>
+        <div class="ttl">Sign</div>
+        <div class="d">Ed25519 signature in RAM. Signed QR displayed. Keys never leave.</div>
+      </div>
+      <div class="step">
+        <div class="n">05</div>
+        <div class="ttl">Broadcast</div>
+        <div class="d">Extension scans it back, submits to Solana.</div>
+      </div>
+    </div>
+
+    <div class="rows">
+      <div class="row"><div class="k">$35</div><div class="v">Pi Zero + Waveshare LCD HAT + camera. Entire BOM.</div></div>
+      <div class="row"><div class="k">QR ONLY</div><div class="v">Wallet Standard <code class="kbd">connect</code> + <code class="kbd">signTransaction</code> on the browser. Typed <code class="kbd">faraday:</code> envelopes protect every scan.</div></div>
+      <div class="row"><div class="k">OPEN</div><div class="v">Pure Rust firmware, RAM-only keys, reproducible Buildroot image. Power off = keys gone.</div></div>
+    </div>
+  </section>
+
+  <!-- 4. TEAM -->
+  <section class="slide" data-i="4">
+    <div class="tag">Team</div>
+    <h2 class="title">Built by <span class="accent">wallet veterans</span>.</h2>
+    <div class="rows">
+      <div class="row"><div class="k">JAVI LOIS</div><div class="v">Systems &amp; infra.<small>25+ years in software · banking · high-latency applications.</small></div></div>
+      <div class="row"><div class="k">NAHEM</div><div class="v">AI &amp; blockchain.<small>Ex-Madrid Stock Exchange · financial markets · high-frequency trading.</small></div></div>
+      <div class="row"><div class="k">ALEJANDRO MENA</div><div class="v">Wallets &amp; ecosystem.<small>Ex-MetaMask · Chainlink · Solana Foundation.</small></div></div>
+    </div>
+  </section>
+
+  <!-- 5. PMF -->
+  <section class="slide" data-i="5">
+    <div class="tag">Product · Market fit</div>
+    <h2 class="title">Problem <span class="accent">validated</span>.<br/>Demo <span class="accent">shipping</span>.</h2>
+    <div class="rows">
+      <div class="row"><div class="k">DEMAND</div><div class="v">Ledger Connect Kit exploit, ongoing Solana drainers, no Solana-native cold signer on the market.</div></div>
+      <div class="row"><div class="k">MVP</div><div class="v">End-to-end devnet loop live.<small>Dapp → extension → Pi → signed → broadcast. Wallet Standard <code class="kbd">connect</code> + <code class="kbd">signTransaction</code>.</small></div></div>
+      <div class="row"><div class="k">PRICE</div><div class="v">$35 BOM vs. $80–$250 incumbents. Unlocks treasuries, DAOs, long-tail users.</div></div>
+    </div>
+  </section>
+
+  <!-- 6. BUSINESS MODEL -->
+  <section class="slide" data-i="6">
+    <div class="tag">Business model</div>
+    <h2 class="title">Firmware is <span class="accent">open</span>.<br/>Business is <span class="accent">not</span>.</h2>
+    <p class="lede">BUSL 1.1 today. Non-commercial use is free. Production and commercial deployments pay.</p>
+    <div class="rows">
+      <div class="row"><div class="k">HARDWARE</div><div class="v">Pre-flashed devices and kits. Margin on a $35 BOM.</div></div>
+      <div class="row"><div class="k">LICENSING</div><div class="v">BUSL commercial license for exchanges, custodians, and wallet vendors.</div></div>
+      <div class="row"><div class="k">SERVICES</div><div class="v">Audits, signed reproducible builds, integration and support retainers.</div></div>
+    </div>
+  </section>
+
+</div>
+
+<div class="nav">
+  <button id="prev" aria-label="Previous slide">&larr; Back</button>
+  <button id="next" aria-label="Next slide">Next &rarr;</button>
+</div>
+
+<div class="progress" id="progress"></div>
+
+<script>
+  const slides = [...document.querySelectorAll(".slide")];
+  const total = slides.length;
+  const prev = document.getElementById("prev");
+  const next = document.getElementById("next");
+  const now = document.getElementById("count-now");
+  const tot = document.getElementById("count-total");
+  const progress = document.getElementById("progress");
+
+  tot.textContent = String(total).padStart(2, "0");
+
+  let i = Math.max(0, Math.min(total - 1, (parseInt(location.hash.slice(1), 10) || 1) - 1));
+
+  function render() {
+    slides.forEach((s, idx) => s.classList.toggle("active", idx === i));
+    now.textContent = String(i + 1).padStart(2, "0");
+    prev.disabled = i === 0;
+    next.disabled = i === total - 1;
+    progress.style.width = ((i + 1) / total) * 100 + "%";
+    const targetHash = "#" + (i + 1);
+    if (location.hash !== targetHash) history.replaceState(null, "", targetHash);
+  }
+
+  function go(delta) {
+    const newI = Math.max(0, Math.min(total - 1, i + delta));
+    if (newI === i) return;
+    i = newI;
+    render();
+  }
+
+  prev.addEventListener("click", () => go(-1));
+  next.addEventListener("click", () => go(1));
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") { go(1); e.preventDefault(); }
+    else if (e.key === "ArrowLeft" || e.key === "PageUp") { go(-1); e.preventDefault(); }
+    else if (e.key === "Home") { i = 0; render(); }
+    else if (e.key === "End") { i = total - 1; render(); }
+    else if (e.key === "f" || e.key === "F") {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else document.documentElement.requestFullscreen();
+    }
+  });
+
+  window.addEventListener("hashchange", () => {
+    const n = parseInt(location.hash.slice(1), 10);
+    if (n >= 1 && n <= total) { i = n - 1; render(); }
+  });
+
+  render();
+</script>
+</body>
+</html>
