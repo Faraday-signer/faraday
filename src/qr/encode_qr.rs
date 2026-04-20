@@ -24,11 +24,16 @@ pub fn encode_seed_qr(mnemonic: &str) -> Result<String, &'static str> {
     Ok(result)
 }
 
-/// Encode a BIP39 mnemonic as CompactSeedQR (11-bit packed binary).
+/// Encode a BIP39 mnemonic as CompactSeedQR: raw entropy only, no checksum.
+/// 16 bytes for 12 words, 32 bytes for 24 words. Produces a tiny QR in byte
+/// mode; the checksum is recomputed from entropy on decode.
 pub fn encode_compact_seed_qr(mnemonic: &str) -> Result<Vec<u8>, &'static str> {
     let words: Vec<&str> = mnemonic.split_whitespace().collect();
-    let mut bits = Vec::with_capacity(words.len() * 11);
+    if words.len() != 12 && words.len() != 24 {
+        return Err("mnemonic must be 12 or 24 words");
+    }
 
+    let mut bits = Vec::with_capacity(words.len() * 11);
     for word in &words {
         let idx = bip39::word_index(word).ok_or("Unknown BIP39 word")?;
         for i in (0..11).rev() {
@@ -36,7 +41,6 @@ pub fn encode_compact_seed_qr(mnemonic: &str) -> Result<Vec<u8>, &'static str> {
         }
     }
 
-    // Pack bits into bytes
     let mut bytes = Vec::new();
     for chunk in bits.chunks(8) {
         let mut byte = 0u8;
@@ -45,16 +49,21 @@ pub fn encode_compact_seed_qr(mnemonic: &str) -> Result<Vec<u8>, &'static str> {
         }
         bytes.push(byte);
     }
-
+    // Drop the trailing checksum bits — 12 words → 16 B, 24 words → 32 B.
+    bytes.truncate(words.len() * 4 / 3);
     Ok(bytes)
 }
 
 /// Generate a QR code as a boolean matrix (true = black module).
 ///
+/// Accepts raw bytes so callers can emit byte-mode QRs (CompactSeedQR) as well
+/// as text (Standard SeedQR numeric, address, tx). String callers pass
+/// `.as_bytes()`.
+///
 /// Returns (matrix, size) where matrix is row-major and size is the dimension.
-pub fn generate_qr_matrix(data: &str) -> Result<(Vec<bool>, usize), &'static str> {
+pub fn generate_qr_matrix(data: &[u8]) -> Result<(Vec<bool>, usize), &'static str> {
     use qrcode::QrCode;
-    let code = QrCode::new(data.as_bytes()).map_err(|_| "QR encoding failed")?;
+    let code = QrCode::new(data).map_err(|_| "QR encoding failed")?;
     let width = code.width();
     let matrix: Vec<bool> = code
         .into_colors()
@@ -87,12 +96,12 @@ mod tests {
     fn test_compact_seed_qr() {
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let compact = encode_compact_seed_qr(mnemonic).unwrap();
-        assert_eq!(compact.len(), 17); // 12 words * 11 bits = 132 bits -> 17 bytes
+        assert_eq!(compact.len(), 16); // 128 bits of entropy, no checksum
     }
 
     #[test]
     fn test_generate_qr_matrix() {
-        let (matrix, size) = generate_qr_matrix("test").unwrap();
+        let (matrix, size) = generate_qr_matrix(b"test").unwrap();
         assert!(size > 0);
         assert_eq!(matrix.len(), size * size);
     }

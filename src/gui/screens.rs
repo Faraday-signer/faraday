@@ -84,11 +84,12 @@ impl App {
             }
             Screen::ExportSeedQr { seed_qr_data, compact_data, compact_mode, .. } => {
                 if *compact_mode {
-                    // Compact SeedQR: binary data displayed as hex for QR
-                    let hex_data = hex::encode(compact_data);
-                    draw_qr(display, "Compact SeedQR", &hex_data, self.seed_loaded())
+                    // CompactSeedQR: raw entropy bytes in byte mode. Smallest
+                    // grid possible — 21×21 V1 at qrcode's default ECL for 12w.
+                    draw_qr(display, "Compact SeedQR", compact_data, self.seed_loaded())
                 } else {
-                    draw_qr(display, "SeedQR Backup", seed_qr_data, self.seed_loaded())
+                    // Standard SeedQR: 48/96 numeric digits in numeric mode.
+                    draw_qr(display, "SeedQR Backup", seed_qr_data.as_bytes(), self.seed_loaded())
                 }
             }
 
@@ -152,13 +153,13 @@ impl App {
                 draw_tx_review(display, info_lines, *scroll, *selected, *can_sign, self.seed_loaded())
             }
             Screen::SignShowQr { data } => {
-                draw_qr(display, "Signed TX", data, self.seed_loaded())
+                draw_qr(display, "Signed TX", data.as_bytes(), self.seed_loaded())
             }
             Screen::SignMessageInput { grid } => {
                 draw_char_grid(display, grid, "Sign Message", self.seed_loaded())
             }
             Screen::SignMessageResult { signature_hex } => {
-                draw_qr(display, "Signature", signature_hex, self.seed_loaded())
+                draw_qr(display, "Signature", signature_hex.as_bytes(), self.seed_loaded())
             }
 
             // Settings
@@ -175,7 +176,7 @@ impl App {
             }
             Screen::SettingsShowAddress => {
                 if let Some(wallet) = &self.wallet {
-                    draw_qr(display, "Address", &wallet.address, true)
+                    draw_qr(display, "Address", wallet.address.as_bytes(), true)
                 } else {
                     draw_message(display, "Address", "No wallet loaded", false)
                 }

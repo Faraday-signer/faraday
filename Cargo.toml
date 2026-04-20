@@ -18,6 +18,11 @@ name = "gen-templates"
 path = "src/bin/gen_templates.rs"
 required-features = ["templates"]
 
+[[bin]]
+name = "gen-test-qr"
+path = "src/bin/gen_test_qr.rs"
+required-features = ["simulator"]
+
 [dependencies]
 # Display rendering
 embedded-graphics = "0.8"
@@ -38,7 +43,7 @@ getrandom = "0.2"
 # QR decoding + image buffer. Shared by both the macOS simulator (nokhwa)
 # and the Pi camera (MMAL via a raspividyuv subprocess — see pi_camera.rs).
 rqrr = "0.7"
-image = { version = "0.25", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 # Desktop simulator (optional)
 minifb = { version = "0.27", optional = true }
