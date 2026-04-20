@@ -389,6 +389,47 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             Screen::ExportSeedQrBlock { compact_data, block_index, from_settings }
         }
 
+        // "Reveals your seed" gate — CANCEL / SHOW. Used when entering the
+        // backup flow from Settings so users who wander in are forced to
+        // acknowledge the consequence. Create flow skips this because the
+        // user just explicitly chose to create the wallet.
+        Screen::ExportSeedWarning { mut selected, from_settings } => {
+            match event {
+                InputEvent::Up => { if selected > 0 { selected -= 1; } }
+                InputEvent::Down => { if selected < 1 { selected += 1; } }
+                InputEvent::Confirm => {
+                    if selected == 1 {
+                        // SHOW — proceed to the SeedQR menu.
+                        let mnemonic = app
+                            .wallet
+                            .as_ref()
+                            .map(|w| w.mnemonic.clone())
+                            .unwrap_or_default();
+                        let compact_data =
+                            crate::qr::encode_qr::encode_compact_seed_qr(&mnemonic)
+                                .unwrap_or_default();
+                        return Screen::ExportSeedQrMenu {
+                            compact_data, selected: 0, from_settings,
+                        };
+                    }
+                    return if from_settings {
+                        Screen::SettingsMenu { selected: 0 }
+                    } else {
+                        Screen::MainMenu { selected: 0 }
+                    };
+                }
+                InputEvent::Back => {
+                    return if from_settings {
+                        Screen::SettingsMenu { selected: 0 }
+                    } else {
+                        Screen::MainMenu { selected: 0 }
+                    };
+                }
+                _ => {}
+            }
+            Screen::ExportSeedWarning { selected, from_settings }
+        }
+
         _ => unreachable!("create::handle called with non-create screen"),
     }
 }
