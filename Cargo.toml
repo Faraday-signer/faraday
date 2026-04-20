@@ -25,6 +25,7 @@ zeroize = { version = "1", features = ["zeroize_derive"] }
 hex = "0.4"
 base64 = "0.22"
 qrcode = "0.14"
+ur = { version = "0.4", default-features = false }
 getrandom = "0.2"
 
 # QR decoding + image buffer. Shared by both the macOS simulator (nokhwa)
