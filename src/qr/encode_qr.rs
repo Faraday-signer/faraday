@@ -4,6 +4,8 @@ use crate::crypto::bip39;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 
+pub use qrcode::EcLevel as QrEcLevel;
+
 /// Encode a signed transaction as base64 for QR display.
 pub fn encode_signed_tx(signed_tx_bytes: &[u8]) -> String {
     BASE64.encode(signed_tx_bytes)
@@ -56,14 +58,15 @@ pub fn encode_compact_seed_qr(mnemonic: &str) -> Result<Vec<u8>, &'static str> {
 
 /// Generate a QR code as a boolean matrix (true = black module).
 ///
-/// Accepts raw bytes so callers can emit byte-mode QRs (CompactSeedQR) as well
-/// as text (Standard SeedQR numeric, address, tx). String callers pass
-/// `.as_bytes()`.
+/// `ec` picks the error-correction level. Use `QrEcLevel::L` for seed-backup
+/// QRs (smallest grid — 21×21 for a 12-word CompactSeedQR) and `QrEcLevel::M`
+/// for anything that will be scanned in the field (tx, signature, address),
+/// where extra ECC headroom matters more than grid size.
 ///
 /// Returns (matrix, size) where matrix is row-major and size is the dimension.
-pub fn generate_qr_matrix(data: &[u8]) -> Result<(Vec<bool>, usize), &'static str> {
+pub fn generate_qr_matrix(data: &[u8], ec: QrEcLevel) -> Result<(Vec<bool>, usize), &'static str> {
     use qrcode::QrCode;
-    let code = QrCode::new(data).map_err(|_| "QR encoding failed")?;
+    let code = QrCode::with_error_correction_level(data, ec).map_err(|_| "QR encoding failed")?;
     let width = code.width();
     let matrix: Vec<bool> = code
         .into_colors()
@@ -101,9 +104,17 @@ mod tests {
 
     #[test]
     fn test_generate_qr_matrix() {
-        let (matrix, size) = generate_qr_matrix(b"test").unwrap();
+        let (matrix, size) = generate_qr_matrix(b"test", QrEcLevel::M).unwrap();
         assert!(size > 0);
         assert_eq!(matrix.len(), size * size);
+    }
+
+    #[test]
+    fn compact_seed_qr_12w_is_v1_at_ec_l() {
+        let mn = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let compact = encode_compact_seed_qr(mn).unwrap();
+        let (_, size) = generate_qr_matrix(&compact, QrEcLevel::L).unwrap();
+        assert_eq!(size, 21, "12-word CompactSeedQR should be V1 21×21 at ECL L");
     }
 
     #[test]

@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // CompactSeedQR: raw entropy bytes in byte mode.
     let compact = qr::encode_qr::encode_compact_seed_qr(&mnemonic)?;
-    let (matrix, size) = qr::encode_qr::generate_qr_matrix(&compact)?;
+    let (matrix, size) = qr::encode_qr::generate_qr_matrix(&compact, qr::encode_qr::QrEcLevel::L)?;
 
     let scale = 16u32;
     let quiet = 4u32;

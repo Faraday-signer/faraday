@@ -23,6 +23,11 @@ name = "gen-test-qr"
 path = "src/bin/gen_test_qr.rs"
 required-features = ["simulator"]
 
+[[bin]]
+name = "gen-test-tx"
+path = "src/bin/gen_test_tx.rs"
+required-features = ["simulator"]
+
 [dependencies]
 # Display rendering
 embedded-graphics = "0.8"

@@ -96,10 +96,17 @@ impl App {
                 draw_show_words(display, mnemonic, *page, *word_count, self.seed_loaded())
             }
             Screen::ExportSeedQr { compact_data, .. } => {
-                // CompactSeedQR: raw 16/32 entropy bytes, byte-mode QR at
-                // qrcode's default ECL (V2 25×25 for 12w at ECL M).
+                // CompactSeedQR: raw 16/32 entropy bytes, byte-mode QR at ECL L
+                // so the grid stays as small as possible for hand-transcription
+                // (12w → V1 21×21, 24w → V2 25×25).
                 let title = self.seedqr_title();
-                draw_qr(display, title, compact_data, self.seed_loaded())
+                draw_qr(
+                    display,
+                    title,
+                    compact_data,
+                    self.seed_loaded(),
+                    crate::qr::encode_qr::QrEcLevel::L,
+                )
             }
             Screen::ExportSeedQrBlock { compact_data, block_index, .. } => {
                 draw_qr_block(display, compact_data, *block_index, self.seed_loaded())
@@ -165,13 +172,13 @@ impl App {
                 draw_tx_review(display, info_lines, *scroll, *selected, *can_sign, self.seed_loaded())
             }
             Screen::SignShowQr { data } => {
-                draw_qr(display, "Signed TX", data.as_bytes(), self.seed_loaded())
+                draw_qr(display, "Signed TX", data.as_bytes(), self.seed_loaded(), crate::qr::encode_qr::QrEcLevel::M)
             }
             Screen::SignMessageInput { grid } => {
                 draw_char_grid(display, grid, "Sign Message", self.seed_loaded())
             }
             Screen::SignMessageResult { signature_hex } => {
-                draw_qr(display, "Signature", signature_hex.as_bytes(), self.seed_loaded())
+                draw_qr(display, "Signature", signature_hex.as_bytes(), self.seed_loaded(), crate::qr::encode_qr::QrEcLevel::M)
             }
 
             // Settings
@@ -188,7 +195,7 @@ impl App {
             }
             Screen::SettingsShowAddress => {
                 if let Some(wallet) = &self.wallet {
-                    draw_qr(display, "Address", wallet.address.as_bytes(), true)
+                    draw_qr(display, "Address", wallet.address.as_bytes(), true, crate::qr::encode_qr::QrEcLevel::M)
                 } else {
                     draw_message(display, "Address", "No wallet loaded", false)
                 }
@@ -585,7 +592,12 @@ fn draw_qr_block<D: DrawTarget<Color = Rgb565>>(
 ) -> Result<(), D::Error> {
     display.clear(colors::BG_DARK)?;
 
-    let (matrix, qr_size) = match crate::qr::encode_qr::generate_qr_matrix(compact_data) {
+    // Must match the ECL used by `draw_qr` for the full seed QR so the block
+    // view shows the same matrix the user is transcribing.
+    let (matrix, qr_size) = match crate::qr::encode_qr::generate_qr_matrix(
+        compact_data,
+        crate::qr::encode_qr::QrEcLevel::L,
+    ) {
         Ok(m) => m,
         Err(_) => {
             draw_status_bar(display, "Transcribe", seed_loaded)?;
