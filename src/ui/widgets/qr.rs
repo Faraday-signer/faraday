@@ -29,7 +29,7 @@ impl<'a> Qr<'a> {
     ) -> Result<(), D::Error> {
         let (matrix, size) =
             match crate::qr::encode_qr::generate_qr_matrix(
-                self.data,
+                self.data.as_bytes(),
                 crate::qr::encode_qr::QrEcLevel::M,
             ) {
                 Ok(m) => m,
