@@ -12,6 +12,7 @@ simulator = ["dep:minifb"]
 # Display rendering
 embedded-graphics = "0.8"
 embedded-graphics-core = "0.4"
+u8g2-fonts = { version = "0.5", features = ["embedded_graphics_textstyle"] }
 
 # Crypto (all pure Rust)
 sha2 = "0.10"

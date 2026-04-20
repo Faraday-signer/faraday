@@ -270,6 +270,7 @@ dependencies = [
  "qrcode",
  "rppal",
  "sha2",
+ "u8g2-fonts",
  "zeroize",
 ]
 
@@ -995,6 +996,16 @@ name = "typenum"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
+
+[[package]]
+name = "u8g2-fonts"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "132e15484caa39440cc9d6317c1f1980a13259234e630db2270ea2a2b1e5c4a2"
+dependencies = [
+ "embedded-graphics",
+ "embedded-graphics-core",
+]
 
 [[package]]
 name = "unicode-ident"

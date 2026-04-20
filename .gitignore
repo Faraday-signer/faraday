@@ -46,3 +46,6 @@ extension/.vite/
 playground/node_modules/
 playground/dist/
 playground/.vite/
+
+# Local design-system reference bundle (not checked in)
+.faraday-design-bundle/

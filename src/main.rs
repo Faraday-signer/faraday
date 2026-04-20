@@ -3,6 +3,9 @@
 mod crypto;
 
 #[cfg(any(feature = "simulator", target_os = "linux"))]
+mod ui;
+
+#[cfg(any(feature = "simulator", target_os = "linux"))]
 mod gui;
 #[cfg(target_os = "linux")]
 mod hardware;
@@ -30,7 +33,7 @@ fn main() {
 fn run_simulator() {
     use gui::framebuffer::Framebuffer;
     use minifb::{Key, Window, WindowOptions, Scale};
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     let mut fb = Framebuffer::new();
     let mut app = App::new();
@@ -48,14 +51,25 @@ fn run_simulator() {
     window.set_key_repeat_delay(0.3);
     window.set_key_repeat_rate(0.1);
 
-    // Splash
-    app.draw(&mut fb).unwrap();
-    let buf = fb.to_rgb888();
-    window.update_with_buffer(&buf, 240, 240).unwrap();
-    std::thread::sleep(Duration::from_secs(2));
-    app.enter_main_menu();
+    // Splash holds the Faraday logo on screen while the event loop runs.
+    // We advance to MainMenu from inside the loop so the window actually
+    // renders the logo (a pre-loop thread::sleep would block the event
+    // pump, and on macOS the window contents never paint).
+    let splash_start = Instant::now();
+    let splash_duration = Duration::from_secs(2);
+    let mut splash_done = false;
 
     while window.is_open() {
+        // Hold the splash for `splash_duration`, then advance once. Only
+        // force the MainMenu if the user hasn't already skipped past the
+        // splash via a keypress.
+        if !splash_done && splash_start.elapsed() >= splash_duration {
+            if matches!(app.screen, gui::app::Screen::Splash) {
+                app.enter_main_menu();
+            }
+            splash_done = true;
+        }
+
         // Map keyboard to InputEvent
         let event = if window.is_key_pressed(Key::Up, minifb::KeyRepeat::Yes) {
             Some(InputEvent::Up)
