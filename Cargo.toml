@@ -8,7 +8,7 @@ description = "Air-gapped Solana transaction signer"
 default = []
 _desktop_sim = ["dep:minifb"]
 simulator = ["_desktop_sim", "dep:nokhwa"]
-simulator_no_cam = ["_desktop_sim", "dep:rfd", "image/png"]
+simulator_no_cam = ["_desktop_sim", "dep:rfd", "image/png", "image/jpeg"]
 
 [dependencies]
 # Display rendering

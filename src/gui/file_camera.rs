@@ -1,8 +1,8 @@
 //! File-based camera replacement for the no-cam simulator.
 //!
 //! Instead of capturing from a webcam, opens a native file picker so the
-//! user can select a PNG image. The image is loaded, displayed as a preview
-//! frame, and scanned for QR codes.
+//! user can select an image (PNG/JPG). The image is loaded, displayed as a
+//! preview frame, and scanned for QR codes.
 
 use std::sync::Mutex;
 
@@ -16,7 +16,7 @@ pub struct FileCamera {
 impl FileCamera {
     pub fn open() -> Result<Self, String> {
         let path = rfd::FileDialog::new()
-            .add_filter("Image", &["png"])
+            .add_filter("Image", &["png", "PNG", "jpg", "JPG", "jpeg", "JPEG"])
             .set_title("Select QR code image")
             .pick_file()
             .ok_or_else(|| "No file selected".to_string())?;
