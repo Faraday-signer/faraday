@@ -29,7 +29,7 @@ impl FileCamera {
 
         let luma = crate::camera::rgb_to_gray(&rgb, w, h);
         let frame = Frame { width: w, height: h, rgb, luma };
-        let qr_data = crate::camera::try_decode_qr(&frame);
+        let qr_data = crate::camera::try_decode_qr(&frame, crate::camera::ScanMode::Full);
 
         Ok(FileCamera {
             frame: Some(frame),
