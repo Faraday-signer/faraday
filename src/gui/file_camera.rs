@@ -27,7 +27,8 @@ impl FileCamera {
         let (w, h) = rgb_img.dimensions();
         let rgb = rgb_img.into_raw();
 
-        let frame = Frame { width: w, height: h, rgb };
+        let luma = crate::camera::rgb_to_gray(&rgb, w, h);
+        let frame = Frame { width: w, height: h, rgb, luma };
         let qr_data = crate::camera::try_decode_qr(&frame);
 
         Ok(FileCamera {

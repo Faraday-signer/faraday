@@ -73,7 +73,8 @@ impl SimCamera {
                 let (w, h) = img.dimensions();
                 let rgb = img.into_raw();
 
-                let frame = Frame { width: w, height: h, rgb };
+                let luma = crate::camera::rgb_to_gray(&rgb, w, h);
+                let frame = Frame { width: w, height: h, rgb, luma };
 
                 // QR decode only on scan screens (enabled by the main thread) and
                 // only when the main thread hasn't yet consumed the previous hit.

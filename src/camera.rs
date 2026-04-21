@@ -7,13 +7,21 @@
 //! struct and helpers are always available, so `App` / `Framebuffer` can refer
 //! to them regardless of backend.
 
-/// A decoded RGB frame from the camera. Interleaved `R, G, B, R, G, B, …`,
-/// length `width * height * 3`.
+/// A decoded frame from the camera, with both an interleaved RGB buffer
+/// for preview blitting and a raw luma (8-bit grayscale) buffer for QR
+/// decoding. Keeping both on the producer thread avoids the Pi-Zero-hot
+/// `RGB → grayscale` conversion in the decoder loop — on YUV420 cameras
+/// the Y-plane *is* the luma we want, so the cost is zero; on RGB-native
+/// cameras (macOS simulator) we do the conversion once in the reader
+/// instead of every decode attempt.
+///
+/// `rgb` is length `width * height * 3`, `luma` is length `width * height`.
 #[derive(Clone)]
 pub struct Frame {
     pub width: u32,
     pub height: u32,
     pub rgb: Vec<u8>,
+    pub luma: Vec<u8>,
 }
 
 /// Live state from the scan pipeline for on-device diagnostics. Surfaced on
@@ -41,11 +49,12 @@ pub fn rgb_to_gray(rgb: &[u8], width: u32, height: u32) -> Vec<u8> {
     out
 }
 
-/// Try to decode a QR code from the frame. Returns the raw decoded bytes on
+/// Try to decode a QR code from the frame. Uses the pre-computed luma
+/// plane directly — skipping the RGB round-trip that previously ran
+/// `rgb_to_gray` inside this hot path. Returns the raw decoded bytes on
 /// success. Does no format validation — caller inspects the bytes.
 pub fn try_decode_qr(frame: &Frame) -> Option<Vec<u8>> {
-    let gray = rgb_to_gray(&frame.rgb, frame.width, frame.height);
-    let gimg = image::GrayImage::from_raw(frame.width, frame.height, gray)?;
+    let gimg = image::GrayImage::from_raw(frame.width, frame.height, frame.luma.clone())?;
     let mut prepared = rqrr::PreparedImage::prepare(gimg);
     for grid in prepared.detect_grids() {
         let mut out = Vec::new();

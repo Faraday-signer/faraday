@@ -265,10 +265,16 @@ fn reader_loop(
         }
 
         let rgb = yuv420_to_rgb(&buf, CAPTURE_W, CAPTURE_H);
+        // YUV420's Y-plane is already 8-bit grayscale — the exact input
+        // rqrr wants. Copy it out here (free: it's just the first
+        // `CAPTURE_W * CAPTURE_H` bytes of the frame buffer) so the
+        // decoder thread doesn't redo this conversion on every attempt.
+        let luma = buf[..Y_BYTES].to_vec();
         let frame = Frame {
             width: CAPTURE_W as u32,
             height: CAPTURE_H as u32,
             rgb,
+            luma,
         };
 
         if let Ok(mut g) = latest.lock() {
