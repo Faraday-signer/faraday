@@ -30,6 +30,7 @@ output/
 buildroot_dl/
 opt/buildroot/
 opt/rootfs-overlay/
+opt/faraday-bin
 .buildroot-ccache/
 .ccache/
 
