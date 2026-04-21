@@ -71,9 +71,42 @@ fn run_simulator() {
     // Reset idle timer so the splash duration doesn't count toward blanking.
     app.last_activity = std::time::Instant::now();
 
+    // Long-press Back (Escape) detection. Tap = normal Back; hold ≥ threshold
+    // fires PowerOffShortcut instead and suppresses the trailing Back.
+    let hold_threshold = Duration::from_millis(1500);
+    let mut esc_down_at: Option<std::time::Instant> = None;
+    let mut esc_long_press_fired = false;
+
     while window.is_open() {
-        // Map keyboard to InputEvent
-        let event = if window.is_key_pressed(Key::Up, minifb::KeyRepeat::Yes) {
+        // Long-press handling for Back first. Runs every frame so we can
+        // emit the shortcut mid-hold (the user shouldn't have to release).
+        let esc_held = window.is_key_down(Key::Escape);
+        let long_press_event = match (esc_down_at, esc_held) {
+            (None, true) => {
+                // Rising edge — start the timer, don't emit anything yet.
+                esc_down_at = Some(std::time::Instant::now());
+                esc_long_press_fired = false;
+                None
+            }
+            (Some(t), true) if !esc_long_press_fired && t.elapsed() >= hold_threshold => {
+                // Held past the threshold — fire the shortcut once.
+                esc_long_press_fired = true;
+                Some(InputEvent::PowerOffShortcut)
+            }
+            (Some(t), false) => {
+                // Released. Emit normal Back only if the shortcut didn't fire.
+                let fire_back = !esc_long_press_fired && t.elapsed() < hold_threshold;
+                esc_down_at = None;
+                esc_long_press_fired = false;
+                if fire_back { Some(InputEvent::Back) } else { None }
+            }
+            _ => None,
+        };
+
+        // Other key-event detection (unchanged).
+        let event = if let Some(ev) = long_press_event {
+            Some(ev)
+        } else if window.is_key_pressed(Key::Up, minifb::KeyRepeat::Yes) {
             Some(InputEvent::Up)
         } else if window.is_key_pressed(Key::Down, minifb::KeyRepeat::Yes) {
             Some(InputEvent::Down)
@@ -85,8 +118,6 @@ fn run_simulator() {
             || window.is_key_pressed(Key::Z, minifb::KeyRepeat::No)
         {
             Some(InputEvent::Confirm)
-        } else if window.is_key_pressed(Key::Escape, minifb::KeyRepeat::No) {
-            Some(InputEvent::Back)
         } else if window.is_key_pressed(Key::X, minifb::KeyRepeat::No) {
             Some(InputEvent::Secondary)
         } else {
@@ -101,8 +132,10 @@ fn run_simulator() {
 
         use embedded_graphics_core::draw_target::DrawTarget;
         if app.is_blanked() {
-            // Idle timeout reached — black screen until input wakes us.
-            let _ = fb.clear(gui::colors::BLACK);
+            // Idle timeout reached — show the Faraday logo (splash) instead
+            // of a black screen, so the device is visibly "on + idle" rather
+            // than indistinguishable from powered-off.
+            let _ = gui::screens::draw_splash(&mut fb);
         } else {
             // On camera screens, blit the latest webcam frame as background so
             // overlay drawing in app.draw() paints on top of live preview. When
@@ -177,7 +210,7 @@ fn run_pi() {
         app.tick();
 
         if app.is_blanked() {
-            let _ = display.clear(crate::gui::colors::BLACK);
+            let _ = crate::gui::screens::draw_splash(&mut display);
         } else {
             // On camera screens, blit preview first, then let the screen
             // overlay draw on top. Fill dark when no frame is ready yet.
