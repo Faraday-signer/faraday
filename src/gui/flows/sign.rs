@@ -1,5 +1,8 @@
 //! Sign transaction flow.
 
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
+
 use crate::gui::app::{App, CharGrid, InputEvent, Screen, build_review_lines};
 use crate::qr::decode_qr;
 
@@ -17,31 +20,42 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             match event {
                 InputEvent::Confirm => {
                     if let Some(wallet) = &app.wallet {
-                        // Only advance on a real scan. `build_test_transaction`
-                        // was dev-only fallthrough that made the device appear
-                        // to accept a scan that never happened.
-                        let tx_base64: String = match app
-                            .scanned_qr
-                            .take()
-                            .and_then(|b| String::from_utf8(b).ok())
-                        {
-                            Some(t) => t,
-                            None => return Screen::SignScanTx,
+                        let data = match app.scanned_qr.take() {
+                            Some(d) if !d.is_empty() => d,
+                            _ => return Screen::SignScanTx,
                         };
-                        let _ = &wallet; // keep borrow alive without unused-var warning
-                        let decoded = decode_qr::detect_and_decode(tx_base64.as_bytes());
-                        if let Some(tx_bytes) = decoded.tx_bytes {
-                            let (info_lines, can_sign) =
-                                build_review_lines(&tx_bytes, &wallet.keypair.public_key);
-                            return Screen::SignReview {
-                                tx_bytes,
-                                tx_base64,
-                                info_lines,
-                                scroll: 0,
-                                selected: if can_sign { 0 } else { 1 },
-                                can_sign,
-                            };
-                        }
+
+                        // Two valid QR shapes land here:
+                        //   1. Base64-encoded tx text (single static QR)       — detect_and_decode routes it.
+                        //   2. Raw tx bytes reassembled from a UR animated QR  — falls through as binary.
+                        // Historically this handler gated on `String::from_utf8` and silently
+                        // dropped case (2). The UTF-8 check was not a security boundary: the
+                        // real gate is user review + the hardened parser (PR #19). Accepting
+                        // raw bytes is a strict superset of base64 text — anything an attacker
+                        // could put in raw they could already put in base64.
+                        let decoded = decode_qr::detect_and_decode(&data);
+                        let tx_bytes = match decoded.tx_bytes {
+                            Some(b) => b,
+                            // Fallback for raw-binary UR payloads detect_and_decode doesn't
+                            // classify. The shape check is UX only — it filters obvious non-tx
+                            // scans (URLs, address QRs, text) so the review screen doesn't show
+                            // "Parse error" for them. Anything that passes still goes through
+                            // the parser and the user-review gate before any signing.
+                            None if looks_like_solana_tx(&data) => data,
+                            _ => return Screen::SignScanTx,
+                        };
+
+                        let tx_base64 = BASE64.encode(&tx_bytes);
+                        let (info_lines, can_sign) =
+                            build_review_lines(&tx_bytes, &wallet.keypair.public_key);
+                        return Screen::SignReview {
+                            tx_bytes,
+                            tx_base64,
+                            info_lines,
+                            scroll: 0,
+                            selected: if can_sign { 0 } else { 1 },
+                            can_sign,
+                        };
                     }
                 }
                 InputEvent::Secondary => return Screen::SignMessageInput { grid: CharGrid::new() },
@@ -129,26 +143,71 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
     }
 }
 
-/// Build a minimal valid Solana transaction for simulator testing.
-fn build_test_transaction(signer_pubkey: &[u8; 32]) -> String {
-    use base64::Engine;
-    use base64::engine::general_purpose::STANDARD as BASE64;
+/// Cheap shape check — filters obvious non-tx QR scans (URLs, text, addresses)
+/// so the review screen doesn't show "Parse error" for them. The check is
+/// intentionally permissive: anything plausibly tx-shaped is handed to the
+/// real parser, which is the actual validator.
+///
+/// Legitimate txs start with a compact-u16 signature count (1..=127 fits in
+/// one byte) followed by that many 64-byte signatures and at least a 3-byte
+/// message header. A count of 0 is rejected because a tx with no signatures
+/// can't be signed or broadcast, and capping at 5 is a sanity bound (nothing
+/// legitimate we've seen exceeds this) that also limits the damage a crafted
+/// oversized scan can do before the parser catches it.
+fn looks_like_solana_tx(data: &[u8]) -> bool {
+    let sigs = match data.first() {
+        Some(&n) if (1..=5).contains(&n) => n as usize,
+        _ => return false,
+    };
+    let min_len = 1 + sigs * 64 + 3;
+    data.len() >= min_len
+}
 
-    let mut tx = Vec::new();
-    tx.push(1u8);
-    tx.extend_from_slice(&[0u8; 64]);
-    tx.push(1); // num_required_sigs
-    tx.push(0); // num_readonly_signed
-    tx.push(1); // num_readonly_unsigned
-    tx.push(2); // num_account_keys (compact-u16)
-    tx.extend_from_slice(signer_pubkey);
-    tx.extend_from_slice(&[0u8; 32]); // system program
-    tx.extend_from_slice(&[0xAB; 32]); // recent blockhash (fake)
-    tx.push(1); // 1 instruction
-    tx.push(1); // program_id_index
-    tx.push(1); // num accounts in instruction
-    tx.push(0); // account index
-    tx.push(0); // data length
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    BASE64.encode(&tx)
+    #[test]
+    fn looks_like_tx_accepts_minimal_single_sig_tx() {
+        let mut tx = vec![1u8]; // one signature
+        tx.extend_from_slice(&[0u8; 64]); // signature bytes
+        tx.extend_from_slice(&[0u8; 3]); // message header
+        assert!(looks_like_solana_tx(&tx));
+    }
+
+    #[test]
+    fn looks_like_tx_rejects_zero_sig_count() {
+        let tx = vec![0u8; 200];
+        assert!(!looks_like_solana_tx(&tx));
+    }
+
+    #[test]
+    fn looks_like_tx_rejects_short_payload() {
+        // claims one sig but doesn't carry 64 bytes of it
+        let short = vec![1u8, 0, 0, 0, 0];
+        assert!(!looks_like_solana_tx(&short));
+    }
+
+    #[test]
+    fn looks_like_tx_rejects_text_blob() {
+        // a URL, 9x 'h' would also be rejected by the sig-count test
+        let url = b"https://example.com/some/path";
+        assert!(!looks_like_solana_tx(url));
+    }
+
+    #[test]
+    fn looks_like_tx_rejects_solana_address() {
+        // 32-byte base58 address is way under the min tx length
+        let addr = b"GAthe6Gh8xEuJobQWB3cLUBFjsGtyvsk";
+        assert!(!looks_like_solana_tx(addr));
+    }
+
+    #[test]
+    fn looks_like_tx_accepts_real_self_transfer_fixture() {
+        // The committed demo tx in testdata/examples/ is exactly the shape
+        // we expect from a UR-reassembled payload.
+        let tx = std::fs::read("testdata/examples/self_transfer.bin")
+            .expect("self_transfer fixture present");
+        assert!(looks_like_solana_tx(&tx));
+    }
 }
