@@ -7,6 +7,7 @@
 //! Anchor discriminators (e.g. `shared_accounts_route`, not `sharedAccountsRoute`).
 
 use crate::parser::anchor;
+use crate::parser::bytes::read_disc8;
 use crate::parser::token_registry::{self, AtaMap};
 use crate::parser::{ParsedInstruction, ReviewItem};
 
@@ -470,17 +471,16 @@ pub fn parse(
     all_accounts: &[[u8; 32]],
     ata_map: &AtaMap,
 ) -> ParsedInstruction {
-    if data.len() < 8 {
-        return ParsedInstruction {
+    let disc = match read_disc8(data, 0) {
+        Ok(d) => d,
+        Err(_) => return ParsedInstruction {
             program: "Jupiter".into(),
             items: vec![
                 ReviewItem::Header("Jupiter".into()),
                 ReviewItem::Warning("Instruction data too short".into()),
             ],
-        };
-    }
-
-    let disc: [u8; 8] = data[..8].try_into().unwrap();
+        },
+    };
     let ix_type = match identify_instruction(&disc) {
         Some(t) => t,
         None => {

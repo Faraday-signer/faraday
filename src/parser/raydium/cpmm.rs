@@ -4,6 +4,7 @@
 //! Program ID: CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C
 
 use crate::parser::anchor;
+use crate::parser::bytes::{read_disc8, read_u64_le};
 use crate::parser::raydium::{self, SwapInfo};
 use crate::parser::token_registry::AtaMap;
 use crate::parser::{ParsedInstruction, ReviewItem};
@@ -18,11 +19,10 @@ pub fn parse(
     all_accounts: &[[u8; 32]],
     _ata_map: &AtaMap,
 ) -> ParsedInstruction {
-    if data.len() < 8 {
-        return raydium::error("Raydium CPMM", "Instruction data too short");
-    }
-
-    let disc: [u8; 8] = data[..8].try_into().unwrap();
+    let disc = match read_disc8(data, 0) {
+        Ok(d) => d,
+        Err(_) => return raydium::error("Raydium CPMM", "Instruction data too short"),
+    };
 
     if disc == anchor::discriminator("swap_base_input") {
         parse_swap(data, account_indices, all_accounts, true)
@@ -43,12 +43,10 @@ fn parse_swap(
     is_base_input: bool,
 ) -> ParsedInstruction {
     // disc(8) + amount_a(8) + amount_b(8) = 24
-    if data.len() < 24 {
-        return raydium::error("Raydium CPMM", "Swap data too short");
-    }
-
-    let amount_a = u64::from_le_bytes(data[8..16].try_into().unwrap());
-    let amount_b = u64::from_le_bytes(data[16..24].try_into().unwrap());
+    let (amount_a, amount_b) = match (read_u64_le(data, 8), read_u64_le(data, 16)) {
+        (Ok(a), Ok(b)) => (a, b),
+        _ => return raydium::error("Raydium CPMM", "Swap data too short"),
+    };
 
     let source_mint = raydium::get_account(account_indices, INPUT_MINT_IDX, all_accounts);
     let dest_mint = raydium::get_account(account_indices, OUTPUT_MINT_IDX, all_accounts);
