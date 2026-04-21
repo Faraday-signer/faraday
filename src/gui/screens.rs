@@ -1796,12 +1796,12 @@ fn draw_scan_diag<D: DrawTarget<Color = Rgb565>>(
             };
             if filled > 0 {
                 Rectangle::new(Point::new(bar_x, bar_y), Size::new(filled, bar_h))
-                    .into_styled(PrimitiveStyle::with_fill(colors::SOLANA_GREEN))
+                    .into_styled(PrimitiveStyle::with_fill(colors::FD_ACCENT))
                     .draw(display)?;
             }
             let label = format!("{}/{}", n, total);
             let label_color = if n >= total {
-                colors::SOLANA_GREEN
+                colors::FD_ACCENT
             } else {
                 colors::TEXT_SECONDARY
             };
