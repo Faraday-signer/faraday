@@ -428,6 +428,11 @@ pub struct App {
     pub camera_error: Option<String>,
     #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
     pub scanned_qr: Option<Vec<u8>>,
+    /// Latest scan-pipeline diagnostics from the camera thread. Refreshed
+    /// each `tick()` on scan screens so the UI can show a live indicator of
+    /// whether QRs are being detected at all.
+    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
+    pub scan_diag: crate::camera::ScanDiagnostics,
 }
 
 impl App {
@@ -445,6 +450,8 @@ impl App {
             camera_error: None,
             #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
             scanned_qr: None,
+            #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
+            scan_diag: crate::camera::ScanDiagnostics::default(),
         }
     }
 
@@ -559,6 +566,7 @@ impl App {
             if let Some(f) = cam.latest() {
                 self.latest_frame = Some(f);
             }
+            self.scan_diag = cam.diagnostics();
             // Watchdog from the Pi camera thread — if the stream opened but
             // never produced a frame (or errored mid-capture), surface it as
             // a UI error so the user isn't stuck on "Opening camera...".
@@ -567,11 +575,13 @@ impl App {
                 self.camera_error = Some(err);
                 self.camera = None;
                 self.latest_frame = None;
+                self.scan_diag = crate::camera::ScanDiagnostics::default();
                 None
             } else {
                 cam.take_qr()
             }
         } else {
+            self.scan_diag = crate::camera::ScanDiagnostics::default();
             None
         };
 

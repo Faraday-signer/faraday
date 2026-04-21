@@ -16,6 +16,21 @@ pub struct Frame {
     pub rgb: Vec<u8>,
 }
 
+/// Live state from the scan pipeline for on-device diagnostics. Surfaced on
+/// the scan screens so the user can tell at a glance whether the camera is
+/// picking up anything, rather than staring at a silent reticle.
+#[derive(Clone, Copy, Default, Debug)]
+pub struct ScanDiagnostics {
+    /// Time the decoder last returned any QR payload. The UI renders a dot
+    /// that's green when this is within the last ~2s, dim otherwise.
+    pub last_qr_at: Option<std::time::Instant>,
+    /// UR fountain progress: `(unique_received, total_expected)`. Counts
+    /// distinct fragment sequence numbers that were accepted by the
+    /// decoder — duplicates do not inflate `unique_received`. Cleared on
+    /// scan-screen exit.
+    pub ur_progress: Option<(usize, usize)>,
+}
+
 /// Convert interleaved RGB to 8-bit grayscale (BT.601 luma).
 pub fn rgb_to_gray(rgb: &[u8], width: u32, height: u32) -> Vec<u8> {
     let mut out = Vec::with_capacity((width * height) as usize);
@@ -48,7 +63,22 @@ pub fn try_decode_qr_ur(
     frame: &Frame,
     accumulator: &mut crate::qr::ur_decoder::UrAccumulator,
 ) -> Option<Vec<u8>> {
-    let raw = try_decode_qr(frame)?;
+    try_decode_qr_ur_diag(frame, accumulator).0
+}
+
+/// Same as `try_decode_qr_ur` but also reports whether rqrr detected *any*
+/// QR this call (even a fragment or a format we didn't finish reassembling).
+/// Camera backends use the extra signal to drive the scan-screen heartbeat
+/// so the user can distinguish "camera sees nothing" from "camera sees a
+/// fragment, waiting for more".
+pub fn try_decode_qr_ur_diag(
+    frame: &Frame,
+    accumulator: &mut crate::qr::ur_decoder::UrAccumulator,
+) -> (Option<Vec<u8>>, bool) {
+    let raw = match try_decode_qr(frame) {
+        Some(bytes) => bytes,
+        None => return (None, false),
+    };
 
     // Binary payloads (e.g. CompactSeedQR raw entropy) almost always contain
     // non-UTF-8 bytes. A UR message is by spec a printable `ur:<type>/<seq>`
@@ -57,18 +87,19 @@ pub fn try_decode_qr_ur(
     // "decode failed" to the caller and valid scans get silently dropped.
     let text = match std::str::from_utf8(&raw) {
         Ok(t) => t,
-        Err(_) => return Some(raw),
+        Err(_) => return (Some(raw), true),
     };
 
     if crate::qr::ur_decoder::UrAccumulator::is_ur(text) {
-        if accumulator.receive(text).ok()? {
-            let msg = accumulator.message()?;
-            accumulator.reset();
-            return Some(msg);
+        match accumulator.receive(text) {
+            Ok(true) => {
+                let msg = accumulator.message();
+                accumulator.reset();
+                (msg, true)
+            }
+            Ok(false) | Err(_) => (None, true),
         }
-        None
     } else {
-        // Not UR — return raw bytes directly (backward compat with static QR)
-        Some(raw)
+        (Some(raw), true)
     }
 }

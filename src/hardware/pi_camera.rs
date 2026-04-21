@@ -47,6 +47,7 @@ const STDERR_MAX_BYTES: usize = 512;
 pub struct PiCamera {
     latest: Arc<Mutex<Option<Frame>>>,
     pending_qr: Arc<Mutex<Option<Vec<u8>>>>,
+    diag: Arc<Mutex<crate::camera::ScanDiagnostics>>,
     fatal_err: Arc<Mutex<Option<String>>>,
     stop: Arc<AtomicBool>,
     decode_enabled: Arc<AtomicBool>,
@@ -100,6 +101,8 @@ impl PiCamera {
 
         let latest: Arc<Mutex<Option<Frame>>> = Arc::new(Mutex::new(None));
         let pending_qr: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
+        let diag: Arc<Mutex<crate::camera::ScanDiagnostics>> =
+            Arc::new(Mutex::new(crate::camera::ScanDiagnostics::default()));
         let fatal_err: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let stop = Arc::new(AtomicBool::new(false));
         let decode_enabled = Arc::new(AtomicBool::new(false));
@@ -135,10 +138,11 @@ impl PiCamera {
         // overlap with fresh frame arrivals.
         let latest_d = Arc::clone(&latest);
         let qr_d = Arc::clone(&pending_qr);
+        let diag_d = Arc::clone(&diag);
         let stop_d = Arc::clone(&stop);
         let decode_d = Arc::clone(&decode_enabled);
         let decoder = thread::spawn(move || {
-            decoder_loop(latest_d, qr_d, stop_d, decode_d);
+            decoder_loop(latest_d, qr_d, diag_d, stop_d, decode_d);
         });
 
         // Watchdog: first frame or bust. Reports raspividyuv's stderr if the
@@ -181,6 +185,7 @@ impl PiCamera {
         Ok(PiCamera {
             latest,
             pending_qr,
+            diag,
             fatal_err,
             stop,
             decode_enabled,
@@ -206,6 +211,10 @@ impl PiCamera {
 
     pub fn take_fatal_err(&self) -> Option<String> {
         self.fatal_err.lock().ok().and_then(|mut g| g.take())
+    }
+
+    pub fn diagnostics(&self) -> crate::camera::ScanDiagnostics {
+        self.diag.lock().ok().map(|g| *g).unwrap_or_default()
     }
 }
 
@@ -274,6 +283,7 @@ fn reader_loop(
 fn decoder_loop(
     latest: Arc<Mutex<Option<Frame>>>,
     pending_qr: Arc<Mutex<Option<Vec<u8>>>>,
+    diag: Arc<Mutex<crate::camera::ScanDiagnostics>>,
     stop: Arc<AtomicBool>,
     decode_enabled: Arc<AtomicBool>,
 ) {
@@ -284,6 +294,9 @@ fn decoder_loop(
         }
         if !decode_enabled.load(Ordering::Relaxed) {
             ur_acc.reset();
+            if let Ok(mut g) = diag.lock() {
+                *g = crate::camera::ScanDiagnostics::default();
+            }
             thread::sleep(Duration::from_millis(100));
             continue;
         }
@@ -302,9 +315,16 @@ fn decoder_loop(
                 continue;
             }
         };
-        if let Some(decoded) = crate::camera::try_decode_qr_ur(&frame, &mut ur_acc) {
+        let (decoded, saw_qr) = crate::camera::try_decode_qr_ur_diag(&frame, &mut ur_acc);
+        if saw_qr {
+            if let Ok(mut g) = diag.lock() {
+                g.last_qr_at = Some(std::time::Instant::now());
+                g.ur_progress = ur_acc.progress();
+            }
+        }
+        if let Some(bytes) = decoded {
             if let Ok(mut g) = pending_qr.lock() {
-                *g = Some(decoded);
+                *g = Some(bytes);
             }
         }
         // Tiny yield so the reader and main threads get scheduler time.

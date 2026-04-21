@@ -127,7 +127,7 @@ impl App {
                 #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                 {
                     draw_scan_overlay(display, "Scan SeedQR", "Point camera at SeedQR",
-                        self.seed_loaded(), self.has_camera_frame(), self.camera_error_str())?;
+                        self.seed_loaded(), self.has_camera_frame(), self.camera_error_str(), self.scan_diag)?;
                 }
                 #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                 {
@@ -173,7 +173,7 @@ impl App {
                 #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                 {
                     draw_scan_overlay(display, "Sign TX", "Point camera at TX QR",
-                        self.seed_loaded(), self.has_camera_frame(), self.camera_error_str())
+                        self.seed_loaded(), self.has_camera_frame(), self.camera_error_str(), self.scan_diag)
                 }
                 #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                 {
@@ -207,7 +207,7 @@ impl App {
                 #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                 {
                     draw_scan_overlay(display, "Verify Address", "Point camera at address QR",
-                        self.seed_loaded(), self.has_camera_frame(), self.camera_error_str())
+                        self.seed_loaded(), self.has_camera_frame(), self.camera_error_str(), self.scan_diag)
                 }
                 #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                 {
@@ -229,7 +229,7 @@ impl App {
                 #[cfg(any(feature = "simulator", target_os = "linux"))]
                 {
                     draw_scan_overlay(display, "Verify Backup", "Scan your paper SeedQR",
-                        self.seed_loaded(), self.has_camera_frame(), self.camera_error_str())
+                        self.seed_loaded(), self.has_camera_frame(), self.camera_error_str(), self.scan_diag)
                 }
                 #[cfg(not(any(feature = "simulator", target_os = "linux")))]
                 {
@@ -1687,6 +1687,7 @@ fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
     seed_loaded: bool,
     has_frame: bool,
     error: Option<&str>,
+    diag: crate::camera::ScanDiagnostics,
 ) -> Result<(), D::Error> {
     if !has_frame {
         display.clear(colors::BG_DARK)?;
@@ -1733,6 +1734,11 @@ fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
         .into_styled(PrimitiveStyle::with_stroke(colors::SOLANA_GREEN, 2))
         .draw(display)?;
 
+    // Scan-pipeline heartbeat: a dot that lights when any QR was decoded in
+    // the last ~2s, paired with the most recent UR `seq/total`. Lets the
+    // user tell "camera sees nothing" from "fragments arriving, not done".
+    draw_scan_diag(display, diag)?;
+
     Rectangle::new(Point::new(0, 210), Size::new(240, 30))
         .into_styled(PrimitiveStyle::with_fill(colors::BG_DARK))
         .draw(display)?;
@@ -1741,6 +1747,37 @@ fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
         .draw(display)?;
     let sub = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
     Text::with_alignment("Enter: test data  Esc: back", Point::new(120, 235), sub, Alignment::Center)
+        .draw(display)?;
+
+    Ok(())
+}
+
+fn draw_scan_diag<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    diag: crate::camera::ScanDiagnostics,
+) -> Result<(), D::Error> {
+    // Thin band just under the status bar.
+    Rectangle::new(Point::new(0, 28), Size::new(240, 14))
+        .into_styled(PrimitiveStyle::with_fill(colors::BG_DARK))
+        .draw(display)?;
+
+    let recent = diag
+        .last_qr_at
+        .map(|t| t.elapsed().as_millis() < 2000)
+        .unwrap_or(false);
+    let dot_color = if recent { colors::SOLANA_GREEN } else { colors::TEXT_MUTED };
+    Rectangle::new(Point::new(6, 33), Size::new(6, 6))
+        .into_styled(PrimitiveStyle::with_fill(dot_color))
+        .draw(display)?;
+
+    let style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
+    let label = match diag.ur_progress {
+        Some((n, total)) if n >= total => format!("UR {}/{} ready", n, total),
+        Some((n, total)) => format!("UR {}/{}", n, total),
+        None if recent => "QR seen".to_string(),
+        None => "no QR yet".to_string(),
+    };
+    Text::with_alignment(&label, Point::new(16, 39), style, Alignment::Left)
         .draw(display)?;
 
     Ok(())
