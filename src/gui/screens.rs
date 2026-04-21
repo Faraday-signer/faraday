@@ -1757,7 +1757,8 @@ fn draw_scan_diag<D: DrawTarget<Color = Rgb565>>(
     diag: crate::camera::ScanDiagnostics,
 ) -> Result<(), D::Error> {
     // Thin band just under the status bar.
-    Rectangle::new(Point::new(0, 28), Size::new(240, 14))
+    let strip = Rectangle::new(Point::new(0, 28), Size::new(240, 14));
+    strip
         .into_styled(PrimitiveStyle::with_fill(colors::BG_DARK))
         .draw(display)?;
 
@@ -1765,20 +1766,56 @@ fn draw_scan_diag<D: DrawTarget<Color = Rgb565>>(
         .last_qr_at
         .map(|t| t.elapsed().as_millis() < 2000)
         .unwrap_or(false);
-    let dot_color = if recent { colors::SOLANA_GREEN } else { colors::TEXT_MUTED };
+    let dot_color = if recent {
+        colors::SOLANA_GREEN
+    } else {
+        colors::TEXT_MUTED
+    };
     Rectangle::new(Point::new(6, 33), Size::new(6, 6))
         .into_styled(PrimitiveStyle::with_fill(dot_color))
         .draw(display)?;
 
-    let style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
-    let label = match diag.ur_progress {
-        Some((n, total)) if n >= total => format!("UR {}/{} ready", n, total),
-        Some((n, total)) => format!("UR {}/{}", n, total),
-        None if recent => "QR seen".to_string(),
-        None => "no QR yet".to_string(),
-    };
-    Text::with_alignment(&label, Point::new(16, 39), style, Alignment::Left)
-        .draw(display)?;
+    match diag.ur_progress {
+        Some((n, total)) => {
+            // Solana-green progress bar filling left-to-right on a dim
+            // track, with a small `n/total` label pinned to the right of
+            // the strip. Much clearer than a text-only `UR 3/7` as frames
+            // arrive — the bar width doubles as an instantly-readable
+            // completion cue.
+            let bar_x: i32 = 18;
+            let bar_y: i32 = 34;
+            let bar_h: u32 = 4;
+            let bar_w_total: u32 = 180;
+            Rectangle::new(Point::new(bar_x, bar_y), Size::new(bar_w_total, bar_h))
+                .into_styled(PrimitiveStyle::with_fill(colors::BORDER_DEFAULT))
+                .draw(display)?;
+            let filled = if total == 0 {
+                0
+            } else {
+                (n.min(total) as u32 * bar_w_total) / total as u32
+            };
+            if filled > 0 {
+                Rectangle::new(Point::new(bar_x, bar_y), Size::new(filled, bar_h))
+                    .into_styled(PrimitiveStyle::with_fill(colors::SOLANA_GREEN))
+                    .draw(display)?;
+            }
+            let label = format!("{}/{}", n, total);
+            let label_color = if n >= total {
+                colors::SOLANA_GREEN
+            } else {
+                colors::TEXT_SECONDARY
+            };
+            let style = MonoTextStyle::new(&FONT_6X10, label_color);
+            Text::with_alignment(&label, Point::new(234, 39), style, Alignment::Right)
+                .draw(display)?;
+        }
+        None => {
+            let style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
+            let label = if recent { "QR seen" } else { "no QR yet" };
+            Text::with_alignment(label, Point::new(16, 39), style, Alignment::Left)
+                .draw(display)?;
+        }
+    }
 
     Ok(())
 }
