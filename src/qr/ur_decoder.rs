@@ -5,6 +5,10 @@
 pub struct UrAccumulator {
     decoder: ur::Decoder,
     started: bool,
+    /// `(seq, total)` parsed from the most recent fragment's header. Used by
+    /// the scan screen to surface live progress — the inner `ur::Decoder`
+    /// does not expose which parts it has received.
+    last_part: Option<(usize, usize)>,
 }
 
 impl UrAccumulator {
@@ -12,6 +16,7 @@ impl UrAccumulator {
         Self {
             decoder: ur::Decoder::default(),
             started: false,
+            last_part: None,
         }
     }
 
@@ -22,6 +27,9 @@ impl UrAccumulator {
 
     /// Feed a UR fragment. Returns Ok(true) when the message is complete.
     pub fn receive(&mut self, part: &str) -> Result<bool, UrError> {
+        // Record (seq, total) from the URI before handing to the decoder so
+        // even a decoder-rejected part tells the user the camera is reading.
+        self.last_part = parse_seq_total(part);
         self.decoder.receive(part).map_err(|_| UrError::InvalidPart)?;
         self.started = true;
         Ok(self.decoder.complete())
@@ -42,11 +50,28 @@ impl UrAccumulator {
         self.decoder.complete()
     }
 
+    /// Most recent `(seq, total)` observed from a UR fragment header. Used
+    /// by the scan screen as a live progress readout.
+    pub fn last_part(&self) -> Option<(usize, usize)> {
+        self.last_part
+    }
+
     /// Reset the accumulator to start a fresh decode session.
     pub fn reset(&mut self) {
         self.decoder = ur::Decoder::default();
         self.started = false;
+        self.last_part = None;
     }
+}
+
+/// Extract `(seq, total)` from a UR fragment URI: `ur:<type>/<seq>-<total>/<data>`.
+/// Returns None for single-part URIs (`ur:<type>/<data>`) or anything malformed.
+fn parse_seq_total(part: &str) -> Option<(usize, usize)> {
+    let body = part.strip_prefix("ur:")?;
+    let after_type = body.split_once('/')?.1;
+    let seq_total = after_type.split_once('/')?.0;
+    let (seq, total) = seq_total.split_once('-')?;
+    Some((seq.parse().ok()?, total.parse().ok()?))
 }
 
 #[derive(Debug)]
@@ -104,6 +129,36 @@ mod tests {
         acc.reset();
         assert!(!acc.started());
         assert!(!acc.complete());
+        assert!(acc.last_part().is_none());
+    }
+
+    #[test]
+    fn last_part_tracks_multipart_progress() {
+        let data = vec![0xAB; 500];
+        let mut encoder = ur::Encoder::bytes(&data, 100).unwrap();
+        let total = encoder.fragment_count();
+        let mut acc = UrAccumulator::new();
+        assert_eq!(acc.last_part(), None);
+        for i in 1..=total {
+            let part = encoder.next_part().unwrap();
+            acc.receive(&part).unwrap();
+            let (seq, tot) = acc.last_part().expect("seq-total parsed");
+            assert_eq!(seq, i);
+            assert_eq!(tot, total);
+        }
+    }
+
+    #[test]
+    fn parse_seq_total_handles_well_formed() {
+        assert_eq!(parse_seq_total("ur:bytes/3-7/lpaxat..."), Some((3, 7)));
+        assert_eq!(parse_seq_total("ur:bytes/1-1/data"), Some((1, 1)));
+    }
+
+    #[test]
+    fn parse_seq_total_rejects_malformed() {
+        assert_eq!(parse_seq_total("ur:bytes/data"), None);
+        assert_eq!(parse_seq_total("not:a:ur"), None);
+        assert_eq!(parse_seq_total("ur:bytes/abc-def/data"), None);
     }
 
     #[test]
