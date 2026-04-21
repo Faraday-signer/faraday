@@ -48,7 +48,13 @@ impl App {
                 draw_create_method(display, *selected)
             }
             Screen::CreateCameraEntropy { word_count, frames_collected, .. } => {
-                draw_camera_entropy(display, *word_count, *frames_collected, self.seed_loaded())
+                draw_camera_entropy(
+                    display,
+                    *word_count,
+                    *frames_collected,
+                    self.seed_loaded(),
+                    self.has_camera_frame(),
+                )
             }
             Screen::CreateCoinFlips { word_count, bits, selected } => {
                 draw_coin_flips(display, *word_count, bits, *selected, self.seed_loaded())
@@ -1356,6 +1362,7 @@ fn draw_camera_entropy<D: DrawTarget<Color = Rgb565>>(
     _word_count: usize,
     frames_collected: usize,
     _seed_loaded: bool,
+    has_frame: bool,
 ) -> Result<(), D::Error> {
     use crate::ui::layout::{split_bottom, split_top};
     use crate::ui::widgets::{ButtonBar, Header, HeaderKind};
@@ -1369,10 +1376,20 @@ fn draw_camera_entropy<D: DrawTarget<Color = Rgb565>>(
     // Keep in sync with src/gui/flows/create.rs::handle CreateCameraEntropy.
     let target = 2;
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
-    display.fill_solid(&screen, theme.bg)?;
 
     let (header_rect, rest) = split_top(screen, theme.header_h as i32);
     let (body_rect, footer_rect) = split_bottom(rest, theme.footer_h as i32);
+
+    // Main loop has already blit'd the live camera frame behind us. Paint only
+    // the chrome strips — header and footer — so the preview stays visible in
+    // the body. When the camera hasn't produced a frame yet, fall back to the
+    // full-screen background and show an "Opening camera..." hint.
+    if has_frame {
+        display.fill_solid(&header_rect, theme.bg)?;
+        display.fill_solid(&footer_rect, theme.bg)?;
+    } else {
+        display.fill_solid(&screen, theme.bg)?;
+    }
 
     Header {
         kind: HeaderKind::Title("CAMERA"),
@@ -1383,23 +1400,17 @@ fn draw_camera_entropy<D: DrawTarget<Color = Rgb565>>(
     let (progress_rect, rest) = split_top(body_rect, 20);
     draw_progress_bar(display, &theme, progress_rect, frames_collected, target)?;
 
-    // Big instructional text, centered in the remaining region.
-    let cx = rest.top_left.x + rest.size.width as i32 / 2;
-    let cy = rest.top_left.y + rest.size.height as i32 / 2;
-    Text::with_alignment(
-        "CAPTURE",
-        Point::new(cx, cy - 10),
-        theme.style_lg(theme.accent),
-        Alignment::Center,
-    )
-    .draw(display)?;
-    Text::with_alignment(
-        "Move the device",
-        Point::new(cx, cy + 14),
-        theme.style_sm(theme.muted),
-        Alignment::Center,
-    )
-    .draw(display)?;
+    if !has_frame {
+        let cx = rest.top_left.x + rest.size.width as i32 / 2;
+        let cy = rest.top_left.y + rest.size.height as i32 / 2;
+        Text::with_alignment(
+            "Opening camera...",
+            Point::new(cx, cy),
+            theme.style_sm(theme.muted),
+            Alignment::Center,
+        )
+        .draw(display)?;
+    }
 
     ButtonBar::new()
         .back("CANCEL")
