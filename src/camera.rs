@@ -24,9 +24,11 @@ pub struct ScanDiagnostics {
     /// Time the decoder last returned any QR payload. The UI renders a dot
     /// that's green when this is within the last ~2s, dim otherwise.
     pub last_qr_at: Option<std::time::Instant>,
-    /// `(seq, total)` from the most recent UR fragment header. Present
-    /// whenever a UR fragment was parsed; cleared on scan-screen exit.
-    pub last_ur_part: Option<(usize, usize)>,
+    /// UR fountain progress: `(unique_received, total_expected)`. Counts
+    /// distinct fragment sequence numbers that were accepted by the
+    /// decoder — duplicates do not inflate `unique_received`. Cleared on
+    /// scan-screen exit.
+    pub ur_progress: Option<(usize, usize)>,
 }
 
 /// Convert interleaved RGB to 8-bit grayscale (BT.601 luma).

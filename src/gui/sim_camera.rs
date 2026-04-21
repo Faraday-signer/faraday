@@ -86,7 +86,7 @@ impl SimCamera {
                     if saw_qr {
                         if let Ok(mut g) = diag_w.lock() {
                             g.last_qr_at = Some(std::time::Instant::now());
-                            g.last_ur_part = ur_acc.last_part();
+                            g.ur_progress = ur_acc.progress();
                         }
                     }
                     if let Some(bytes) = decoded {

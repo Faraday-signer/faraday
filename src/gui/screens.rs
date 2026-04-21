@@ -1771,8 +1771,9 @@ fn draw_scan_diag<D: DrawTarget<Color = Rgb565>>(
         .draw(display)?;
 
     let style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
-    let label = match diag.last_ur_part {
-        Some((seq, total)) => format!("UR {}/{}", seq, total),
+    let label = match diag.ur_progress {
+        Some((n, total)) if n >= total => format!("UR {}/{} ready", n, total),
+        Some((n, total)) => format!("UR {}/{}", n, total),
         None if recent => "QR seen".to_string(),
         None => "no QR yet".to_string(),
     };
