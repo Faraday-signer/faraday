@@ -16,5 +16,4 @@ pub mod screens;
 pub mod tokens;
 pub mod widgets;
 
-pub use layout::Insets;
 pub use tokens::Theme;

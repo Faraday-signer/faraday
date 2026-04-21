@@ -48,9 +48,9 @@ fn resolve_entry(table: Option<&[&str]>, index: u8) -> [u8; 32] {
 fn find_table(alt_address: &[u8; 32]) -> Option<&'static [&'static str]> {
     let addr = bs58::encode(alt_address).into_string();
     match addr.as_str() {
-        "3oy9ojnsDzqmMNi87Gs7Hn5v3MPVqnWjG9k8BmzKR7yW" => Some(&JUPITER_MAIN),
-        "FBLCh3Mw1cCVyVZKQ9eEfxA1zD4fkHGeP4yt3p6Fy6Eq" => Some(&JUPITER_2),
-        "AcL1Vo8oy1ULiavEcjSUcwfBSForXMudcZvDZy5nzJkU" => Some(&RAYDIUM_CLMM),
+        "3oy9ojnsDzqmMNi87Gs7Hn5v3MPVqnWjG9k8BmzKR7yW" => Some(JUPITER_MAIN),
+        "FBLCh3Mw1cCVyVZKQ9eEfxA1zD4fkHGeP4yt3p6Fy6Eq" => Some(JUPITER_2),
+        "AcL1Vo8oy1ULiavEcjSUcwfBSForXMudcZvDZy5nzJkU" => Some(RAYDIUM_CLMM),
         _ => None,
     }
 }
