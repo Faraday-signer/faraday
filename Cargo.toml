@@ -3,6 +3,7 @@ name = "faraday"
 version = "0.1.0"
 edition = "2021"
 description = "Air-gapped Solana transaction signer"
+default-run = "faraday"
 
 [features]
 default = []
