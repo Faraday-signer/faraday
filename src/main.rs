@@ -194,14 +194,20 @@ fn run_pi() {
         use embedded_graphics_core::draw_target::DrawTarget;
 
         if let Some(event) = buttons.wait_for_press(Duration::from_millis(33)) {
-            let input = match event.button {
-                Button::JoyUp => InputEvent::Up,
-                Button::JoyDown => InputEvent::Down,
-                Button::JoyLeft => InputEvent::Left,
-                Button::JoyRight => InputEvent::Right,
-                Button::Key1 | Button::JoyPress => InputEvent::Confirm,
-                Button::Key3 => InputEvent::Back,
-                Button::Key2 => InputEvent::Secondary,
+            let input = if event.long_press && event.button == Button::Key3 {
+                // Long-press Back → Power Off shortcut. Driver's 500ms long-
+                // press threshold is enough to distinguish from a regular tap.
+                InputEvent::PowerOffShortcut
+            } else {
+                match event.button {
+                    Button::JoyUp => InputEvent::Up,
+                    Button::JoyDown => InputEvent::Down,
+                    Button::JoyLeft => InputEvent::Left,
+                    Button::JoyRight => InputEvent::Right,
+                    Button::Key1 | Button::JoyPress => InputEvent::Confirm,
+                    Button::Key3 => InputEvent::Back,
+                    Button::Key2 => InputEvent::Secondary,
+                }
             };
             app.handle_input(input);
         }
