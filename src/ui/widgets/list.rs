@@ -48,49 +48,6 @@ pub struct List<'a> {
     pub selectable: bool,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn window_fits_everything() {
-        // 3 items, 3 slots — start is always 0 regardless of selected.
-        assert_eq!(visible_start(3, 3, 0), 0);
-        assert_eq!(visible_start(3, 3, 1), 0);
-        assert_eq!(visible_start(3, 3, 2), 0);
-    }
-
-    #[test]
-    fn window_scrolls_as_selected_moves_past_top_half() {
-        // 5 items, 3 slots. No scroll while selected is within the initial
-        // visible window (indices 0..visible). Scroll kicks in once the
-        // selected index can't be shown without shifting.
-        assert_eq!(visible_start(5, 3, 0), 0);
-        assert_eq!(visible_start(5, 3, 1), 0);
-        assert_eq!(visible_start(5, 3, 2), 0);
-        assert_eq!(visible_start(5, 3, 3), 2);
-        assert_eq!(visible_start(5, 3, 4), 2);
-    }
-
-    #[test]
-    fn window_clamps_for_end_items() {
-        // 10 items, 3 visible; last selected should never push start past len-3.
-        assert_eq!(visible_start(10, 3, 9), 7);
-        assert_eq!(visible_start(10, 3, 8), 7);
-    }
-
-    #[test]
-    fn window_out_of_range_selected_is_clamped() {
-        assert_eq!(visible_start(5, 3, 99), 2);
-    }
-
-    #[test]
-    fn window_empty_or_zero_visible() {
-        assert_eq!(visible_start(0, 3, 0), 0);
-        assert_eq!(visible_start(5, 0, 2), 0);
-    }
-}
-
 /// Compute the first-visible index for a sliding window over `len` items
 /// with `visible` slots, keeping `selected` on screen. Extracted so the
 /// math is pure and testable.
@@ -252,5 +209,48 @@ impl<'a> List<'a> {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn window_fits_everything() {
+        // 3 items, 3 slots — start is always 0 regardless of selected.
+        assert_eq!(visible_start(3, 3, 0), 0);
+        assert_eq!(visible_start(3, 3, 1), 0);
+        assert_eq!(visible_start(3, 3, 2), 0);
+    }
+
+    #[test]
+    fn window_scrolls_as_selected_moves_past_top_half() {
+        // 5 items, 3 slots. No scroll while selected is within the initial
+        // visible window (indices 0..visible). Scroll kicks in once the
+        // selected index can't be shown without shifting.
+        assert_eq!(visible_start(5, 3, 0), 0);
+        assert_eq!(visible_start(5, 3, 1), 0);
+        assert_eq!(visible_start(5, 3, 2), 0);
+        assert_eq!(visible_start(5, 3, 3), 2);
+        assert_eq!(visible_start(5, 3, 4), 2);
+    }
+
+    #[test]
+    fn window_clamps_for_end_items() {
+        // 10 items, 3 visible; last selected should never push start past len-3.
+        assert_eq!(visible_start(10, 3, 9), 7);
+        assert_eq!(visible_start(10, 3, 8), 7);
+    }
+
+    #[test]
+    fn window_out_of_range_selected_is_clamped() {
+        assert_eq!(visible_start(5, 3, 99), 2);
+    }
+
+    #[test]
+    fn window_empty_or_zero_visible() {
+        assert_eq!(visible_start(0, 3, 0), 0);
+        assert_eq!(visible_start(5, 0, 2), 0);
     }
 }

@@ -1,21 +1,19 @@
 //! Screen layouts — all UI pages.
 
 use embedded_graphics::{
-    mono_font::{ascii::FONT_6X10, ascii::FONT_9X15, ascii::FONT_9X15_BOLD, ascii::FONT_10X20, MonoTextStyle},
+    mono_font::{ascii::FONT_6X10, ascii::FONT_9X15, ascii::FONT_10X20, MonoTextStyle},
     pixelcolor::Rgb565,
     prelude::*,
-    primitives::{PrimitiveStyle, PrimitiveStyleBuilder, Rectangle, RoundedRectangle},
+    primitives::{PrimitiveStyle, PrimitiveStyleBuilder, Rectangle},
     text::{Alignment, Text},
 };
-use u8g2_fonts::{fonts, U8g2TextStyle};
 
 use crate::gui::app::{App, Screen};
 use crate::gui::colors;
 use crate::gui::components::{
     draw_button_bar, draw_button_bar_ex, draw_char_grid, draw_option_list,
-    draw_qr, draw_status_bar, draw_text_centered, draw_word_picker,
+    draw_qr, draw_status_bar, draw_word_picker,
 };
-use crate::gui::icons;
 use crate::gui::logo;
 
 /// Menu item. Brutalist layout: one hero label + subtitle at a time.
