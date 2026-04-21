@@ -1391,18 +1391,18 @@ fn draw_camera_entropy<D: DrawTarget<Color = Rgb565>>(
         display.fill_solid(&screen, theme.bg)?;
     }
 
+    // Counter reads as "which photo are you taking now" (1-indexed). The
+    // screen transitions out the moment frames_collected hits `target`, so
+    // `frames_collected + 1` is always in 1..=target while this draws.
     Header {
         kind: HeaderKind::Title("CAMERA"),
-        counter: Some((frames_collected, target)),
+        counter: Some((frames_collected + 1, target)),
     }
     .draw(display, &theme, header_rect)?;
 
-    let (progress_rect, rest) = split_top(body_rect, 20);
-    draw_progress_bar(display, &theme, progress_rect, frames_collected, target)?;
-
     if !has_frame {
-        let cx = rest.top_left.x + rest.size.width as i32 / 2;
-        let cy = rest.top_left.y + rest.size.height as i32 / 2;
+        let cx = body_rect.top_left.x + body_rect.size.width as i32 / 2;
+        let cy = body_rect.top_left.y + body_rect.size.height as i32 / 2;
         Text::with_alignment(
             "Opening camera...",
             Point::new(cx, cy),
