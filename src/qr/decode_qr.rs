@@ -10,6 +10,7 @@ pub enum QrType {
     CompactSeedQr,
     SolanaAddress,
     SolanaTxBase64,
+    SolanaSignMessage,
     Unknown,
 }
 
@@ -19,6 +20,7 @@ pub struct DecodedQr {
     pub raw_data: Vec<u8>,
     pub mnemonic: Option<String>,
     pub tx_bytes: Option<Vec<u8>>,
+    pub message_bytes: Option<Vec<u8>>,
     pub address: Option<String>,
 }
 
@@ -44,19 +46,31 @@ pub fn detect_and_decode(data: &[u8]) -> DecodedQr {
                 raw_data: data.to_vec(),
                 mnemonic: None,
                 tx_bytes: None,
+                message_bytes: None,
                 address: Some(text.to_string()),
             };
         }
 
-        // Base64 transaction: > 50 chars
+        // Base64 payload: transaction or sign-message
         if text.len() > 50 {
-            if let Ok(tx_bytes) = BASE64.decode(text) {
-                if tx_bytes.len() >= 65 {
+            if let Ok(bytes) = BASE64.decode(text) {
+                if bytes.first() == Some(&0xFF) {
+                    return DecodedQr {
+                        qr_type: QrType::SolanaSignMessage,
+                        raw_data: data.to_vec(),
+                        mnemonic: None,
+                        tx_bytes: None,
+                        message_bytes: Some(bytes[1..].to_vec()),
+                        address: None,
+                    };
+                }
+                if bytes.len() >= 65 {
                     return DecodedQr {
                         qr_type: QrType::SolanaTxBase64,
                         raw_data: data.to_vec(),
                         mnemonic: None,
-                        tx_bytes: Some(tx_bytes),
+                        tx_bytes: Some(bytes),
+                        message_bytes: None,
                         address: None,
                     };
                 }
@@ -71,7 +85,7 @@ pub fn detect_and_decode(data: &[u8]) -> DecodedQr {
         }
     }
 
-    DecodedQr { qr_type: QrType::Unknown, raw_data: data.to_vec(), mnemonic: None, tx_bytes: None, address: None }
+    DecodedQr { qr_type: QrType::Unknown, raw_data: data.to_vec(), mnemonic: None, tx_bytes: None, message_bytes: None, address: None }
 }
 
 fn try_decode_seed_qr(data: &str) -> Option<DecodedQr> {
@@ -89,6 +103,7 @@ fn try_decode_seed_qr(data: &str) -> Option<DecodedQr> {
         raw_data: data.as_bytes().to_vec(),
         mnemonic: Some(mnemonic),
         tx_bytes: None,
+        message_bytes: None,
         address: None,
     })
 }
@@ -103,6 +118,7 @@ fn try_decode_compact_seed_qr(data: &[u8]) -> Option<DecodedQr> {
         raw_data: data.to_vec(),
         mnemonic: Some(mnemonic),
         tx_bytes: None,
+        message_bytes: None,
         address: None,
     })
 }
@@ -152,5 +168,25 @@ mod tests {
         let decoded = detect_and_decode(b64.as_bytes());
         assert_eq!(decoded.qr_type, QrType::SolanaTxBase64);
         assert_eq!(decoded.tx_bytes.as_deref(), Some(fake_tx.as_slice()));
+    }
+
+    #[test]
+    fn test_sign_message_prefix() {
+        let msg = b"Hello Faraday";
+        let mut payload = vec![0xFF];
+        payload.extend_from_slice(msg);
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&payload);
+        // Pad to >50 chars so the base64 detection branch triggers
+        let padded = if b64.len() <= 50 {
+            let mut long_msg = vec![0xFF];
+            long_msg.extend_from_slice(&[0x41; 60]);
+            base64::engine::general_purpose::STANDARD.encode(&long_msg)
+        } else {
+            b64
+        };
+        let decoded = detect_and_decode(padded.as_bytes());
+        assert_eq!(decoded.qr_type, QrType::SolanaSignMessage);
+        assert!(decoded.message_bytes.is_some());
+        assert!(decoded.tx_bytes.is_none());
     }
 }

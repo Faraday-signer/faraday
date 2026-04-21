@@ -180,6 +180,9 @@ impl App {
             Screen::SignShowQr { data } => {
                 draw_qr(display, "Signed TX", data.as_bytes(), self.seed_loaded(), crate::qr::encode_qr::QrEcLevel::M)
             }
+            Screen::SignMessageReview { message_bytes, scroll, selected, .. } => {
+                draw_message_review(display, message_bytes, *scroll, *selected, self.seed_loaded())
+            }
             Screen::SignMessageInput { grid } => {
                 draw_passphrase_grid(display, grid, "SIGN MSG")
             }
@@ -1077,6 +1080,45 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
     }
 
     draw_button_bar_ex(display, "Sign", "Reject", selected, can_sign)?;
+
+    Ok(())
+}
+
+fn draw_message_review<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    message_bytes: &[u8],
+    scroll: usize,
+    selected: usize,
+    seed_loaded: bool,
+) -> Result<(), D::Error> {
+    display.clear(colors::BG_DARK)?;
+    draw_status_bar(display, "Sign Message", seed_loaded)?;
+
+    let label_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
+    let text_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
+
+    Text::new("Message:", Point::new(5, 35), label_style).draw(display)?;
+
+    let text = core::str::from_utf8(message_bytes).unwrap_or("(binary data)");
+    let max_chars_per_line = 38usize;
+    let lines: Vec<&str> = text.as_bytes()
+        .chunks(max_chars_per_line)
+        .map(|chunk| core::str::from_utf8(chunk).unwrap_or(""))
+        .collect();
+    let max_visible = 12usize;
+    let clamped_scroll = scroll.min(lines.len().saturating_sub(max_visible));
+    for (vi, i) in (clamped_scroll..lines.len().min(clamped_scroll + max_visible)).enumerate() {
+        let y = 50 + vi as i32 * 12;
+        Text::new(lines[i], Point::new(5, y), text_style).draw(display)?;
+    }
+
+    Text::new(
+        &format!("{} bytes", message_bytes.len()),
+        Point::new(5, 50 + max_visible as i32 * 12 + 5),
+        label_style,
+    ).draw(display)?;
+
+    draw_button_bar_ex(display, "Sign", "Reject", selected, true)?;
 
     Ok(())
 }

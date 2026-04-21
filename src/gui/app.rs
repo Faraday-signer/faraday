@@ -147,6 +147,7 @@ pub enum Screen {
     },
     SignShowQr { data: String },
     SignMessageInput { grid: CharGrid },
+    SignMessageReview { message_bytes: Vec<u8>, scroll: usize, selected: usize },
     SignMessageResult { signature_hex: String },
 
     // Settings
@@ -645,6 +646,7 @@ impl App {
                 | Screen::SignReview { .. }
                 | Screen::SignShowQr { .. }
                 | Screen::SignMessageInput { .. }
+                | Screen::SignMessageReview { .. }
                 | Screen::SignMessageResult { .. }) => flows::sign::handle(self, s, event),
 
             s @ (Screen::SettingsMenu { .. }
