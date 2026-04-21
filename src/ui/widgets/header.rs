@@ -84,11 +84,12 @@ impl<'a> Header<'a> {
     }
 }
 
-/// Write `NN/NN` into a stack buffer. Returns the `&str` view.
+/// Write `N/N` into a stack buffer. Returns the `&str` view. Width is
+/// unpadded so low counts don't carry a stale-looking leading zero.
 fn fmt_counter(buf: &mut [u8; 8], now: usize, total: usize) -> &str {
     use core::fmt::Write;
     let mut cursor = Cursor { buf, pos: 0 };
-    let _ = write!(&mut cursor, "{:02}/{:02}", now, total);
+    let _ = write!(&mut cursor, "{}/{}", now, total);
     let end = cursor.pos;
     core::str::from_utf8(&buf[..end]).unwrap_or("")
 }
