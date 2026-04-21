@@ -46,6 +46,13 @@ impl FileCamera {
 
     pub fn set_decode_enabled(&self, _on: bool) {}
 
+    pub fn diagnostics(&self) -> crate::camera::ScanDiagnostics {
+        crate::camera::ScanDiagnostics {
+            last_qr_at: None,
+            ur_progress: None,
+        }
+    }
+
     pub fn take_fatal_err(&self) -> Option<String> {
         None
     }
