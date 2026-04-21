@@ -84,7 +84,6 @@ impl<'a> List<'a> {
         let selected = self.selected.min(self.items.len() - 1);
         let start = visible_start(self.items.len(), visible, self.selected);
 
-        // Row geometry. Small inter-row gap keeps them distinct.
         let gap = theme.space_xs;
         let total_gap = gap * (visible as i32 - 1);
         let row_h = ((rect.size.height as i32 - total_gap) / visible as i32).max(0);
@@ -104,22 +103,37 @@ impl<'a> List<'a> {
             self.draw_row(display, theme, row_rect, row, is_selected, has_subtitle, has_prefix)?;
         }
 
-        // Scroll thumb on the right edge when there's overflow. Bright color
-        // so it reads on both dark rows and the cyan selected row.
+        // Scrollbar on the right edge when there's overflow. Wide enough to
+        // read without stealing obvious horizontal room: dim track the full
+        // height, bright cyan thumb sized to the visible fraction.
         if visible < self.items.len() {
-            let dot_x = rect.top_left.x + rect.size.width as i32 - 3;
+            let bar_w: i32 = 4;
+            let bar_x = rect.top_left.x + rect.size.width as i32 - bar_w - 2;
             let track_top = rect.top_left.y + 4;
             let track_h = rect.size.height as i32 - 8;
 
+            // Track.
+            Rectangle::new(
+                Point::new(bar_x, track_top),
+                Size::new(bar_w as u32, track_h as u32),
+            )
+            .into_styled(PrimitiveStyle::with_fill(theme.border))
+            .draw(display)?;
+
+            // Thumb.
             let thumb_h =
-                ((visible as i32 * track_h) / self.items.len() as i32).max(6);
+                ((visible as i32 * track_h) / self.items.len() as i32).max(12);
             let thumb_y = track_top
                 + (start as i32 * (track_h - thumb_h))
                     / (self.items.len() as i32 - visible as i32).max(1);
-
-            Rectangle::new(Point::new(dot_x, thumb_y), Size::new(2, thumb_h as u32))
-                .into_styled(PrimitiveStyle::with_fill(theme.text))
-                .draw(display)?;
+            // Thumb color: off-white (`theme.text`) — reads on both the dark
+            // track and the cyan selected row without merging into either.
+            Rectangle::new(
+                Point::new(bar_x, thumb_y),
+                Size::new(bar_w as u32, thumb_h as u32),
+            )
+            .into_styled(PrimitiveStyle::with_fill(theme.text))
+            .draw(display)?;
         }
 
         Ok(())

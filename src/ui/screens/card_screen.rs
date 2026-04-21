@@ -17,6 +17,7 @@ use crate::ui::Theme;
 pub struct CardScreen<'a> {
     pub header: HeaderKind<'a>,
     pub counter: Option<(usize, usize)>,
+    pub right_label: Option<&'a str>,
     pub title: Option<&'a str>,
     pub subtitle: Option<&'a str>,
     pub body_lines: &'a [&'a str],
@@ -43,7 +44,7 @@ impl<'a> CardScreen<'a> {
             HeaderKind::Title(t) => HeaderKind::Title(t),
             HeaderKind::Brand => HeaderKind::Brand,
         };
-        Header { kind, counter: self.counter }
+        Header { kind, counter: self.counter, right_label: self.right_label }
             .draw(display, theme, header_rect)?;
 
         Card {
