@@ -17,6 +17,7 @@ mod lookup_tables;
 
 // Shared modules — reusable across dApp parsers
 pub(crate) mod anchor;
+pub(crate) mod bytes;
 pub(crate) mod token_registry;
 
 // dApp parsers

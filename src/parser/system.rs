@@ -2,6 +2,7 @@
 //!
 //! Reference: https://docs.rs/solana-sdk/latest/solana_sdk/system_instruction/enum.SystemInstruction.html
 
+use crate::parser::bytes::{read_u32_le, read_u64_le};
 use crate::parser::{ParsedInstruction, ReviewItem};
 
 pub fn parse(data: &[u8], accounts: &[[u8; 32]]) -> ParsedInstruction {
@@ -16,8 +17,7 @@ pub fn parse(data: &[u8], accounts: &[[u8; 32]]) -> ParsedInstruction {
 }
 
 fn decode(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    if data.len() < 4 { return Err("Instruction data too short"); }
-    let ix_type = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+    let ix_type = read_u32_le(data, 0)?;
 
     match ix_type {
         0 => parse_create_account(&data[4..], accounts),
@@ -33,8 +33,7 @@ fn decode(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'stati
 }
 
 fn parse_transfer(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    if data.len() < 8 { return Err("Transfer data too short"); }
-    let lamports = u64::from_le_bytes(data[..8].try_into().unwrap());
+    let lamports = read_u64_le(data, 0)?;
 
     let from = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
     let to = accounts.get(1).map(pubkey_short).unwrap_or_else(|| "?".into());
@@ -48,9 +47,8 @@ fn parse_transfer(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>,
 }
 
 fn parse_create_account(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    if data.len() < 16 { return Err("CreateAccount data too short"); }
-    let lamports = u64::from_le_bytes(data[..8].try_into().unwrap());
-    let space = u64::from_le_bytes(data[8..16].try_into().unwrap());
+    let lamports = read_u64_le(data, 0)?;
+    let space = read_u64_le(data, 8)?;
 
     let funder = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
     let new_account = accounts.get(1).map(pubkey_short).unwrap_or_else(|| "?".into());
@@ -69,12 +67,13 @@ fn parse_create_account_with_seed(data: &[u8], accounts: &[[u8; 32]]) -> Result<
     let new_account = accounts.get(1).map(pubkey_short).unwrap_or_else(|| "?".into());
 
     // base: 32 bytes, seed_len: u64, seed: variable
-    if data.len() < 40 { return Err("CreateAccountWithSeed data too short"); }
-    let seed_len = u64::from_le_bytes(data[32..40].try_into().unwrap()) as usize;
-    if data.len() < 40 + seed_len + 8 { return Err("CreateAccountWithSeed truncated"); }
-    let seed = std::str::from_utf8(&data[40..40 + seed_len]).unwrap_or("?");
-    let lamports_offset = 40 + seed_len;
-    let lamports = u64::from_le_bytes(data[lamports_offset..lamports_offset + 8].try_into().unwrap());
+    let seed_len = read_u64_le(data, 32)? as usize;
+    let seed_end = 40usize.checked_add(seed_len).ok_or("CreateAccountWithSeed seed too long")?;
+    let seed = data
+        .get(40..seed_end)
+        .and_then(|s| std::str::from_utf8(s).ok())
+        .unwrap_or("?");
+    let lamports = read_u64_le(data, seed_end)?;
 
     Ok(vec![
         ReviewItem::Header("Create Account (seed)".into()),
@@ -86,8 +85,7 @@ fn parse_create_account_with_seed(data: &[u8], accounts: &[[u8; 32]]) -> Result<
 }
 
 fn parse_allocate(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    if data.len() < 8 { return Err("Allocate data too short"); }
-    let space = u64::from_le_bytes(data[..8].try_into().unwrap());
+    let space = read_u64_le(data, 0)?;
     let account = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
 
     Ok(vec![
@@ -98,8 +96,7 @@ fn parse_allocate(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>,
 }
 
 fn parse_transfer_with_seed(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    if data.len() < 8 { return Err("TransferWithSeed data too short"); }
-    let lamports = u64::from_le_bytes(data[..8].try_into().unwrap());
+    let lamports = read_u64_le(data, 0)?;
     let from = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
     let to = accounts.get(1).map(pubkey_short).unwrap_or_else(|| "?".into());
 

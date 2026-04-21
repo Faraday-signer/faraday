@@ -50,12 +50,14 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             let digest = Sha256::digest(&frame.rgb);
                             frame_entropy.copy_from_slice(&digest[..16]);
                         } else {
-                            getrandom::getrandom(&mut frame_entropy).ok();
+                            getrandom::getrandom(&mut frame_entropy)
+                                .expect("OS RNG unavailable — refusing to collect weak entropy");
                         }
                     }
                     #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                     {
-                        getrandom::getrandom(&mut frame_entropy).ok();
+                        getrandom::getrandom(&mut frame_entropy)
+                            .expect("OS RNG unavailable — refusing to collect weak entropy");
                     }
                     let now = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)

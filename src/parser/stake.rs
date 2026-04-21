@@ -2,6 +2,7 @@
 //!
 //! Reference: https://docs.rs/solana-sdk/latest/solana_sdk/stake/instruction/enum.StakeInstruction.html
 
+use crate::parser::bytes::read_u64_le;
 use crate::parser::{ParsedInstruction, ReviewItem};
 use crate::parser::system::lamports_to_sol;
 
@@ -68,8 +69,7 @@ fn parse_delegate(accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str
 }
 
 fn parse_split(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    if data.len() < 8 { return Err("Split data too short"); }
-    let lamports = u64::from_le_bytes(data[..8].try_into().unwrap());
+    let lamports = read_u64_le(data, 0)?;
     let source = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
     let dest = accounts.get(1).map(pubkey_short).unwrap_or_else(|| "?".into());
 
@@ -82,8 +82,7 @@ fn parse_split(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'
 }
 
 fn parse_withdraw(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    if data.len() < 8 { return Err("Withdraw data too short"); }
-    let lamports = u64::from_le_bytes(data[..8].try_into().unwrap());
+    let lamports = read_u64_le(data, 0)?;
     let stake_account = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
     let dest = accounts.get(1).map(pubkey_short).unwrap_or_else(|| "?".into());
 

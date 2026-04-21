@@ -3,6 +3,7 @@
 //! Legacy constant-product AMM with u8 instruction discriminator (non-Anchor).
 //! Program ID: 675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8
 
+use crate::parser::bytes::read_u64_le;
 use crate::parser::token_registry::AtaMap;
 use crate::parser::raydium::{self, SwapInfo};
 use crate::parser::{ParsedInstruction, ReviewItem};
@@ -48,12 +49,10 @@ fn parse_swap(
     is_base_in: bool,
 ) -> ParsedInstruction {
     // Data layout: discriminator(1) + amount_a(8) + amount_b(8) = 17 bytes
-    if data.len() < 17 {
-        return raydium::error("Raydium AMM", "Swap data too short");
-    }
-
-    let amount_a = u64::from_le_bytes(data[1..9].try_into().unwrap());
-    let amount_b = u64::from_le_bytes(data[9..17].try_into().unwrap());
+    let (amount_a, amount_b) = match (read_u64_le(data, 1), read_u64_le(data, 9)) {
+        (Ok(a), Ok(b)) => (a, b),
+        _ => return raydium::error("Raydium AMM", "Swap data too short"),
+    };
 
     let source_mint =
         raydium::resolve_mint_via_ata(account_indices, USER_SOURCE_IDX, all_accounts, ata_map);
