@@ -6,7 +6,7 @@ use std::io::BufWriter;
 use std::path::Path;
 
 const MAX_FRAGMENT_SIZE: usize = 100;
-const FRAME_DELAY_MS: u32 = 200;
+const FRAME_DELAY_MS: u32 = 1000;
 const QR_MODULE_PX: u32 = 10;
 const QR_QUIET_ZONE: u32 = 2;
 
