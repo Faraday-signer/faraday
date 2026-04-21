@@ -1353,7 +1353,7 @@ fn draw_passphrase_mismatch<D: DrawTarget<Color = Rgb565>>(
 /// collect a frame of sensor noise.
 fn draw_camera_entropy<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
-    word_count: usize,
+    _word_count: usize,
     frames_collected: usize,
     _seed_loaded: bool,
 ) -> Result<(), D::Error> {
@@ -1366,7 +1366,8 @@ fn draw_camera_entropy<D: DrawTarget<Color = Rgb565>>(
     };
 
     let theme = Theme::faraday_240();
-    let target = if word_count == 12 { 10 } else { 20 };
+    // Keep in sync with src/gui/flows/create.rs::handle CreateCameraEntropy.
+    let target = 2;
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
 

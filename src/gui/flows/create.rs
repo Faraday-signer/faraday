@@ -39,7 +39,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         }
 
         Screen::CreateCameraEntropy { word_count, mut frames_collected, mut entropy } => {
-            let total_frames = if word_count == 12 { 10 } else { 20 };
+            // Each capture is a SHA-256 of a multi-megapixel sensor image XOR'd
+            // with a nanosecond counter; two frames give ~512 bits of uniform
+            // material into mnemonic_from_entropy, well above the 128/256-bit
+            // target for 12/24-word wallets. More frames only add UI friction.
+            let total_frames = 2;
             match event {
                 InputEvent::Confirm => {
                     let mut frame_entropy = [0u8; 16];
