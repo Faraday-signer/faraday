@@ -1,5 +1,7 @@
 //! Faraday — air-gapped Solana transaction signer.
 
+#![forbid(unsafe_code)]
+
 mod crypto;
 
 #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]

@@ -2,6 +2,7 @@
 //!
 //! Reference: https://docs.rs/spl-token/latest/spl_token/instruction/enum.TokenInstruction.html
 
+use crate::parser::bytes::read_u64_le;
 use crate::parser::{ParsedInstruction, ReviewItem};
 use crate::parser::token_registry;
 
@@ -38,8 +39,7 @@ fn decode(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'stati
 }
 
 fn parse_transfer(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    if data.len() < 8 { return Err("Transfer data too short"); }
-    let amount = u64::from_le_bytes(data[..8].try_into().unwrap());
+    let amount = read_u64_le(data, 0)?;
     let source = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
     let dest = accounts.get(1).map(pubkey_short).unwrap_or_else(|| "?".into());
 
@@ -53,9 +53,8 @@ fn parse_transfer(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>,
 }
 
 fn parse_transfer_checked(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    if data.len() < 9 { return Err("TransferChecked data too short"); }
-    let amount = u64::from_le_bytes(data[..8].try_into().unwrap());
-    let decimals = data[8];
+    let amount = read_u64_le(data, 0)?;
+    let decimals = *data.get(8).ok_or("TransferChecked data too short")?;
     let source = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
     let mint = accounts.get(1).map(pubkey_short).unwrap_or_else(|| "?".into());
     let dest = accounts.get(2).map(pubkey_short).unwrap_or_else(|| "?".into());
@@ -70,8 +69,7 @@ fn parse_transfer_checked(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<Revi
 }
 
 fn parse_approve(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    if data.len() < 8 { return Err("Approve data too short"); }
-    let amount = u64::from_le_bytes(data[..8].try_into().unwrap());
+    let amount = read_u64_le(data, 0)?;
     let source = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
     let delegate = accounts.get(1).map(pubkey_short).unwrap_or_else(|| "?".into());
 
@@ -85,9 +83,8 @@ fn parse_approve(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, 
 }
 
 fn parse_approve_checked(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    if data.len() < 9 { return Err("ApproveChecked data too short"); }
-    let amount = u64::from_le_bytes(data[..8].try_into().unwrap());
-    let decimals = data[8];
+    let amount = read_u64_le(data, 0)?;
+    let decimals = *data.get(8).ok_or("ApproveChecked data too short")?;
     let source = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
     let delegate = accounts.get(2).map(pubkey_short).unwrap_or_else(|| "?".into());
 
@@ -109,8 +106,7 @@ fn parse_revoke(accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> 
 }
 
 fn parse_mint_to(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    if data.len() < 8 { return Err("MintTo data too short"); }
-    let amount = u64::from_le_bytes(data[..8].try_into().unwrap());
+    let amount = read_u64_le(data, 0)?;
     let mint = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
     let dest = accounts.get(1).map(pubkey_short).unwrap_or_else(|| "?".into());
 
@@ -123,9 +119,8 @@ fn parse_mint_to(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, 
 }
 
 fn parse_mint_to_checked(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    if data.len() < 9 { return Err("MintToChecked data too short"); }
-    let amount = u64::from_le_bytes(data[..8].try_into().unwrap());
-    let decimals = data[8];
+    let amount = read_u64_le(data, 0)?;
+    let decimals = *data.get(8).ok_or("MintToChecked data too short")?;
     let mint = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
     let dest = accounts.get(1).map(pubkey_short).unwrap_or_else(|| "?".into());
 
@@ -138,8 +133,7 @@ fn parse_mint_to_checked(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<Revie
 }
 
 fn parse_burn(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    if data.len() < 8 { return Err("Burn data too short"); }
-    let amount = u64::from_le_bytes(data[..8].try_into().unwrap());
+    let amount = read_u64_le(data, 0)?;
     let source = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
     let mint = accounts.get(1).map(pubkey_short).unwrap_or_else(|| "?".into());
 
@@ -152,9 +146,8 @@ fn parse_burn(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'s
 }
 
 fn parse_burn_checked(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    if data.len() < 9 { return Err("BurnChecked data too short"); }
-    let amount = u64::from_le_bytes(data[..8].try_into().unwrap());
-    let decimals = data[8];
+    let amount = read_u64_le(data, 0)?;
+    let decimals = *data.get(8).ok_or("BurnChecked data too short")?;
     let source = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
     let mint = accounts.get(1).map(pubkey_short).unwrap_or_else(|| "?".into());
 
