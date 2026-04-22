@@ -585,8 +585,18 @@ impl App {
                 | Screen::SettingsVerifyAddressScan
                 | Screen::VerifyBackupScan
         );
+        // Seed / address / backup scans only ever see small QRs (CompactSeedQR
+        // V1/V3, address V≤5). Hint the decoder to downsample aggressively so
+        // rqrr sees far fewer pixels. Sign TX stays on full resolution — its
+        // animated UR fragments are modest, but one-shot dense tx QRs can hit
+        // V20+ where every module pixel matters.
+        let small_qr_scan = matches!(
+            self.screen,
+            Screen::LoadScanQr | Screen::SettingsVerifyAddressScan | Screen::VerifyBackupScan
+        );
         let pending_qr = if let Some(cam) = &self.camera {
             cam.set_decode_enabled(is_scan_screen);
+            cam.set_small_qr_mode(small_qr_scan);
             if let Some(f) = cam.latest() {
                 self.latest_frame = Some(f);
             }
