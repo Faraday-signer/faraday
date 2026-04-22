@@ -41,13 +41,45 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         Screen::VerifyBackupPassphrase { grid: CharGrid::new() }
                     }
                 }
-                InputEvent::Back => Screen::MainMenu { selected: 0 },
+                InputEvent::Back => {
+                    // Back = up one level to the Paper Backup menu, not
+                    // cancel-to-MainMenu. User can re-select VERIFY from
+                    // there, or navigate elsewhere in the backup flow.
+                    let Some(wallet) = app.wallet.as_ref() else {
+                        return Screen::MainMenu { selected: 0 };
+                    };
+                    let compact_data =
+                        crate::qr::encode_qr::encode_compact_seed_qr(&wallet.mnemonic)
+                            .unwrap_or_default();
+                    Screen::ExportSeedQrMenu {
+                        compact_data,
+                        selected: 2,
+                        from_settings: false,
+                    }
+                }
                 _ => Screen::VerifyBackupScan,
             }
         }
 
         Screen::VerifyBackupSeedMismatch => match event {
-            InputEvent::Confirm | InputEvent::Back => Screen::MainMenu { selected: 0 },
+            // K1 = redo paper backup — user goes back to the transcribe
+            // walkthrough (block 1 of 9) so they can correct their paper.
+            InputEvent::Confirm => {
+                let Some(wallet) = app.wallet.as_ref() else {
+                    return Screen::MainMenu { selected: 0 };
+                };
+                let compact_data =
+                    crate::qr::encode_qr::encode_compact_seed_qr(&wallet.mnemonic)
+                        .unwrap_or_default();
+                Screen::ExportSeedQrBlock {
+                    compact_data,
+                    block_index: 0,
+                    from_settings: false,
+                }
+            }
+            // K3 = back to the scan screen — user can re-scan without
+            // redoing the paper (e.g. the camera missed it the first time).
+            InputEvent::Back => Screen::VerifyBackupScan,
             _ => Screen::VerifyBackupSeedMismatch,
         },
 
@@ -73,8 +105,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         }
 
         Screen::VerifyBackupPassphraseMismatch => match event {
+            // K1 = retry passphrase entry (fresh grid).
             InputEvent::Confirm => Screen::VerifyBackupPassphrase { grid: CharGrid::new() },
-            InputEvent::Back => Screen::MainMenu { selected: 0 },
+            // K3 = back to scan — user may want to re-scan the paper
+            // before blaming the passphrase.
+            InputEvent::Back => Screen::VerifyBackupScan,
             _ => Screen::VerifyBackupPassphraseMismatch,
         },
 

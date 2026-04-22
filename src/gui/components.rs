@@ -221,67 +221,6 @@ pub fn draw_option_list<D: DrawTarget<Color = Rgb565>>(
     Ok(())
 }
 
-/// Draw a two-button bar at the bottom (e.g., Confirm/Cancel).
-pub fn draw_button_bar<D: DrawTarget<Color = Rgb565>>(
-    display: &mut D,
-    left: &str,
-    right: &str,
-    selected: usize,
-) -> Result<(), D::Error> {
-    draw_button_bar_ex(display, left, right, selected, true)
-}
-
-/// Button bar with an optional disabled-state for the left button.
-/// When `left_enabled` is false, the left button renders muted and
-/// selection should not land on it.
-pub fn draw_button_bar_ex<D: DrawTarget<Color = Rgb565>>(
-    display: &mut D,
-    left: &str,
-    right: &str,
-    selected: usize,
-    left_enabled: bool,
-) -> Result<(), D::Error> {
-    let y = 210i32;
-    let btn_w = 105u32;
-
-    for (i, label) in [left, right].iter().enumerate() {
-        let x = if i == 0 { 10 } else { 125 };
-        let is_selected = i == selected;
-        let is_disabled = i == 0 && !left_enabled;
-
-        let (bg, border, text_color) = if is_disabled {
-            (colors::BG_CARD, colors::BORDER_DEFAULT, colors::TEXT_MUTED)
-        } else if is_selected {
-            if i == 0 {
-                (colors::BG_CARD_SELECTED, colors::SUCCESS, colors::SUCCESS)
-            } else {
-                (colors::BG_CARD_SELECTED, colors::DANGER, colors::DANGER)
-            }
-        } else {
-            (colors::BG_CARD, colors::BORDER_DEFAULT, colors::TEXT_MUTED)
-        };
-
-        let style = PrimitiveStyleBuilder::new()
-            .fill_color(bg)
-            .stroke_color(border)
-            .stroke_width(1)
-            .build();
-
-        RoundedRectangle::with_equal_corners(
-            Rectangle::new(Point::new(x, y), Size::new(btn_w, 26)),
-            Size::new(4, 4),
-        )
-        .into_styled(style)
-        .draw(display)?;
-
-        let text_style = MonoTextStyle::new(&FONT_9X15_BOLD, text_color);
-        Text::with_alignment(label, Point::new(x + btn_w as i32 / 2, y + 18), text_style, Alignment::Center)
-            .draw(display)?;
-    }
-
-    Ok(())
-}
-
 /// Draw the passphrase character grid.
 pub fn draw_char_grid<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
