@@ -35,17 +35,47 @@ impl UrAccumulator {
     }
 
     /// Feed a UR fragment. Returns Ok(true) when the message is complete.
+    ///
+    /// Two subtleties this handles:
+    ///
+    /// - **Redundancy parts have `seq > total`.** UR fountain streams send
+    ///   pure parts numbered `1..=total`, then combined parts numbered
+    ///   `total+1..`. Combined parts advance the decoder but aren't
+    ///   progress the user cares about — counting them produced the
+    ///   `22/21` display the scan-screen diagnostic showed in practice.
+    /// - **Stream change.** If the user points the camera at a *different*
+    ///   UR animation mid-scan, the inner decoder rejects the new part
+    ///   (checksum mismatch). Rather than leaving stale state that
+    ///   merges with the new stream, we reset on rejection and re-feed
+    ///   the part into a fresh decoder — so the next scan starts clean.
     pub fn receive(&mut self, part: &str) -> Result<bool, UrError> {
         let parsed = parse_seq_total(part);
-        if let Some((_, total)) = parsed {
-            self.total = Some(total);
+        let accept = |this: &mut Self| {
+            this.started = true;
+            if let Some((seq, total)) = parsed {
+                if seq <= total {
+                    this.received_seqs.insert(seq);
+                }
+                this.total = Some(total);
+            }
+            Ok(this.decoder.complete())
+        };
+
+        match self.decoder.receive(part) {
+            Ok(()) => accept(self),
+            Err(_) => {
+                // Stream mismatch. Wipe state and try the part fresh —
+                // it's almost always the first part of a new stream.
+                self.decoder = ur::Decoder::default();
+                self.received_seqs.clear();
+                self.total = None;
+                self.started = false;
+                match self.decoder.receive(part) {
+                    Ok(()) => accept(self),
+                    Err(_) => Err(UrError::InvalidPart),
+                }
+            }
         }
-        self.decoder.receive(part).map_err(|_| UrError::InvalidPart)?;
-        self.started = true;
-        if let Some((seq, _)) = parsed {
-            self.received_seqs.insert(seq);
-        }
-        Ok(self.decoder.complete())
     }
 
     /// Extract the reconstructed message. Only valid after `receive` returns Ok(true).
@@ -161,6 +191,52 @@ mod tests {
             assert_eq!(received, i, "each pure fragment should bump received by one");
             assert_eq!(tot, total);
         }
+    }
+
+    #[test]
+    fn progress_caps_at_total_when_fountain_sends_redundancy_parts() {
+        // A fountain encoder produces pure parts (seq 1..=total) then
+        // redundancy parts (seq > total). Our progress display must not
+        // show something like `22/21` — redundancy parts help the decoder
+        // but aren't user-visible progress.
+        let data = vec![0xEF; 800];
+        let mut encoder = ur::Encoder::bytes(&data, 50).unwrap();
+        let total = encoder.fragment_count();
+        let mut acc = UrAccumulator::new();
+        // Drive enough parts through that we pass pure-parts count and
+        // into the redundancy range.
+        for _ in 0..(total * 3) {
+            let part = encoder.next_part().unwrap();
+            acc.receive(&part).unwrap();
+            if let Some((received, tot)) = acc.progress() {
+                assert!(received <= tot, "received {} > total {}", received, tot);
+            }
+        }
+    }
+
+    #[test]
+    fn switching_streams_mid_scan_resets_progress() {
+        // User points camera at stream A, then switches to stream B.
+        // Stream B's parts must not appear as progress on top of A's —
+        // the display should restart from stream B's first accepted part.
+        let data_a = vec![0xAA; 300];
+        let data_b = vec![0xBB; 400];
+        let mut enc_a = ur::Encoder::bytes(&data_a, 50).unwrap();
+        let mut enc_b = ur::Encoder::bytes(&data_b, 40).unwrap();
+        let mut acc = UrAccumulator::new();
+
+        // Feed two parts from A.
+        for _ in 0..2 {
+            acc.receive(&enc_a.next_part().unwrap()).unwrap();
+        }
+        let (a_count, _) = acc.progress().expect("after A parts");
+        assert_eq!(a_count, 2);
+
+        // Switch to B. First B part should trigger reset + clean start.
+        acc.receive(&enc_b.next_part().unwrap()).unwrap();
+        let (b_count, b_total) = acc.progress().expect("after first B part");
+        assert_eq!(b_count, 1);
+        assert_eq!(b_total, enc_b.fragment_count());
     }
 
     #[test]

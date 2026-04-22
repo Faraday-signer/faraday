@@ -24,13 +24,13 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             }
                             3 => Screen::SettingsVerifyAddressScan,
                             4 => Screen::SettingsAbout,
-                            5 => Screen::SettingsPowerOff { selected: 1 },
+                            5 => Screen::SettingsPowerOff { selected: 0 },
                             _ => Screen::SettingsMenu { selected },
                         };
                     } else {
                         return match selected {
                             0 => Screen::SettingsAbout,
-                            1 => Screen::SettingsPowerOff { selected: 1 },
+                            1 => Screen::SettingsPowerOff { selected: 0 },
                             _ => Screen::SettingsMenu { selected },
                         };
                     }
@@ -118,11 +118,14 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             Screen::SettingsAbout
         }
 
+        // Row 0 = NO (safe default), Row 1 = YES (destructive).
         Screen::SettingsPowerOff { mut selected } => {
             match event {
-                InputEvent::Left | InputEvent::Right => { selected = 1 - selected; }
+                InputEvent::Up => { selected = 0; }
+                InputEvent::Down => { selected = 1; }
                 InputEvent::Confirm => {
-                    if selected == 0 {
+                    if selected == 1 {
+                        // YES — wipe the wallet from RAM and power off.
                         app.wallet = None;
                         #[cfg(target_os = "linux")]
                         {

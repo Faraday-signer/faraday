@@ -279,14 +279,18 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 InputEvent::Down => { if selected + 1 < ITEMS { selected += 1; } }
                 InputEvent::Confirm => match selected {
                     0 => {
+                        // Gate SHOW WORDS behind a warning — plaintext seed is
+                        // the single most dangerous surface, worth forcing the
+                        // user through a confirm even on the post-create path.
                         let mnemonic = app
                             .wallet
                             .as_ref()
                             .map(|w| w.mnemonic.clone())
                             .unwrap_or_default();
                         let word_count = mnemonic.split_whitespace().count();
-                        return Screen::ExportShowWords {
-                            compact_data, mnemonic, page: 0, word_count, from_settings,
+                        return Screen::ShowWordsWarning {
+                            compact_data, mnemonic, word_count,
+                            selected: 0, from_settings,
                         };
                     }
                     1 => return Screen::ExportSeedQrBlock { compact_data, block_index: 0, from_settings },
@@ -434,6 +438,32 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 _ => {}
             }
             Screen::ExportSeedWarning { selected, from_settings }
+        }
+
+        // CANCEL (row 0, default) returns to the backup menu; SHOW (row 1)
+        // proceeds to the plaintext word display.
+        Screen::ShowWordsWarning { compact_data, mnemonic, word_count, mut selected, from_settings } => {
+            match event {
+                InputEvent::Up => { if selected > 0 { selected -= 1; } }
+                InputEvent::Down => { if selected < 1 { selected += 1; } }
+                InputEvent::Confirm => {
+                    if selected == 1 {
+                        return Screen::ExportShowWords {
+                            compact_data, mnemonic, page: 0, word_count, from_settings,
+                        };
+                    }
+                    return Screen::ExportSeedQrMenu {
+                        compact_data, selected: 0, from_settings,
+                    };
+                }
+                InputEvent::Back => {
+                    return Screen::ExportSeedQrMenu {
+                        compact_data, selected: 0, from_settings,
+                    };
+                }
+                _ => {}
+            }
+            Screen::ShowWordsWarning { compact_data, mnemonic, word_count, selected, from_settings }
         }
 
         _ => unreachable!("create::handle called with non-create screen"),

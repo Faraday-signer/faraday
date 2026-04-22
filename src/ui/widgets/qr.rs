@@ -17,7 +17,11 @@ use embedded_graphics::{
 use crate::ui::Theme;
 
 pub struct Qr<'a> {
-    pub data: &'a str,
+    pub data: &'a [u8],
+    /// Error-correction level. Seed-backup QRs use `L` (smallest grid —
+    /// 21×21 for 12 words) to keep hand-transcription tractable. Outbound
+    /// tx / signature / address QRs use `M` (standard reliability).
+    pub ec: crate::qr::encode_qr::QrEcLevel,
 }
 
 impl<'a> Qr<'a> {
@@ -28,10 +32,7 @@ impl<'a> Qr<'a> {
         rect: Rectangle,
     ) -> Result<(), D::Error> {
         let (matrix, size) =
-            match crate::qr::encode_qr::generate_qr_matrix(
-                self.data.as_bytes(),
-                crate::qr::encode_qr::QrEcLevel::M,
-            ) {
+            match crate::qr::encode_qr::generate_qr_matrix(self.data, self.ec) {
                 Ok(m) => m,
                 Err(_) => return Ok(()),
             };

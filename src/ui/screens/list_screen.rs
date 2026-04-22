@@ -22,6 +22,9 @@ use crate::ui::Theme;
 pub struct ListScreen<'a> {
     pub header: HeaderKind<'a>,
     pub counter: Option<(usize, usize)>,
+    /// Optional right-aligned header label (e.g. short wallet pubkey).
+    /// Only rendered when `counter` is None.
+    pub right_label: Option<&'a str>,
     /// Optional context line rendered between header and list. Reserved for
     /// warnings / consequence framing on commitment screens. Renders in
     /// `theme.danger` so it visibly sits apart from chrome.
@@ -31,6 +34,9 @@ pub struct ListScreen<'a> {
     pub max_visible: usize,
     /// When false, no row draws a selection highlight (read-only display).
     pub selectable: bool,
+    /// Empty ButtonBar (`ButtonBar::new()`) reclaims the footer space for
+    /// the list body — useful for pure navigation menus where Key3/Key1
+    /// always mean Back/Confirm, so labels are noise.
     pub buttons: ButtonBar<'a>,
 }
 
@@ -46,16 +52,29 @@ impl<'a> ListScreen<'a> {
         );
         display.fill_solid(&screen, theme.bg)?;
 
-        let (header_rect, rest) = split_top(screen, theme.header_h as i32);
-        let (body_rect, footer_rect) = split_bottom(rest, theme.footer_h as i32);
+        // Brand header needs a bit more Y padding around the pixel logo
+        // than the tight text-title bar.
+        let header_h = match self.header {
+            HeaderKind::Brand => theme.header_h as i32 + 8,
+            HeaderKind::Title(_) => theme.header_h as i32,
+        };
+        let (header_rect, rest) = split_top(screen, header_h);
+        // Nav screens pass an empty ButtonBar to reclaim the footer band —
+        // Key3/Key1 still work as Back/Confirm even without on-screen labels.
+        let footer_h = if self.buttons.is_empty() { 0 } else { theme.footer_h as i32 };
+        let (body_rect, footer_rect) = split_bottom(rest, footer_h);
 
         // Pattern-move the header kind so we can re-consume the one we own.
         let kind = match self.header {
             HeaderKind::Title(t) => HeaderKind::Title(t),
             HeaderKind::Brand => HeaderKind::Brand,
         };
-        Header { kind, counter: self.counter }
-            .draw(display, theme, header_rect)?;
+        Header {
+            kind,
+            counter: self.counter,
+            right_label: self.right_label,
+        }
+        .draw(display, theme, header_rect)?;
 
         // Optional warning banner. Full-bleed band filled with `theme.danger`;
         // left-aligned "!" sigil + inverted text so the whole strip reads as

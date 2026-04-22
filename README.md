@@ -36,6 +36,7 @@ Total cost: ~$35
 - **Wallet Creation**: Generate seeds from dice rolls, coin flips, camera entropy, or device random
 - **Passphrase Support**: Optional BIP39 passphrase with confirmation
 - **Transaction Signing**: Scan unsigned tx QR, review decoded details per instruction type, approve, display signed QR
+- **Message Signing**: Sign arbitrary messages (login, identity verification) via QR — `0xFF` prefix distinguishes messages from transactions
 - **SeedQR**: Backup/restore seeds as compact QR codes
 - **Manual Import**: Enter 12 or 24 BIP39 words via on-screen keyboard
 - **Air-gapped**: Keys exist only in RAM, wiped on power off
@@ -47,6 +48,30 @@ Total cost: ~$35
 3. **Verifiable transactions** — Full tx details shown before signing
 4. **Open source** — All code is auditable
 5. **Minimal surface** — No web server, no database, no unnecessary services
+
+## QR Payload Format
+
+QR codes carry base64-encoded payloads. A single prefix byte determines the type:
+
+| First byte | Type | Payload |
+|------------|------|---------|
+| `0x00`–`0xFE` | Transaction | Standard Solana serialized transaction (legacy or v0) |
+| `0xFF` | Sign Message | Arbitrary message bytes (remaining bytes after the prefix) |
+
+Transactions use no prefix — the first byte is `num_signatures` (typically `0x01`), which is always a valid transaction header. The `0xFF` prefix is reserved for messages because no valid transaction can have 255 signatures.
+
+### Message signing flow
+
+```
+ [Companion App]                         [Faraday]
+       |                                      |
+       |  1. Prepend 0xFF to message bytes    |
+       |  2. Base64-encode                    |
+       |  3. Display as QR code        -----> |  4. Scan QR, detect 0xFF prefix
+       |                                      |  5. Display message for review
+       |  7. Scan signature QR back    <----- |  6. User approves → sign with Ed25519
+       |  8. Verify signature                 |
+```
 
 ## Project Structure
 
@@ -71,7 +96,7 @@ src/
 ├── hardware/             # ST7789 display driver, GPIO buttons
 ├── qr/
 │   ├── encode_qr.rs      # QR encoding (SeedQR, CompactSeedQR, address, signed tx)
-│   └── decode_qr.rs      # QR decoding and type detection
+│   └── decode_qr.rs      # QR decoding, type detection (tx vs message via 0xFF prefix)
 ├── parser/
 │   ├── mod.rs            # Entry point: parse(tx_bytes) → ParsedTransaction, to_lines()
 │   ├── message.rs        # Solana wire format deserializer (legacy + v0 versioned)
@@ -166,6 +191,76 @@ cargo run --features simulator
 | Enter / Z | Key1 / JoyPress | Confirm |
 | X | Key2 | Secondary action |
 | Escape | Key3 | Back / Cancel |
+
+## Browser Extension + Playground (end-to-end demo)
+
+The browser extension relays Wallet Standard requests from dapps to the
+Faraday device over QR codes. The playground is a small Solana devnet dapp
+for exercising the whole flow on one machine — simulator + extension +
+playground all running locally.
+
+### 1. Run the Faraday simulator
+
+In a terminal:
+
+```bash
+cargo run --bin faraday --features simulator
+```
+
+A 240×240 window opens. Create a wallet (`CREATE → 12 WORDS → RANDOM → …`)
+or load one (`LOAD → TYPE / SCAN QR`). Leave this running.
+
+### 2. Build and load the extension
+
+In a second terminal:
+
+```bash
+cd extension
+npm install
+npm run dev
+```
+
+WXT builds the extension in watch mode to `extension/.output/chrome-mv3/`.
+Load it in Chrome:
+
+1. Open `chrome://extensions`
+2. Toggle **Developer mode** on (top right)
+3. Click **Load unpacked**
+4. Pick `extension/.output/chrome-mv3/`
+
+The Faraday icon appears in the toolbar. Leave `npm run dev` running so
+hot-reload keeps the extension in sync.
+
+### 3. Start the playground dapp
+
+In a third terminal:
+
+```bash
+cd playground
+npm install
+npm run dev
+```
+
+Vite serves at <http://localhost:4173>.
+
+### 4. Exercise the signing loop
+
+1. Click the Faraday extension icon → side panel opens
+2. **Pair** the extension to your simulator's pubkey (shown on
+   `MAIN MENU → SETTINGS → ADDRESS` — scan the QR *or* copy-paste)
+3. In the playground tab, click **Connect** and approve the origin in the
+   extension
+4. (Optional) Click **Airdrop 1 SOL** to fund the devnet wallet
+5. Click **Sign + send transfer**:
+   - the extension opens a sign window showing the unsigned-tx QR
+   - point the simulator window's camera at it (or use the test-data shortcut
+     during development)
+   - approve on the simulator — it displays the signed-tx QR
+   - scan that QR back in the extension's sign window
+   - the playground broadcasts to devnet and logs the explorer URL
+
+If any step looks wrong, `extension/README.md` and `playground/README.md`
+have more detail + troubleshooting.
 
 ## Cross-Compile for Pi Zero
 

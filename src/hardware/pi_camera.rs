@@ -33,9 +33,13 @@ pub use crate::camera::Frame;
 const RASPIVIDYUV: &str = "/usr/bin/raspividyuv";
 const VCHIQ_DEV: &str = "/dev/vchiq";
 
-/// Capture resolution. 640x480 is a clean multiple of 32/16 (no stride
-/// padding from raspividyuv) and plenty for QR scanning on a Pi Zero.
-const CAPTURE_W: usize = 640;
+/// Capture resolution. 480×480 square — the display is 240×240 and the
+/// QR sits in a centered reticle, so we don't need the extra horizontal
+/// pixels a 640×480 frame provides. Fewer pixels per frame means less
+/// YUV→RGB work in the reader and a smaller image for rqrr to walk.
+///
+/// 480 is a clean multiple of 32/16 (no stride padding from raspividyuv).
+const CAPTURE_W: usize = 480;
 const CAPTURE_H: usize = 480;
 const Y_BYTES: usize = CAPTURE_W * CAPTURE_H;
 const UV_BYTES: usize = (CAPTURE_W / 2) * (CAPTURE_H / 2);
@@ -48,6 +52,11 @@ pub struct PiCamera {
     latest: Arc<Mutex<Option<Frame>>>,
     pending_qr: Arc<Mutex<Option<Vec<u8>>>>,
     diag: Arc<Mutex<crate::camera::ScanDiagnostics>>,
+    /// `true` when the current scan screen only ever sees small QRs
+    /// (seed, verify-address, verify-backup). Decoder uses this to
+    /// downsample aggressively. `false` for Sign TX, where dense
+    /// single-frame txs need full resolution.
+    small_qr_mode: Arc<AtomicBool>,
     fatal_err: Arc<Mutex<Option<String>>>,
     stop: Arc<AtomicBool>,
     decode_enabled: Arc<AtomicBool>,
@@ -73,6 +82,10 @@ impl PiCamera {
         }
 
         // --- Spawn raspividyuv -------------------------------------------
+        // Frame rate capped at 6 fps — rqrr takes ~200–400 ms per attempt
+        // on the Pi Zero, so capturing faster than that just queues stale
+        // frames the decoder never reads, burning YUV→RGB cycles in the
+        // reader thread. 6 fps matches the steady-state decode cadence.
         let mut child = Command::new(RASPIVIDYUV)
             .arg("--nopreview")
             .arg("--width")
@@ -80,7 +93,7 @@ impl PiCamera {
             .arg("--height")
             .arg(CAPTURE_H.to_string())
             .arg("--framerate")
-            .arg("15")
+            .arg("6")
             .arg("--timeout")
             .arg("0")
             .arg("--output")
@@ -106,6 +119,7 @@ impl PiCamera {
         let fatal_err: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let stop = Arc::new(AtomicBool::new(false));
         let decode_enabled = Arc::new(AtomicBool::new(false));
+        let small_qr_mode = Arc::new(AtomicBool::new(false));
         let stderr_buf: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
         let child_slot: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(Some(child)));
 
@@ -139,10 +153,11 @@ impl PiCamera {
         let latest_d = Arc::clone(&latest);
         let qr_d = Arc::clone(&pending_qr);
         let diag_d = Arc::clone(&diag);
+        let mode_d = Arc::clone(&small_qr_mode);
         let stop_d = Arc::clone(&stop);
         let decode_d = Arc::clone(&decode_enabled);
         let decoder = thread::spawn(move || {
-            decoder_loop(latest_d, qr_d, diag_d, stop_d, decode_d);
+            decoder_loop(latest_d, qr_d, diag_d, mode_d, stop_d, decode_d);
         });
 
         // Watchdog: first frame or bust. Reports raspividyuv's stderr if the
@@ -186,6 +201,7 @@ impl PiCamera {
             latest,
             pending_qr,
             diag,
+            small_qr_mode,
             fatal_err,
             stop,
             decode_enabled,
@@ -207,6 +223,10 @@ impl PiCamera {
 
     pub fn set_decode_enabled(&self, on: bool) {
         self.decode_enabled.store(on, Ordering::Relaxed);
+    }
+
+    pub fn set_small_qr_mode(&self, on: bool) {
+        self.small_qr_mode.store(on, Ordering::Relaxed);
     }
 
     pub fn take_fatal_err(&self) -> Option<String> {
@@ -265,10 +285,16 @@ fn reader_loop(
         }
 
         let rgb = yuv420_to_rgb(&buf, CAPTURE_W, CAPTURE_H);
+        // YUV420's Y-plane is already 8-bit grayscale — the exact input
+        // rqrr wants. Copy it out here (free: it's just the first
+        // `CAPTURE_W * CAPTURE_H` bytes of the frame buffer) so the
+        // decoder thread doesn't redo this conversion on every attempt.
+        let luma = buf[..Y_BYTES].to_vec();
         let frame = Frame {
             width: CAPTURE_W as u32,
             height: CAPTURE_H as u32,
             rgb,
+            luma,
         };
 
         if let Ok(mut g) = latest.lock() {
@@ -284,6 +310,7 @@ fn decoder_loop(
     latest: Arc<Mutex<Option<Frame>>>,
     pending_qr: Arc<Mutex<Option<Vec<u8>>>>,
     diag: Arc<Mutex<crate::camera::ScanDiagnostics>>,
+    small_qr_mode: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
     decode_enabled: Arc<AtomicBool>,
 ) {
@@ -315,7 +342,12 @@ fn decoder_loop(
                 continue;
             }
         };
-        let (decoded, saw_qr) = crate::camera::try_decode_qr_ur_diag(&frame, &mut ur_acc);
+        let mode = if small_qr_mode.load(Ordering::Relaxed) {
+            crate::camera::ScanMode::SmallQr
+        } else {
+            crate::camera::ScanMode::Full
+        };
+        let (decoded, saw_qr) = crate::camera::try_decode_qr_ur_diag(&frame, &mut ur_acc, mode);
         if saw_qr {
             if let Ok(mut g) = diag.lock() {
                 g.last_qr_at = Some(std::time::Instant::now());
