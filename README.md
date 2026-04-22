@@ -192,6 +192,76 @@ cargo run --features simulator
 | X | Key2 | Secondary action |
 | Escape | Key3 | Back / Cancel |
 
+## Browser Extension + Playground (end-to-end demo)
+
+The browser extension relays Wallet Standard requests from dapps to the
+Faraday device over QR codes. The playground is a small Solana devnet dapp
+for exercising the whole flow on one machine — simulator + extension +
+playground all running locally.
+
+### 1. Run the Faraday simulator
+
+In a terminal:
+
+```bash
+cargo run --bin faraday --features simulator
+```
+
+A 240×240 window opens. Create a wallet (`CREATE → 12 WORDS → RANDOM → …`)
+or load one (`LOAD → TYPE / SCAN QR`). Leave this running.
+
+### 2. Build and load the extension
+
+In a second terminal:
+
+```bash
+cd extension
+npm install
+npm run dev
+```
+
+WXT builds the extension in watch mode to `extension/.output/chrome-mv3/`.
+Load it in Chrome:
+
+1. Open `chrome://extensions`
+2. Toggle **Developer mode** on (top right)
+3. Click **Load unpacked**
+4. Pick `extension/.output/chrome-mv3/`
+
+The Faraday icon appears in the toolbar. Leave `npm run dev` running so
+hot-reload keeps the extension in sync.
+
+### 3. Start the playground dapp
+
+In a third terminal:
+
+```bash
+cd playground
+npm install
+npm run dev
+```
+
+Vite serves at <http://localhost:4173>.
+
+### 4. Exercise the signing loop
+
+1. Click the Faraday extension icon → side panel opens
+2. **Pair** the extension to your simulator's pubkey (shown on
+   `MAIN MENU → SETTINGS → ADDRESS` — scan the QR *or* copy-paste)
+3. In the playground tab, click **Connect** and approve the origin in the
+   extension
+4. (Optional) Click **Airdrop 1 SOL** to fund the devnet wallet
+5. Click **Sign + send transfer**:
+   - the extension opens a sign window showing the unsigned-tx QR
+   - point the simulator window's camera at it (or use the test-data shortcut
+     during development)
+   - approve on the simulator — it displays the signed-tx QR
+   - scan that QR back in the extension's sign window
+   - the playground broadcasts to devnet and logs the explorer URL
+
+If any step looks wrong, `extension/README.md` and `playground/README.md`
+have more detail + troubleshooting.
+
 ## Cross-Compile for Pi Zero
 
 ```bash
