@@ -20,6 +20,7 @@ pub struct SimCamera {
     latest: Arc<Mutex<Option<Frame>>>,
     pending_qr: Arc<Mutex<Option<Vec<u8>>>>,
     diag: Arc<Mutex<crate::camera::ScanDiagnostics>>,
+    small_qr_mode: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
     decode_enabled: Arc<AtomicBool>,
     handle: Option<JoinHandle<()>>,
@@ -35,9 +36,11 @@ impl SimCamera {
         // QR decoding is expensive (100-200ms/frame on 1280x720). Off by default
         // so the preview stays responsive; main thread flips it on for scan screens.
         let decode_enabled = Arc::new(AtomicBool::new(false));
+        let small_qr_mode = Arc::new(AtomicBool::new(false));
         let latest_w = Arc::clone(&latest);
         let qr_w = Arc::clone(&pending_qr);
         let diag_w = Arc::clone(&diag);
+        let mode_w = Arc::clone(&small_qr_mode);
         let stop_w = Arc::clone(&stop);
         let decode_w = Arc::clone(&decode_enabled);
         let (init_tx, init_rx) = std::sync::mpsc::channel::<Result<(), String>>();
@@ -73,7 +76,8 @@ impl SimCamera {
                 let (w, h) = img.dimensions();
                 let rgb = img.into_raw();
 
-                let frame = Frame { width: w, height: h, rgb };
+                let luma = crate::camera::rgb_to_gray(&rgb, w, h);
+                let frame = Frame { width: w, height: h, rgb, luma };
 
                 // QR decode only on scan screens (enabled by the main thread) and
                 // only when the main thread hasn't yet consumed the previous hit.
@@ -81,8 +85,13 @@ impl SimCamera {
                 let should_decode = decode_on
                     && qr_w.lock().ok().map(|g| g.is_none()).unwrap_or(false);
                 if should_decode {
+                    let mode = if mode_w.load(Ordering::Relaxed) {
+                        crate::camera::ScanMode::SmallQr
+                    } else {
+                        crate::camera::ScanMode::Full
+                    };
                     let (decoded, saw_qr) =
-                        crate::camera::try_decode_qr_ur_diag(&frame, &mut ur_acc);
+                        crate::camera::try_decode_qr_ur_diag(&frame, &mut ur_acc, mode);
                     if saw_qr {
                         if let Ok(mut g) = diag_w.lock() {
                             g.last_qr_at = Some(std::time::Instant::now());
@@ -113,6 +122,7 @@ impl SimCamera {
                 latest,
                 pending_qr,
                 diag,
+                small_qr_mode,
                 stop,
                 decode_enabled,
                 handle: Some(handle),
@@ -137,6 +147,10 @@ impl SimCamera {
     /// Turn QR detection on/off. Detection is expensive; keep off unless on a scan screen.
     pub fn set_decode_enabled(&self, on: bool) {
         self.decode_enabled.store(on, Ordering::Relaxed);
+    }
+
+    pub fn set_small_qr_mode(&self, on: bool) {
+        self.small_qr_mode.store(on, Ordering::Relaxed);
     }
 
     /// API parity with PiCamera; simulator webcam has no watchdog path.
