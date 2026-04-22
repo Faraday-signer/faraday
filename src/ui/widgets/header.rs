@@ -26,6 +26,10 @@ pub enum HeaderKind<'a> {
 pub struct Header<'a> {
     pub kind: HeaderKind<'a>,
     pub counter: Option<(usize, usize)>,
+    /// Optional right-aligned label (typically a short wallet pubkey).
+    /// Rendered only when `counter` is None, so screens that use the
+    /// counter slot (paginated readers, quizzes) keep it for that.
+    pub right_label: Option<&'a str>,
 }
 
 impl<'a> Header<'a> {
@@ -56,15 +60,32 @@ impl<'a> Header<'a> {
             }
         }
 
-        // Counter (right, dim). Optional.
+        // Right side: counter OR right_label. Counter wins when both set.
+        // For Brand headers we align the right text to the logo's vertical
+        // center so the pubkey chip sits on the same visual line as the
+        // logo instead of hugging the bottom edge of the (taller) band.
+        let x_right =
+            rect.top_left.x + rect.size.width as i32 - theme.space_md;
+        let right_baseline = match self.kind {
+            HeaderKind::Brand => {
+                rect.top_left.y + rect.size.height as i32 / 2 + 5
+            }
+            HeaderKind::Title(_) => baseline,
+        };
         if let Some((now, total)) = self.counter {
             let mut buf = [0u8; 8];
             let s = fmt_counter(&mut buf, now, total);
-            let x_right =
-                rect.top_left.x + rect.size.width as i32 - theme.space_md;
             Text::with_alignment(
                 s,
-                Point::new(x_right, baseline),
+                Point::new(x_right, right_baseline),
+                theme.style_sm(theme.dim),
+                Alignment::Right,
+            )
+            .draw(display)?;
+        } else if let Some(label) = self.right_label {
+            Text::with_alignment(
+                label,
+                Point::new(x_right, right_baseline),
                 theme.style_sm(theme.dim),
                 Alignment::Right,
             )

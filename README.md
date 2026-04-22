@@ -36,6 +36,7 @@ Total cost: ~$35
 - **Wallet Creation**: Generate seeds from dice rolls, coin flips, camera entropy, or device random
 - **Passphrase Support**: Optional BIP39 passphrase with confirmation
 - **Transaction Signing**: Scan unsigned tx QR, review decoded details per instruction type, approve, display signed QR
+- **Message Signing**: Sign arbitrary messages (login, identity verification) via QR — `0xFF` prefix distinguishes messages from transactions
 - **SeedQR**: Backup/restore seeds as compact QR codes
 - **Manual Import**: Enter 12 or 24 BIP39 words via on-screen keyboard
 - **Air-gapped**: Keys exist only in RAM, wiped on power off
@@ -47,6 +48,30 @@ Total cost: ~$35
 3. **Verifiable transactions** — Full tx details shown before signing
 4. **Open source** — All code is auditable
 5. **Minimal surface** — No web server, no database, no unnecessary services
+
+## QR Payload Format
+
+QR codes carry base64-encoded payloads. A single prefix byte determines the type:
+
+| First byte | Type | Payload |
+|------------|------|---------|
+| `0x00`–`0xFE` | Transaction | Standard Solana serialized transaction (legacy or v0) |
+| `0xFF` | Sign Message | Arbitrary message bytes (remaining bytes after the prefix) |
+
+Transactions use no prefix — the first byte is `num_signatures` (typically `0x01`), which is always a valid transaction header. The `0xFF` prefix is reserved for messages because no valid transaction can have 255 signatures.
+
+### Message signing flow
+
+```
+ [Companion App]                         [Faraday]
+       |                                      |
+       |  1. Prepend 0xFF to message bytes    |
+       |  2. Base64-encode                    |
+       |  3. Display as QR code        -----> |  4. Scan QR, detect 0xFF prefix
+       |                                      |  5. Display message for review
+       |  7. Scan signature QR back    <----- |  6. User approves → sign with Ed25519
+       |  8. Verify signature                 |
+```
 
 ## Project Structure
 
@@ -71,7 +96,7 @@ src/
 ├── hardware/             # ST7789 display driver, GPIO buttons
 ├── qr/
 │   ├── encode_qr.rs      # QR encoding (SeedQR, CompactSeedQR, address, signed tx)
-│   └── decode_qr.rs      # QR decoding and type detection
+│   └── decode_qr.rs      # QR decoding, type detection (tx vs message via 0xFF prefix)
 ├── parser/
 │   ├── mod.rs            # Entry point: parse(tx_bytes) → ParsedTransaction, to_lines()
 │   ├── message.rs        # Solana wire format deserializer (legacy + v0 versioned)

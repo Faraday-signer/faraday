@@ -23,9 +23,9 @@ struct MenuItem {
 }
 
 const MENU_ITEMS: [MenuItem; 4] = [
-    MenuItem { label: "CREATE",   subtitle: "a new wallet" },
-    MenuItem { label: "LOAD",     subtitle: "an existing wallet" },
-    MenuItem { label: "SIGN TX",  subtitle: "a transaction" },
+    MenuItem { label: "CREATE",   subtitle: "new wallet" },
+    MenuItem { label: "LOAD",     subtitle: "existing wallet" },
+    MenuItem { label: "SIGN",     subtitle: "transaction" },
     MenuItem { label: "SETTINGS", subtitle: "and device info" },
 ];
 
@@ -81,39 +81,28 @@ impl App {
             Screen::CreatePassphraseMismatch { .. } => {
                 draw_passphrase_mismatch(display, self.seed_loaded())
             }
-            Screen::CreateConfirm { address, .. } => {
-                draw_wallet_confirm(display, "NEW WALLET", address)
+            Screen::CreateConfirm { address, passphrase, mnemonic, .. } => {
+                let wc = mnemonic.split_whitespace().count();
+                draw_wallet_confirm(display, "NEW WALLET", address, !passphrase.is_empty(), wc)
             }
             Screen::ExportSeedWarning { selected, .. } => {
                 draw_export_seed_warning(display, *selected)
             }
+            Screen::ShowWordsWarning { selected, .. } => {
+                // Same red-banner gate, specifically before plaintext words.
+                draw_export_seed_warning(display, *selected)
+            }
             Screen::ExportSeedQrMenu { selected, .. } => {
-                let title = self.seedqr_title();
-                draw_option_list(
-                    display,
-                    title,
-                    &["Show seed words", "Paper backup", "Verify backup", "Back"],
-                    *selected,
-                    self.seed_loaded(),
-                )
+                draw_export_seed_qr_menu(display, self.seedqr_title(), *selected)
             }
             Screen::ExportShowWords { mnemonic, page, word_count, .. } => {
                 draw_show_words(display, mnemonic, *page, *word_count, self.seed_loaded())
             }
             Screen::ExportSeedQr { compact_data, .. } => {
-                // CompactSeedQR: raw 16/32 entropy bytes, byte-mode QR at ECL L
-                // so the grid stays as small as possible for hand-transcription
-                // (12w → V1 21×21, 24w → V2 25×25). Ale's `draw_seed_qr` is a
-                // simpler wrapper that doesn't take an ECL parameter; once the
-                // design-system QR widget accepts ECL we can switch over.
-                let title = self.seedqr_title();
-                draw_qr(
-                    display,
-                    title,
-                    compact_data,
-                    self.seed_loaded(),
-                    crate::qr::encode_qr::QrEcLevel::L,
-                )
+                // CompactSeedQR: raw 16/32 entropy bytes at ECL L so the grid
+                // stays as small as possible for hand-transcription (12w →
+                // V1 21×21, 24w → V2 25×25).
+                draw_fullscreen_qr(display, compact_data, crate::qr::encode_qr::QrEcLevel::L)
             }
             Screen::ExportSeedQrBlock { compact_data, block_index, .. } => {
                 draw_qr_block(display, compact_data, *block_index, self.seed_loaded())
@@ -140,9 +129,7 @@ impl App {
                 // the same, only the state-machine edges differ.
                 draw_create_word_count(display, *selected)
             }
-            Screen::LoadEnterWords { picker, .. } => {
-                draw_word_picker(display, picker, self.seed_loaded())
-            }
+            Screen::LoadEnterWords { picker, .. } => draw_word_picker_new(display, picker),
             Screen::LoadInvalidMnemonic { word_count } => {
                 draw_invalid_mnemonic(display, *word_count)
             }
@@ -161,14 +148,13 @@ impl App {
             Screen::LoadPassphraseMismatch { .. } => {
                 draw_passphrase_mismatch(display, self.seed_loaded())
             }
-            Screen::LoadConfirm { address, .. } => {
-                draw_wallet_confirm(display, "LOAD WALLET", address)
+            Screen::LoadConfirm { address, passphrase, mnemonic, .. } => {
+                let wc = mnemonic.split_whitespace().count();
+                draw_wallet_confirm(display, "LOAD WALLET", address, !passphrase.is_empty(), wc)
             }
 
             // Sign TX flow
-            Screen::SignNoWallet => {
-                draw_message(display, "Sign TX", "Load a wallet first", self.seed_loaded())
-            }
+            Screen::SignNoWallet => draw_sign_no_wallet(display),
             Screen::SignScanTx => {
                 #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                 {
@@ -184,13 +170,16 @@ impl App {
                 draw_tx_review(display, info_lines, *scroll, *selected, *can_sign, self.seed_loaded())
             }
             Screen::SignShowQr { data } => {
-                draw_qr(display, "Signed TX", data.as_bytes(), self.seed_loaded(), crate::qr::encode_qr::QrEcLevel::M)
+                draw_fullscreen_qr(display, data.as_bytes(), crate::qr::encode_qr::QrEcLevel::M)
+            }
+            Screen::SignMessageReview { message_bytes, scroll, selected, .. } => {
+                draw_message_review(display, message_bytes, *scroll, *selected, self.seed_loaded())
             }
             Screen::SignMessageInput { grid } => {
                 draw_passphrase_grid(display, grid, "SIGN MSG")
             }
             Screen::SignMessageResult { signature_hex } => {
-                draw_qr(display, "Signature", signature_hex.as_bytes(), self.seed_loaded(), crate::qr::encode_qr::QrEcLevel::M)
+                draw_fullscreen_qr(display, signature_hex.as_bytes(), crate::qr::encode_qr::QrEcLevel::M)
             }
 
             // Settings
@@ -198,7 +187,7 @@ impl App {
                 draw_settings_menu(display, *selected, self.seed_loaded())
             }
             Screen::SettingsAccounts { accounts, selected } => {
-                draw_accounts(display, accounts, *selected, self.seed_loaded())
+                draw_accounts_list(display, accounts, *selected)
             }
             Screen::SettingsShowAddress => {
                 draw_show_address(display, self.wallet.as_ref().map(|w| w.address.as_str()))
@@ -215,7 +204,7 @@ impl App {
                 }
             }
             Screen::SettingsVerifyAddressResult { address, result } => {
-                draw_verify_address_result(display, address, result, self.seed_loaded())
+                draw_verify_address_result_card(display, address, result)
             }
             Screen::SettingsAbout => {
                 draw_about(display, self.seed_loaded())
@@ -236,33 +225,16 @@ impl App {
                     draw_message(display, "Verify Backup", "Scan your paper\nSeedQR", self.seed_loaded())
                 }
             }
-            Screen::VerifyBackupSeedMismatch => {
-                draw_message(
-                    display,
-                    "Verify Backup",
-                    "Seed does not match\nthe loaded wallet",
-                    self.seed_loaded(),
-                )
-            }
+            Screen::VerifyBackupSeedMismatch => draw_verify_backup_seed_mismatch(display),
             Screen::VerifyBackupPassphrase { grid } => {
-                draw_char_grid(display, grid, "Enter Passphrase", self.seed_loaded())
+                draw_passphrase_grid(display, grid, "PASSPHRASE")
             }
             Screen::VerifyBackupPassphraseMismatch => {
-                draw_message(
-                    display,
-                    "Verify Backup",
-                    "Passphrase does not\nmatch this wallet",
-                    self.seed_loaded(),
-                )
+                draw_verify_backup_passphrase_mismatch(display)
             }
             Screen::VerifyBackupSuccess => {
                 let has_passphrase = self.wallet.as_ref().map_or(false, |w| !w.passphrase.is_empty());
-                let msg = if has_passphrase {
-                    "Seed and passphrase\nverified OK"
-                } else {
-                    "Seed verified OK"
-                };
-                draw_message(display, "Verify Backup", msg, self.seed_loaded())
+                draw_verify_backup_success(display, has_passphrase)
             }
         }
     }
@@ -288,7 +260,7 @@ fn draw_main_menu<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     selected: usize,
     _seed_loaded: bool,
-    _address: Option<&str>,
+    address: Option<&str>,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{ButtonBar, HeaderKind, ListRow};
     use crate::ui::{screens::ListScreen, Theme};
@@ -304,17 +276,32 @@ fn draw_main_menu<D: DrawTarget<Color = Rgb565>>(
         ListRow::with_subtitle(MENU_ITEMS[3].label, MENU_ITEMS[3].subtitle),
     ];
 
+    // `first4…last4` of the loaded wallet, shown as a chip in the header's
+    // top-right slot so users can see which key is mounted at a glance.
+    let short = address.map(shorten_address);
+
     ListScreen {
         header: HeaderKind::Brand,
         counter: None,
+        right_label: short.as_deref(),
         description: None,
         items: &rows,
         selected: sel,
         max_visible: 3,
         selectable: true,
-        buttons: ButtonBar::new().back("BACK").confirm("SELECT"),
+        // Empty ButtonBar: Key3/Key1 still Back/Confirm, but no on-screen
+        // labels (they don't correspond to physical buttons on the device).
+        buttons: ButtonBar::new(),
     }
     .draw(display, &theme)
+}
+
+/// Format a Solana base58 address as `first4…last4`.
+fn shorten_address(addr: &str) -> String {
+    if addr.len() <= 10 {
+        return addr.to_string();
+    }
+    alloc::format!("{}…{}", &addr[..4], &addr[addr.len() - 4..])
 }
 
 /// Invalid mnemonic card. Shown when the 12/24 entered words don't form a
@@ -341,6 +328,7 @@ fn draw_invalid_mnemonic<D: DrawTarget<Color = Rgb565>>(
     CardScreen {
         header: HeaderKind::Title("INVALID SEED"),
         counter: None,
+        right_label: None,
         title: Some("NO MATCH"),
         subtitle: Some("Mnemonic checksum invalid"),
         body_lines: &body,
@@ -380,6 +368,7 @@ fn draw_passphrase_grid<D: DrawTarget<Color = Rgb565>>(
     Header {
         kind: HeaderKind::Title(title),
         counter: None,
+        right_label: None,
     }
     .draw(display, &theme, header_rect)?;
 
@@ -522,6 +511,40 @@ fn draw_preview<D: DrawTarget<Color = Rgb565>>(
 /// (derived with no passphrase) so the user can see something was actually
 /// read, then offers DONE (no passphrase) or ADD PASSPHRASE. Replaces the
 /// previous SKIP/ADD prompt which read as a negative framing.
+/// Post-create (and settings-entry) seed-backup landing page. Four options:
+/// Show words, Paper backup, Verify backup, Back. Header title adapts via
+/// `App::seedqr_title()` so it shows `SeedQR +P` when a passphrase is set.
+fn draw_export_seed_qr_menu<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    title: &str,
+    selected: usize,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{ButtonBar, HeaderKind, ListRow};
+    use crate::ui::{screens::ListScreen, Theme};
+
+    let theme = Theme::faraday_240();
+    let rows: [ListRow; 4] = [
+        ListRow::with_subtitle("SHOW WORDS", "Read the seed aloud"),
+        ListRow::with_subtitle("PAPER BACKUP", "Transcribe as QR blocks"),
+        ListRow::with_subtitle("VERIFY", "Scan a paper SeedQR"),
+        ListRow::with_subtitle("BACK", "Return to menu"),
+    ];
+    let sel = selected.min(3);
+
+    ListScreen {
+        header: HeaderKind::Title(title),
+        counter: Some((sel + 1, rows.len())),
+        right_label: None,
+        description: None,
+        items: &rows,
+        selected: sel,
+        max_visible: 3,
+        selectable: true,
+        buttons: ButtonBar::new(),
+    }
+    .draw(display, &theme)
+}
+
 fn draw_load_finalize<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     preview_address: &str,
@@ -552,6 +575,7 @@ fn draw_load_finalize<D: DrawTarget<Color = Rgb565>>(
     ListScreen {
         header: HeaderKind::Title("SEED LOADED"),
         counter: None,
+        right_label: None,
         description: Some(&addr_short),
         items: &rows,
         selected: sel,
@@ -579,12 +603,13 @@ fn draw_passphrase_prompt<D: DrawTarget<Color = Rgb565>>(
     ListScreen {
         header: HeaderKind::Title("PASSPHRASE"),
         counter: Some((sel + 1, 2)),
+        right_label: None,
         description: None,
         items: &rows,
         selected: sel,
         max_visible: 2,
         selectable: true,
-        buttons: ButtonBar::new().back("BACK").confirm("SELECT"),
+        buttons: ButtonBar::new(),
     }
     .draw(display, &theme)
 }
@@ -596,6 +621,8 @@ fn draw_wallet_confirm<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     title: &str,
     address: &str,
+    has_passphrase: bool,
+    word_count: usize,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{ButtonBar, CardRow, HeaderKind};
     use crate::ui::{screens::CardScreen, Theme};
@@ -610,13 +637,25 @@ fn draw_wallet_confirm<D: DrawTarget<Color = Rgb565>>(
     let second = &address[mid..];
     let body = [first, second];
 
-    let rows: [CardRow; 1] = [CardRow::new("PATH", "m/44'/501'/0'/0'")];
+    // Passphrase status goes in the subtitle — the place the user's eyes
+    // already land, no extra chrome.
+    let subtitle = if has_passphrase {
+        "Passphrase-protected"
+    } else {
+        "Seed-only wallet"
+    };
+    // Seed length row: quick sanity check that the created/loaded wallet
+    // matches the word count the user picked. Path/network are both fixed
+    // and would just be noise.
+    let length = if word_count == 24 { "24 WORDS" } else { "12 WORDS" };
+    let rows: [CardRow; 1] = [CardRow::new("SEED", length)];
 
     CardScreen {
         header: HeaderKind::Title(title),
         counter: None,
+        right_label: None,
         title: Some("CONFIRM"),
-        subtitle: Some("Verify the address"),
+        subtitle: Some(subtitle),
         body_lines: &body,
         rows: &rows,
         buttons: ButtonBar::new().back("CANCEL").confirm("CONFIRM"),
@@ -642,12 +681,13 @@ fn draw_load_method<D: DrawTarget<Color = Rgb565>>(
     ListScreen {
         header: HeaderKind::Title("LOAD WALLET"),
         counter: Some((sel + 1, 2)),
+        right_label: None,
         description: None,
         items: &rows,
         selected: sel,
         max_visible: 2,
         selectable: true,
-        buttons: ButtonBar::new().back("BACK").confirm("SELECT"),
+        buttons: ButtonBar::new(),
     }
     .draw(display, &theme)
 }
@@ -670,12 +710,13 @@ fn draw_create_word_count<D: DrawTarget<Color = Rgb565>>(
     ListScreen {
         header: HeaderKind::Title("WORD COUNT"),
         counter: Some((sel + 1, 2)),
+        right_label: None,
         description: None,
         items: &rows,
         selected: sel,
         max_visible: 2,
         selectable: true,
-        buttons: ButtonBar::new().back("BACK").confirm("SELECT"),
+        buttons: ButtonBar::new(),
     }
     .draw(display, &theme)
 }
@@ -700,18 +741,78 @@ fn draw_create_method<D: DrawTarget<Color = Rgb565>>(
     ListScreen {
         header: HeaderKind::Title("METHOD"),
         counter: Some((sel + 1, 4)),
+        right_label: None,
         description: None,
         items: &rows,
         selected: sel,
         max_visible: 3,
         selectable: true,
-        buttons: ButtonBar::new().back("BACK").confirm("SELECT"),
+        buttons: ButtonBar::new(),
     }
     .draw(display, &theme)
 }
 
 /// Settings menu: list register with Title header. Items depend on whether
 /// a wallet is loaded.
+/// Derived-accounts list. Each row: numbered prefix (01/02/…) + short
+/// address label + full derivation path as subtitle. Read-cursor only —
+/// Confirm/Back both exit back to Settings (state-machine decides).
+fn draw_accounts_list<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    accounts: &[(String, String)],
+    selected: usize,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{ButtonBar, HeaderKind, ListRow};
+    use crate::ui::{screens::ListScreen, Theme};
+
+    let theme = Theme::faraday_240();
+
+    if accounts.is_empty() {
+        // Degenerate — settings flow normally populates at least one entry,
+        // but guard against the empty case rather than indexing into nothing.
+        let rows: [ListRow; 1] = [ListRow::new("(no accounts)")];
+        return ListScreen {
+            header: HeaderKind::Title("ACCOUNTS"),
+            counter: None,
+            right_label: None,
+            description: None,
+            items: &rows,
+            selected: 0,
+            max_visible: 1,
+            selectable: false,
+            buttons: ButtonBar::new(),
+        }
+        .draw(display, &theme);
+    }
+
+    // Own the formatted strings so ListRow borrows survive past this closure.
+    let nums: Vec<String> = (1..=accounts.len()).map(|i| alloc::format!("{:02}", i)).collect();
+    let shorts: Vec<String> = accounts.iter().map(|(_, addr)| shorten_address(addr)).collect();
+    let rows: Vec<ListRow> = (0..accounts.len())
+        .map(|i| ListRow {
+            prefix: Some(&nums[i]),
+            label: &shorts[i],
+            subtitle: Some(&accounts[i].0),
+        })
+        .collect();
+
+    let total = accounts.len();
+    let sel = selected.min(total - 1);
+
+    ListScreen {
+        header: HeaderKind::Title("ACCOUNTS"),
+        counter: Some((sel + 1, total)),
+        right_label: None,
+        description: None,
+        items: &rows,
+        selected: sel,
+        max_visible: 3,
+        selectable: true,
+        buttons: ButtonBar::new(),
+    }
+    .draw(display, &theme)
+}
+
 fn draw_settings_menu<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     selected: usize,
@@ -741,12 +842,13 @@ fn draw_settings_menu<D: DrawTarget<Color = Rgb565>>(
     ListScreen {
         header: HeaderKind::Title("SETTINGS"),
         counter: Some((sel + 1, total)),
+        right_label: None,
         description: None,
         items,
         selected: sel,
         max_visible: 3,
         selectable: true,
-        buttons: ButtonBar::new().back("BACK").confirm("SELECT"),
+        buttons: ButtonBar::new(),
     }
     .draw(display, &theme)
 }
@@ -783,6 +885,7 @@ fn draw_show_words<D: DrawTarget<Color = Rgb565>>(
     ListScreen {
         header: HeaderKind::Title("SEED"),
         counter: Some((page + 1, total_pages)),
+        right_label: None,
         description: None,
         items: &rows,
         selected: 0,
@@ -839,12 +942,13 @@ fn draw_verify_word<D: DrawTarget<Color = Rgb565>>(
     ListScreen {
         header: HeaderKind::Title(&title),
         counter: Some((check_num, total_checks)),
+        right_label: None,
         description: None,
         items: &rows,
         selected: sel,
         max_visible: 4,
         selectable: true,
-        buttons: ButtonBar::new().back("BACK").confirm("SELECT"),
+        buttons: ButtonBar::new(),
     }
     .draw(display, &theme)
 }
@@ -899,19 +1003,36 @@ fn draw_qr_block<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     compact_data: &[u8],
     block_index: usize,
-    seed_loaded: bool,
+    _seed_loaded: bool,
 ) -> Result<(), D::Error> {
-    display.clear(colors::BG_DARK)?;
+    use crate::ui::widgets::{Header, HeaderKind};
+    use crate::ui::Theme;
 
-    // Must match the ECL used by `draw_qr` for the full seed QR so the block
-    // view shows the same matrix the user is transcribing.
+    let theme = Theme::faraday_240();
+    display.fill_solid(
+        &Rectangle::new(Point::zero(), Size::new(theme.width, theme.height)),
+        theme.bg,
+    )?;
+
+    let header_rect = Rectangle::new(
+        Point::zero(),
+        Size::new(theme.width, theme.header_h),
+    );
+
+    // Must match the ECL used for the full seed QR so the block view shows
+    // the same matrix the user is transcribing.
     let (matrix, qr_size) = match crate::qr::encode_qr::generate_qr_matrix(
         compact_data,
         crate::qr::encode_qr::QrEcLevel::L,
     ) {
         Ok(m) => m,
         Err(_) => {
-            draw_status_bar(display, "Transcribe", seed_loaded)?;
+            Header {
+                kind: HeaderKind::Title("TRANSCRIBE"),
+                counter: None,
+                right_label: None,
+            }
+            .draw(display, &theme, header_rect)?;
             return Ok(());
         }
     };
@@ -924,15 +1045,20 @@ fn draw_qr_block<D: DrawTarget<Color = Rgb565>>(
     let br = clamped / blocks_per_side;
     let bc = clamped % blocks_per_side;
 
-    let title = format!("Block ({},{})  {}/{}", br + 1, bc + 1, clamped + 1, total);
-    draw_status_bar(display, &title, seed_loaded)?;
+    // Header + block counter in the right slot.
+    Header {
+        kind: HeaderKind::Title("TRANSCRIBE"),
+        counter: Some((clamped + 1, total)),
+        right_label: None,
+    }
+    .draw(display, &theme, header_rect)?;
 
-    // Zoomed block: fit within a 160×160 area below the status bar.
+    // Zoomed block: fit within a 160×160 area below the header.
     let zoom_area = 160i32;
     let cell_size = (zoom_area / block_side as i32).max(1);
     let block_pixel = cell_size * block_side as i32;
     let zoom_x = (240 - block_pixel) / 2;
-    let zoom_y = 30i32;
+    let zoom_y = theme.header_h as i32 + 6;
 
     // Grey backing under the zoomed block. Each cell is then filled at a
     // 1px inset, so the backing shows through as a thin border around every
@@ -1060,29 +1186,120 @@ fn draw_message<D: DrawTarget<Color = Rgb565>>(
 }
 
 /// TX review screen.
+/// Transaction review. Scrollable list of info lines (`!`-prefixed lines
+/// get danger color), with REJECT (back) / SIGN (confirm) buttons. SIGN is
+/// rendered in dim color when `can_sign` is false — the loaded wallet's
+/// pubkey isn't in the tx's required-signer set.
 fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     info_lines: &[String],
     scroll: usize,
-    selected: usize,
+    _selected: usize,
     can_sign: bool,
+    _seed_loaded: bool,
+) -> Result<(), D::Error> {
+    use crate::ui::layout::{split_bottom, split_top};
+    use crate::ui::widgets::{ButtonBar, Header, HeaderKind};
+    use crate::ui::Theme;
+
+    let theme = Theme::faraday_240();
+    let screen = Rectangle::new(
+        Point::zero(),
+        Size::new(theme.width, theme.height),
+    );
+    display.fill_solid(&screen, theme.bg)?;
+
+    let (header_rect, rest) = split_top(screen, theme.header_h as i32);
+    let (body_rect, footer_rect) = split_bottom(rest, theme.footer_h as i32);
+
+    // Header counter shows the scroll window position so users know whether
+    // there's more below they haven't seen.
+    let line_h: i32 = 14;
+    let body_h = body_rect.size.height as i32 - theme.space_sm * 2;
+    let visible_lines = (body_h / line_h).max(1) as usize;
+    let total = info_lines.len();
+    let max_scroll = total.saturating_sub(visible_lines);
+    let counter = if total > visible_lines {
+        Some((scroll.min(max_scroll) + 1, max_scroll + 1))
+    } else {
+        None
+    };
+
+    Header {
+        kind: HeaderKind::Title("REVIEW TX"),
+        counter,
+        right_label: None,
+    }
+    .draw(display, &theme, header_rect)?;
+
+    // Body lines. Accept either "! line" (with space) or "!line" as the
+    // warning prefix — both exist in the upstream parser output.
+    let x = body_rect.top_left.x + theme.space_md;
+    let start_y = body_rect.top_left.y + theme.space_sm + 10;
+    let end = total.min(scroll + visible_lines);
+    for (vi, idx) in (scroll..end).enumerate() {
+        let line = &info_lines[idx];
+        let (text, color) = if let Some(rest) = line.strip_prefix("! ") {
+            (rest, theme.danger)
+        } else if let Some(rest) = line.strip_prefix('!') {
+            (rest, theme.danger)
+        } else {
+            (line.as_str(), theme.text)
+        };
+        let y = start_y + vi as i32 * line_h;
+        Text::with_alignment(
+            text,
+            Point::new(x, y),
+            theme.style_sm(color),
+            Alignment::Left,
+        )
+        .draw(display)?;
+    }
+
+    ButtonBar::new()
+        .back("REJECT")
+        .confirm("SIGN")
+        .confirm_disabled(!can_sign)
+        .draw(display, &theme, footer_rect)?;
+
+    Ok(())
+}
+
+fn draw_message_review<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    message_bytes: &[u8],
+    scroll: usize,
+    selected: usize,
     seed_loaded: bool,
 ) -> Result<(), D::Error> {
     display.clear(colors::BG_DARK)?;
-    draw_status_bar(display, "Review TX", seed_loaded)?;
+    draw_status_bar(display, "Sign Message", seed_loaded)?;
 
-    let normal_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
-    let warn_style = MonoTextStyle::new(&FONT_6X10, colors::DANGER);
-    let max_lines = 15usize;
+    let label_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
+    let text_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
 
-    for (vi, i) in (scroll..info_lines.len().min(scroll + max_lines)).enumerate() {
-        let y = 35 + vi as i32 * 12;
-        let line = &info_lines[i];
-        let style = if line.starts_with('!') { warn_style } else { normal_style };
-        Text::new(line, Point::new(5, y), style).draw(display)?;
+    Text::new("Message:", Point::new(5, 35), label_style).draw(display)?;
+
+    let text = core::str::from_utf8(message_bytes).unwrap_or("(binary data)");
+    let max_chars_per_line = 38usize;
+    let lines: Vec<&str> = text.as_bytes()
+        .chunks(max_chars_per_line)
+        .map(|chunk| core::str::from_utf8(chunk).unwrap_or(""))
+        .collect();
+    let max_visible = 12usize;
+    let clamped_scroll = scroll.min(lines.len().saturating_sub(max_visible));
+    for (vi, i) in (clamped_scroll..lines.len().min(clamped_scroll + max_visible)).enumerate() {
+        let y = 50 + vi as i32 * 12;
+        Text::new(lines[i], Point::new(5, y), text_style).draw(display)?;
     }
 
-    draw_button_bar_ex(display, "Sign", "Reject", selected, can_sign)?;
+    Text::new(
+        &format!("{} bytes", message_bytes.len()),
+        Point::new(5, 50 + max_visible as i32 * 12 + 5),
+        label_style,
+    ).draw(display)?;
+
+    draw_button_bar_ex(display, "Sign", "Reject", selected, true)?;
 
     Ok(())
 }
@@ -1199,7 +1416,11 @@ fn draw_show_address<D: DrawTarget<Color = Rgb565>>(
                 Size::new(theme.width, theme.height),
             );
             display.fill_solid(&screen, theme.bg)?;
-            Qr { data: &uri }.draw(display, &theme, screen)
+            Qr {
+                data: uri.as_bytes(),
+                ec: crate::qr::encode_qr::QrEcLevel::M,
+            }
+            .draw(display, &theme, screen)
         }
         None => {
             // No wallet loaded — card with a single info row.
@@ -1207,6 +1428,7 @@ fn draw_show_address<D: DrawTarget<Color = Rgb565>>(
             CardScreen {
                 header: HeaderKind::Title("ADDRESS"),
                 counter: None,
+        right_label: None,
                 title: Some("NO WALLET"),
                 subtitle: Some("Create or load one first"),
                 body_lines: &[],
@@ -1237,6 +1459,7 @@ fn draw_about<D: DrawTarget<Color = Rgb565>>(
     CardScreen {
         header: HeaderKind::Title("ABOUT"),
         counter: None,
+        right_label: None,
         title: Some("FARADAY"),
         subtitle: Some("Air-gapped Solana signer"),
         body_lines: &[],
@@ -1266,6 +1489,7 @@ fn draw_export_seed_warning<D: DrawTarget<Color = Rgb565>>(
     ListScreen {
         header: HeaderKind::Title("EXPORT SEED"),
         counter: None,
+        right_label: None,
         description: Some("Reveals your seed"),
         items: &rows,
         selected: sel,
@@ -1295,6 +1519,7 @@ fn draw_power_off<D: DrawTarget<Color = Rgb565>>(
     ListScreen {
         header: HeaderKind::Title("POWER OFF"),
         counter: None,
+        right_label: None,
         description: None,
         items: &rows,
         selected: sel,
@@ -1306,13 +1531,263 @@ fn draw_power_off<D: DrawTarget<Color = Rgb565>>(
 }
 
 /// Passphrase mismatch error screen.
-/// Full-screen SeedQR export. Chromeless — the QR fills the display so a
-/// phone camera has the largest possible scan target. CONFIRM / BACK exit,
-/// SECONDARY (Key2) toggles standard vs compact mode (handled by the state
-/// machine).
-fn draw_seed_qr<D: DrawTarget<Color = Rgb565>>(
+/// BIP39 word picker. Header shows progress ("WORD 4/12"), a preview band
+/// renders the typed prefix with the current cursor letter highlighted
+/// ("app[l]"), and the filtered candidates appear as a scrollable list.
+fn draw_word_picker_new<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
-    data: &str,
+    picker: &crate::gui::app::WordPicker,
+) -> Result<(), D::Error> {
+    use crate::ui::layout::{split_bottom, split_top};
+    use crate::ui::widgets::{ButtonBar, Header, HeaderKind, List, ListRow};
+    use crate::ui::Theme;
+
+    let theme = Theme::faraday_240();
+    let screen = Rectangle::new(
+        Point::zero(),
+        Size::new(theme.width, theme.height),
+    );
+    display.fill_solid(&screen, theme.bg)?;
+
+    let (header_rect, rest) = split_top(screen, theme.header_h as i32);
+    // No button bar — Key3/Key1 grammar is enough; this screen has custom
+    // Left/Right (cycle letter) + Key2 (append) + Confirm (pick) semantics
+    // that on-screen labels can't capture cleanly.
+    let body_rect = rest;
+
+    Header {
+        kind: HeaderKind::Title("WORD"),
+        counter: Some((picker.word_index + 1, picker.word_count)),
+        right_label: None,
+    }
+    .draw(display, &theme, header_rect)?;
+
+    // Preview band: prefix + `[cursor]`. The cursor char gets a cyan fill
+    // behind it so it visually reads as "this is the letter you're about
+    // to add if you press Key2".
+    let preview_h = 38i32;
+    let (preview_rect, rest) = split_top(body_rect, preview_h);
+    let cx = preview_rect.top_left.x + preview_rect.size.width as i32 / 2;
+    let cy = preview_rect.top_left.y + preview_rect.size.height as i32 - 10;
+    let prefix = &picker.prefix;
+    let cursor_c = picker.current_char();
+    let composed = alloc::format!("{}{}", prefix, cursor_c);
+    Text::with_alignment(
+        &composed,
+        Point::new(cx, cy),
+        theme.style_lg(theme.text),
+        Alignment::Center,
+    )
+    .draw(display)?;
+
+    // Filtered candidate list (lower body).
+    let filtered = picker.filtered_words();
+    let (list_rect, _footer) = split_bottom(rest, 0);
+
+    if filtered.is_empty() {
+        let fx = list_rect.top_left.x + list_rect.size.width as i32 / 2;
+        let fy = list_rect.top_left.y + list_rect.size.height as i32 / 2;
+        Text::with_alignment(
+            "no matches",
+            Point::new(fx, fy),
+            theme.style_sm(theme.dim),
+            Alignment::Center,
+        )
+        .draw(display)?;
+        return Ok(());
+    }
+
+    // Build ListRows from the filtered words. Static strings from the
+    // wordlist — no allocation needed for the labels themselves.
+    let rows: Vec<ListRow> = filtered
+        .iter()
+        .map(|(_idx, word)| ListRow::new(word))
+        .collect();
+
+    let body_inset = Rectangle::new(
+        Point::new(
+            list_rect.top_left.x,
+            list_rect.top_left.y + theme.space_sm,
+        ),
+        Size::new(
+            list_rect.size.width,
+            list_rect.size.height.saturating_sub(theme.space_sm as u32),
+        ),
+    );
+    List {
+        items: &rows,
+        selected: picker.list_selected,
+        max_visible: 3,
+        selectable: true,
+    }
+    .draw(display, &theme, body_inset)?;
+
+    // Silence unused warning for ButtonBar in case we flip the footer back.
+    let _ = ButtonBar::new();
+
+    Ok(())
+}
+
+/// "Load a wallet first" — user hit SIGN on the main menu without a seed.
+fn draw_sign_no_wallet<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{ButtonBar, CardRow, HeaderKind};
+    use crate::ui::{screens::CardScreen, Theme};
+    let theme = Theme::faraday_240();
+    let body = ["Create or load a wallet", "before signing."];
+    let rows: [CardRow; 0] = [];
+    CardScreen {
+        header: HeaderKind::Title("SIGN"),
+        counter: None,
+        right_label: None,
+        title: Some("NO WALLET"),
+        subtitle: Some("Nothing to sign with"),
+        body_lines: &body,
+        rows: &rows,
+        buttons: ButtonBar::new().back("BACK"),
+    }
+    .draw(display, &theme)
+}
+
+/// Address-verification result. Shows whether the scanned address was
+/// derived from the loaded seed and, if so, at which account index.
+fn draw_verify_address_result_card<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    address: &str,
+    result: &crate::crypto::derivation::AddressMatch,
+) -> Result<(), D::Error> {
+    use crate::crypto::derivation::AddressMatch;
+    use crate::ui::widgets::{ButtonBar, CardRow, HeaderKind};
+    use crate::ui::{screens::CardScreen, Theme};
+
+    let theme = Theme::faraday_240();
+    let short = shorten_address(address);
+    let body = [short.as_str()];
+
+    let (title, subtitle, account_line) = match result {
+        AddressMatch::Standard { account } => {
+            let line = alloc::format!("Account {}", account);
+            ("MATCH", "Derived from your seed", Some(line))
+        }
+        AddressMatch::NotFound => (
+            "NOT YOURS",
+            "Not derivable from your seed",
+            None,
+        ),
+        AddressMatch::InvalidFormat => (
+            "INVALID",
+            "Not a Solana address",
+            None,
+        ),
+    };
+
+    // Account row only on matches — no point showing "Account —" otherwise.
+    let account_rows: Vec<CardRow> = account_line
+        .as_deref()
+        .map(|v| vec![CardRow::new("ACCOUNT", v)])
+        .unwrap_or_default();
+
+    CardScreen {
+        header: HeaderKind::Title("VERIFY ADDRESS"),
+        counter: None,
+        right_label: None,
+        title: Some(title),
+        subtitle: Some(subtitle),
+        body_lines: &body,
+        rows: &account_rows,
+        buttons: ButtonBar::new().back("BACK"),
+    }
+    .draw(display, &theme)
+}
+
+/// Paper-seed didn't decode to the currently-loaded wallet's mnemonic.
+fn draw_verify_backup_seed_mismatch<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{ButtonBar, CardRow, HeaderKind};
+    use crate::ui::{screens::CardScreen, Theme};
+    let theme = Theme::faraday_240();
+    let body = [
+        "The scanned QR is not",
+        "this wallet's seed.",
+    ];
+    let rows: [CardRow; 0] = [];
+    CardScreen {
+        header: HeaderKind::Title("VERIFY BACKUP"),
+        counter: None,
+        right_label: None,
+        title: Some("SEED MISMATCH"),
+        subtitle: Some("Paper doesn't match loaded wallet"),
+        body_lines: &body,
+        rows: &rows,
+        buttons: ButtonBar::new().back("BACK").confirm("RETRY"),
+    }
+    .draw(display, &theme)
+}
+
+/// Passphrase entered during backup-verify doesn't derive the expected
+/// wallet address.
+fn draw_verify_backup_passphrase_mismatch<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{ButtonBar, CardRow, HeaderKind};
+    use crate::ui::{screens::CardScreen, Theme};
+    let theme = Theme::faraday_240();
+    let body = [
+        "The typed passphrase",
+        "doesn't match this wallet.",
+    ];
+    let rows: [CardRow; 0] = [];
+    CardScreen {
+        header: HeaderKind::Title("VERIFY BACKUP"),
+        counter: None,
+        right_label: None,
+        title: Some("PASSPHRASE OFF"),
+        subtitle: Some("Address doesn't match"),
+        body_lines: &body,
+        rows: &rows,
+        buttons: ButtonBar::new().back("BACK").confirm("RETRY"),
+    }
+    .draw(display, &theme)
+}
+
+/// Paper backup confirmed to derive the loaded wallet (with passphrase if set).
+fn draw_verify_backup_success<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    has_passphrase: bool,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{ButtonBar, CardRow, HeaderKind};
+    use crate::ui::{screens::CardScreen, Theme};
+    let theme = Theme::faraday_240();
+    let subtitle = if has_passphrase {
+        "Seed + passphrase match"
+    } else {
+        "Seed matches this wallet"
+    };
+    let body = ["Your paper backup will", "restore this wallet."];
+    let rows: [CardRow; 0] = [];
+    CardScreen {
+        header: HeaderKind::Title("VERIFY BACKUP"),
+        counter: None,
+        right_label: None,
+        title: Some("VERIFIED"),
+        subtitle: Some(subtitle),
+        body_lines: &body,
+        rows: &rows,
+        buttons: ButtonBar::new().confirm("DONE"),
+    }
+    .draw(display, &theme)
+}
+
+/// Full-screen chromeless QR. Used for every "device shows a QR for the
+/// world to scan" moment — seed backup, signed tx, signature, anything
+/// else. Max scan target for phone cameras; any keypress returns to the
+/// previous screen (handled by the state machine).
+fn draw_fullscreen_qr<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    data: &[u8],
+    ec: crate::qr::encode_qr::QrEcLevel,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::Qr;
     use crate::ui::Theme;
@@ -1324,7 +1799,7 @@ fn draw_seed_qr<D: DrawTarget<Color = Rgb565>>(
         Size::new(theme.width, theme.height),
     );
     display.fill_solid(&screen, theme.bg)?;
-    Qr { data }.draw(display, &theme, screen)
+    Qr { data, ec }.draw(display, &theme, screen)
 }
 
 /// Passphrase mismatch error card. Any key retries the input.
@@ -1345,6 +1820,7 @@ fn draw_passphrase_mismatch<D: DrawTarget<Color = Rgb565>>(
     CardScreen {
         header: HeaderKind::Title("MISMATCH"),
         counter: None,
+        right_label: None,
         title: Some("NO MATCH"),
         subtitle: Some("Passphrases don't match"),
         body_lines: &body,
@@ -1397,6 +1873,7 @@ fn draw_camera_entropy<D: DrawTarget<Color = Rgb565>>(
     Header {
         kind: HeaderKind::Title("CAMERA"),
         counter: Some((frames_collected + 1, target)),
+        right_label: None,
     }
     .draw(display, &theme, header_rect)?;
 
@@ -1556,6 +2033,7 @@ fn draw_entropy_picker<D: DrawTarget<Color = Rgb565>>(
     Header {
         kind: HeaderKind::Title(title),
         counter: Some((progress, target)),
+        right_label: None,
     }
     .draw(display, &theme, header_rect)?;
 
@@ -1684,70 +2162,127 @@ fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     title: &str,
     hint: &str,
-    seed_loaded: bool,
+    _seed_loaded: bool,
     has_frame: bool,
     error: Option<&str>,
     diag: crate::camera::ScanDiagnostics,
 ) -> Result<(), D::Error> {
-    if !has_frame {
-        display.clear(colors::BG_DARK)?;
-    }
-    draw_status_bar(display, title, seed_loaded)?;
+    use crate::ui::layout::{split_bottom, split_top};
+    use crate::ui::widgets::{Header, HeaderKind};
+    use crate::ui::Theme;
 
+    let theme = Theme::faraday_240();
+    let screen = Rectangle::new(
+        Point::zero(),
+        Size::new(theme.width, theme.height),
+    );
+
+    // Camera states we handle differently:
+    // - error: dark full-screen card with the MMAL/V4L2 failure wrapped out
+    // - no frame yet: dark screen with "opening..." placeholder
+    // - live: translucent chrome over the live camera blit
+    let has_chrome_bg = !has_frame || error.is_some();
+    if has_chrome_bg {
+        display.fill_solid(&screen, theme.bg)?;
+    }
+
+    // Error: dedicated card, no reticle, diagnostic body.
     if let Some(err) = error {
-        Rectangle::new(Point::new(5, 50), Size::new(230, 140))
-            .into_styled(PrimitiveStyle::with_fill(colors::BG_CARD))
-            .draw(display)?;
-        let style = MonoTextStyle::new(&FONT_9X15, colors::DANGER);
-        Text::with_alignment("Camera unavailable", Point::new(120, 70), style, Alignment::Center)
-            .draw(display)?;
-        let sub = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-        const LINE_CHARS: usize = 37;
-        const MAX_LINES: usize = 5;
-        let mut y = 88i32;
+        let header_h = theme.header_h as i32;
+        let (header_rect, body_rect) = split_top(screen, header_h);
+        Header {
+            kind: HeaderKind::Title(title),
+            counter: None,
+            right_label: None,
+        }
+        .draw(display, &theme, header_rect)?;
+
+        let cx = body_rect.top_left.x + body_rect.size.width as i32 / 2;
+        let mut y = body_rect.top_left.y + 24;
+        Text::with_alignment(
+            "Camera unavailable",
+            Point::new(cx, y),
+            theme.style_lg(theme.danger),
+            Alignment::Center,
+        )
+        .draw(display)?;
+        y += 22;
+
+        const LINE_CHARS: usize = 24;
+        const MAX_LINES: usize = 4;
         let mut remaining = err.as_bytes();
         for _ in 0..MAX_LINES {
-            if remaining.is_empty() { break; }
+            if remaining.is_empty() {
+                break;
+            }
             let take = remaining.len().min(LINE_CHARS);
             let line = std::str::from_utf8(&remaining[..take]).unwrap_or("");
-            Text::with_alignment(line, Point::new(120, y), sub, Alignment::Center)
-                .draw(display)?;
-            y += 12;
+            Text::with_alignment(
+                line,
+                Point::new(cx, y),
+                theme.style_sm(theme.muted),
+                Alignment::Center,
+            )
+            .draw(display)?;
+            y += 16;
             remaining = &remaining[take..];
         }
-        Text::with_alignment("Press Enter for test data", Point::new(120, 170), sub, Alignment::Center)
-            .draw(display)?;
-        Text::with_alignment("Esc: back", Point::new(120, 185), sub, Alignment::Center)
-            .draw(display)?;
         return Ok(());
     }
+
+    // Header strip (always drawn, over the camera feed when live). Fill with
+    // the theme bg so the title reads — overlay translucence isn't available
+    // on a 1-bit-pixel framebuffer.
+    let header_h = theme.header_h as i32;
+    let (header_rect, rest) = split_top(screen, header_h);
+    display.fill_solid(&header_rect, theme.bg)?;
+    Header {
+        kind: HeaderKind::Title(title),
+        counter: None,
+        right_label: None,
+    }
+    .draw(display, &theme, header_rect)?;
 
     if !has_frame {
-        let style = MonoTextStyle::new(&FONT_9X15, colors::TEXT_SECONDARY);
-        Text::with_alignment("Opening camera...", Point::new(120, 120), style, Alignment::Center)
-            .draw(display)?;
+        // Warming up — show a placeholder centered in the body.
+        let cx = rest.top_left.x + rest.size.width as i32 / 2;
+        let cy = rest.top_left.y + rest.size.height as i32 / 2;
+        Text::with_alignment(
+            "OPENING CAMERA…",
+            Point::new(cx, cy),
+            theme.style_sm(theme.muted),
+            Alignment::Center,
+        )
+        .draw(display)?;
         return Ok(());
     }
 
-    let reticle = Rectangle::new(Point::new(40, 40), Size::new(160, 160));
-    reticle
-        .into_styled(PrimitiveStyle::with_stroke(colors::SOLANA_GREEN, 2))
-        .draw(display)?;
+    // Live reticle over the camera blit.
+    let ret_side: i32 = 160;
+    let ret_x = rest.top_left.x + (rest.size.width as i32 - ret_side) / 2;
+    let ret_y = rest.top_left.y + (rest.size.height as i32 - ret_side) / 2 - 6;
+    Rectangle::new(
+        Point::new(ret_x, ret_y),
+        Size::new(ret_side as u32, ret_side as u32),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(theme.accent, 2))
+    .draw(display)?;
 
-    // Scan-pipeline heartbeat: a dot that lights when any QR was decoded in
-    // the last ~2s, paired with the most recent UR `seq/total`. Lets the
-    // user tell "camera sees nothing" from "fragments arriving, not done".
+    // Scan-pipeline heartbeat (pulsing dot + UR seq/total when assembling).
     draw_scan_diag(display, diag)?;
 
-    Rectangle::new(Point::new(0, 210), Size::new(240, 30))
-        .into_styled(PrimitiveStyle::with_fill(colors::BG_DARK))
-        .draw(display)?;
-    let hint_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
-    Text::with_alignment(hint, Point::new(120, 224), hint_style, Alignment::Center)
-        .draw(display)?;
-    let sub = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    Text::with_alignment("Enter: test data  Esc: back", Point::new(120, 235), sub, Alignment::Center)
-        .draw(display)?;
+    // Footer strip — dark band with the hint copy.
+    let (_body, footer_rect) = split_bottom(rest, 26);
+    display.fill_solid(&footer_rect, theme.bg)?;
+    let cx = footer_rect.top_left.x + footer_rect.size.width as i32 / 2;
+    let cy = footer_rect.top_left.y + footer_rect.size.height as i32 - 9;
+    Text::with_alignment(
+        hint,
+        Point::new(cx, cy),
+        theme.style_sm(theme.muted),
+        Alignment::Center,
+    )
+    .draw(display)?;
 
     Ok(())
 }

@@ -21,7 +21,8 @@ use crate::ui::Theme;
 pub struct QrScreen<'a> {
     pub header: HeaderKind<'a>,
     pub counter: Option<(usize, usize)>,
-    pub data: &'a str,
+    pub data: &'a [u8],
+    pub ec: crate::qr::encode_qr::QrEcLevel,
     pub caption: Option<&'a str>,
     pub buttons: ButtonBar<'a>,
 }
@@ -45,7 +46,7 @@ impl<'a> QrScreen<'a> {
             HeaderKind::Title(t) => HeaderKind::Title(t),
             HeaderKind::Brand => HeaderKind::Brand,
         };
-        Header { kind, counter: self.counter }
+        Header { kind, counter: self.counter, right_label: None }
             .draw(display, theme, header_rect)?;
 
         // Carve off a caption band at the bottom of the body. If no caption
@@ -54,7 +55,7 @@ impl<'a> QrScreen<'a> {
         let (qr_rect, caption_rect) =
             split_bottom(body_rect, caption_h);
 
-        Qr { data: self.data }.draw(display, theme, qr_rect)?;
+        Qr { data: self.data, ec: self.ec }.draw(display, theme, qr_rect)?;
 
         if let Some(caption) = self.caption {
             let baseline = caption_rect.top_left.y

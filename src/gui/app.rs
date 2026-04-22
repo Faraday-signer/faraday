@@ -25,6 +25,10 @@ pub enum InputEvent {
     Confirm,
     Back,
     Secondary,
+    /// Emitted by the input layer when the user long-presses Back (Key3).
+    /// Jumps straight to the Power Off confirm screen regardless of which
+    /// screen is active — hardware-wallet shortcut for "kill the session".
+    PowerOffShortcut,
 }
 
 /// Current screen with its mutable state.
@@ -64,6 +68,16 @@ pub enum Screen {
     /// Pre-export warning. Forces the user to read the consequence before any
     /// seed-backup action (menu entry, show-words, block view, etc.).
     ExportSeedWarning { selected: usize, from_settings: bool },
+    /// Specific warning before SHOW WORDS — the plaintext seed is the most
+    /// dangerous surface, so it gates that action even on the happy post-create
+    /// path (where the entry-level warning is skipped).
+    ShowWordsWarning {
+        compact_data: Vec<u8>,
+        mnemonic: String,
+        word_count: usize,
+        selected: usize,
+        from_settings: bool,
+    },
     /// Landing page for all seed-backup actions.
     ExportSeedQrMenu {
         compact_data: Vec<u8>,
@@ -147,6 +161,7 @@ pub enum Screen {
     },
     SignShowQr { data: String },
     SignMessageInput { grid: CharGrid },
+    SignMessageReview { message_bytes: Vec<u8>, scroll: usize, selected: usize },
     SignMessageResult { signature_hex: String },
 
     // Settings
@@ -300,6 +315,7 @@ impl CharGrid {
             InputEvent::Secondary => {
                 self.caps = !self.caps;
             }
+            InputEvent::PowerOffShortcut => {}
         }
         false
     }
@@ -381,6 +397,7 @@ impl WordPicker {
                     self.list_selected = 0;
                 }
             }
+            InputEvent::PowerOffShortcut => {}
         }
         None
     }
@@ -477,6 +494,13 @@ impl App {
         if was_blanked {
             // Any input wakes the screen — but we consume the input so the user
             // doesn't accidentally confirm a dialog they couldn't see.
+            return;
+        }
+        // Long-press Back shortcut: jump straight to the Power Off confirm
+        // regardless of current screen. Bypasses normal transition so users
+        // can shut down from anywhere (scan, char grid, tx review, …).
+        if matches!(event, InputEvent::PowerOffShortcut) {
+            self.screen = Screen::SettingsPowerOff { selected: 0 };
             return;
         }
         let screen = std::mem::replace(&mut self.screen, Screen::Splash);
@@ -633,6 +657,7 @@ impl App {
                 | Screen::CreatePassphraseMismatch { .. }
                 | Screen::CreateConfirm { .. }
                 | Screen::ExportSeedWarning { .. }
+                | Screen::ShowWordsWarning { .. }
                 | Screen::ExportSeedQrMenu { .. }
                 | Screen::ExportShowWords { .. }
                 | Screen::ExportSeedQr { .. }
@@ -655,6 +680,7 @@ impl App {
                 | Screen::SignReview { .. }
                 | Screen::SignShowQr { .. }
                 | Screen::SignMessageInput { .. }
+                | Screen::SignMessageReview { .. }
                 | Screen::SignMessageResult { .. }) => flows::sign::handle(self, s, event),
 
             s @ (Screen::SettingsMenu { .. }

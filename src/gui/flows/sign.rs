@@ -34,6 +34,18 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         // raw bytes is a strict superset of base64 text — anything an attacker
                         // could put in raw they could already put in base64.
                         let decoded = decode_qr::detect_and_decode(&data);
+
+                        // Message-signing path: a `faraday:msg:` envelope
+                        // decodes to message_bytes. Route to the dedicated
+                        // review screen before falling through to tx parsing.
+                        if let Some(message_bytes) = decoded.message_bytes.clone() {
+                            return Screen::SignMessageReview {
+                                message_bytes,
+                                scroll: 0,
+                                selected: 0,
+                            };
+                        }
+
                         let tx_bytes = match decoded.tx_bytes {
                             Some(b) => b,
                             // Fallback for raw-binary UR payloads detect_and_decode doesn't
@@ -111,6 +123,30 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 _ => {}
             }
             Screen::SignShowQr { data }
+        }
+
+        Screen::SignMessageReview { message_bytes, mut scroll, mut selected } => {
+            match event {
+                InputEvent::Up => { if scroll > 0 { scroll -= 1; } }
+                InputEvent::Down => { scroll += 1; }
+                InputEvent::Left | InputEvent::Right => { selected = 1 - selected; }
+                InputEvent::Confirm => {
+                    if selected == 0 {
+                        if let Some(wallet) = &app.wallet {
+                            let sig = crate::signer::sign_message(
+                                &message_bytes,
+                                &wallet.keypair.private_key,
+                            );
+                            let signature_hex = hex::encode(&sig);
+                            return Screen::SignMessageResult { signature_hex };
+                        }
+                    }
+                    return Screen::MainMenu { selected: 2 };
+                }
+                InputEvent::Back => return Screen::MainMenu { selected: 2 },
+                _ => {}
+            }
+            Screen::SignMessageReview { message_bytes, scroll, selected }
         }
 
         Screen::SignMessageInput { mut grid } => {
