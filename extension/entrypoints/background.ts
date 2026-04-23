@@ -7,7 +7,10 @@ import {
   setPairedPubkey
 } from "../src/lib/storage";
 import {
+  buildSignMessageQrPayload,
+  decodeBase64,
   isValidSolanaAddress,
+  validateSignedMessage,
   validateSignedTransactionMatch,
   validateUnsignedTransactionPayload
 } from "../src/lib/solana";
@@ -22,8 +25,69 @@ import type {
 } from "../src/lib/types";
 
 const SESSION_TTL_MS = 5 * 60 * 1000;
-const sessions = new Map<string, SignSession>();
 const LOG_PREFIX = "[Faraday][background]";
+
+/**
+ * Sign-session store. Writes land in `chrome.storage.session` so sessions
+ * survive MV3 service-worker eviction (they don't survive browser restart,
+ * which is what we want — a 5-min TTL session shouldn't outlive the browser).
+ * A process-local Map acts as a fast cache; on the first access after a
+ * wake-up we rehydrate it from storage.
+ *
+ * `chrome.storage.session` (not `.local`) is deliberate: session payloads
+ * can contain message or tx bytes the dapp sent us and we don't want them
+ * persisted to disk.
+ */
+const STORAGE_KEY = "faraday_sessions";
+const memoryCache = new Map<string, SignSession>();
+let rehydrated = false;
+
+async function rehydrate(): Promise<void> {
+  if (rehydrated) return;
+  try {
+    const raw = await chrome.storage.session.get(STORAGE_KEY);
+    const stored = (raw?.[STORAGE_KEY] ?? {}) as Record<string, SignSession>;
+    for (const [id, session] of Object.entries(stored)) {
+      memoryCache.set(id, session);
+    }
+  } catch (error) {
+    warn("Failed rehydrating sessions from storage", { error: String(error) });
+  }
+  rehydrated = true;
+}
+
+async function persist(): Promise<void> {
+  const serialized: Record<string, SignSession> = {};
+  for (const [id, session] of memoryCache.entries()) {
+    serialized[id] = session;
+  }
+  try {
+    await chrome.storage.session.set({ [STORAGE_KEY]: serialized });
+  } catch (error) {
+    warn("Failed persisting sessions to storage", { error: String(error) });
+  }
+}
+
+const sessions = {
+  async get(id: string): Promise<SignSession | undefined> {
+    await rehydrate();
+    return memoryCache.get(id);
+  },
+  async set(id: string, session: SignSession): Promise<void> {
+    await rehydrate();
+    memoryCache.set(id, session);
+    await persist();
+  },
+  async entries(): Promise<Array<[string, SignSession]>> {
+    await rehydrate();
+    return Array.from(memoryCache.entries());
+  }
+};
+
+/// Sentinel for sessions originated by the extension sidepanel rather
+/// than a dapp. Never matches a real HTTP(S) origin, so the existing
+/// origin-comparison checks naturally reject cross-flow access.
+const EXTENSION_ORIGIN = "ext:sidepanel";
 
 function debug(message: string, meta?: unknown): void {
   if (meta === undefined) {
@@ -49,13 +113,17 @@ function errorLog(message: string, meta?: unknown): void {
   console.error(`${LOG_PREFIX} ${message}`, meta);
 }
 
-function cleanupExpiredSessions(now = Date.now()): void {
-  for (const [sessionId, session] of sessions.entries()) {
+async function cleanupExpiredSessions(now = Date.now()): Promise<void> {
+  const entries = await sessions.entries();
+  for (const [sessionId, session] of entries) {
     if (session.expiresAt > now) {
       continue;
     }
+    if (session.status !== "pending") {
+      continue;
+    }
 
-    sessions.set(sessionId, {
+    await sessions.set(sessionId, {
       ...session,
       status: "failed",
       error: session.error || "Signing session expired."
@@ -171,7 +239,7 @@ async function handleMessage(
   message: RuntimeRequest,
   sender: chrome.runtime.MessageSender
 ): Promise<RuntimeResponse> {
-  cleanupExpiredSessions();
+  await cleanupExpiredSessions();
   const messageType = messageTypeOf(message);
   debug("Handling message", {
     type: messageType,
@@ -255,13 +323,60 @@ async function handleMessage(
       const session: SignSession = {
         id: sessionId,
         origin: message.origin,
+        kind: "tx",
         txBase64: message.txBase64,
         expectedPubkey: state.pairedPubkey,
         status: "pending",
         createdAt: Date.now(),
         expiresAt: Date.now() + SESSION_TTL_MS
       };
-      sessions.set(sessionId, session);
+      await sessions.set(sessionId, session);
+
+      const data: CreateSignSessionResult = {
+        sessionId,
+        signUrl: chrome.runtime.getURL(`sign.html?session=${encodeURIComponent(sessionId)}`)
+      };
+      return { ok: true, data };
+    }
+
+    case "faraday:create-sign-message-session": {
+      assertSenderOrigin(sender, message.origin);
+
+      const state = await getExtensionState();
+      if (!state.pairedPubkey) {
+        return { ok: false, error: "No paired pubkey. Open the extension and pair first." };
+      }
+
+      if (!state.approvedOrigins.includes(message.origin)) {
+        return { ok: false, error: "Origin is not approved for Faraday." };
+      }
+
+      let messageBytes: Uint8Array;
+      let messageQrBase64: string;
+      try {
+        messageBytes = decodeBase64(message.messageBase64.trim());
+        messageQrBase64 = buildSignMessageQrPayload(messageBytes);
+      } catch (error) {
+        const msg =
+          error instanceof Error
+            ? error.message
+            : "Message payload is not valid for Faraday sign-message flow.";
+        return { ok: false, error: msg };
+      }
+
+      const sessionId = makeSessionId();
+      const session: SignSession = {
+        id: sessionId,
+        origin: message.origin,
+        kind: "message",
+        messageBase64: message.messageBase64,
+        messageQrBase64,
+        expectedPubkey: state.pairedPubkey,
+        status: "pending",
+        createdAt: Date.now(),
+        expiresAt: Date.now() + SESSION_TTL_MS
+      };
+      await sessions.set(sessionId, session);
 
       const data: CreateSignSessionResult = {
         sessionId,
@@ -278,7 +393,7 @@ async function handleMessage(
         return { ok: false, error: "Origin is not approved for Faraday." };
       }
 
-      const session = sessions.get(message.sessionId);
+      const session = await sessions.get(message.sessionId);
       if (!session) {
         return { ok: false, error: "Signing session not found." };
       }
@@ -295,8 +410,70 @@ async function handleMessage(
       return { ok: true, data: { opened: true } };
     }
 
+    case "faraday:ext-create-sign-session": {
+      // Sidepanel Send flow. Sender must be the extension itself — we
+      // don't need the approved-origins check because this isn't a dapp
+      // request. `parseOriginFromSender` returns the chrome-extension://
+      // origin for messages from our own surfaces.
+      assertExtensionSender(sender);
+
+      const state = await getExtensionState();
+      if (!state.pairedPubkey) {
+        return { ok: false, error: "No paired pubkey. Pair a wallet first." };
+      }
+
+      try {
+        validateUnsignedTransactionPayload(message.txBase64, state.pairedPubkey);
+      } catch (error) {
+        const msg =
+          error instanceof Error
+            ? error.message
+            : "Transaction payload is not a valid Solana transaction.";
+        return { ok: false, error: msg };
+      }
+
+      const sessionId = makeSessionId();
+      const session: SignSession = {
+        id: sessionId,
+        origin: EXTENSION_ORIGIN,
+        kind: "tx",
+        txBase64: message.txBase64,
+        expectedPubkey: state.pairedPubkey,
+        status: "pending",
+        createdAt: Date.now(),
+        expiresAt: Date.now() + SESSION_TTL_MS
+      };
+      await sessions.set(sessionId, session);
+
+      const data: CreateSignSessionResult = {
+        sessionId,
+        signUrl: chrome.runtime.getURL(`sign.html?session=${encodeURIComponent(sessionId)}`)
+      };
+      return { ok: true, data };
+    }
+
+    case "faraday:ext-open-sign-window": {
+      assertExtensionSender(sender);
+
+      const session = await sessions.get(message.sessionId);
+      if (!session) {
+        return { ok: false, error: "Signing session not found." };
+      }
+      if (session.origin !== EXTENSION_ORIGIN) {
+        return { ok: false, error: "Session is not an extension-originated session." };
+      }
+      if (session.status !== "pending") {
+        return { ok: false, error: `Session is already ${session.status}.` };
+      }
+
+      const signUrl = chrome.runtime.getURL(`sign.html?session=${encodeURIComponent(session.id)}`);
+      await openSigningUiWindow(signUrl);
+
+      return { ok: true, data: { opened: true } };
+    }
+
     case "faraday:get-sign-session": {
-      const session = sessions.get(message.sessionId);
+      const session = await sessions.get(message.sessionId);
       if (!session) {
         return { ok: false, error: "Signing session not found." };
       }
@@ -304,7 +481,9 @@ async function handleMessage(
       const data: GetSignSessionResult = {
         sessionId: session.id,
         origin: session.origin,
+        kind: session.kind,
         txBase64: session.txBase64,
+        messageQrBase64: session.messageQrBase64,
         expectedPubkey: session.expectedPubkey,
         status: session.status,
         error: session.error
@@ -313,26 +492,31 @@ async function handleMessage(
     }
 
     case "faraday:get-sign-result": {
-      const session = sessions.get(message.sessionId);
+      const session = await sessions.get(message.sessionId);
       if (!session) {
         return { ok: false, error: "Signing session not found." };
       }
 
       const data: GetSignResult = {
+        kind: session.kind,
         status: session.status,
         signedTxBase64: session.signedTxBase64,
+        signatureHex: session.signatureHex,
         error: session.error
       };
       return { ok: true, data };
     }
 
     case "faraday:complete-sign-session": {
-      const session = sessions.get(message.sessionId);
+      const session = await sessions.get(message.sessionId);
       if (!session) {
         return { ok: false, error: "Signing session not found." };
       }
       if (session.status !== "pending") {
         return { ok: false, error: `Session is already ${session.status}.` };
+      }
+      if (session.kind !== "tx" || !session.txBase64) {
+        return { ok: false, error: "Session is not a transaction signing session." };
       }
 
       try {
@@ -343,7 +527,7 @@ async function handleMessage(
         );
       } catch (error) {
         const msg = error instanceof Error ? error.message : "Invalid signed transaction.";
-        sessions.set(session.id, {
+        await sessions.set(session.id, {
           ...session,
           status: "failed",
           error: msg
@@ -351,7 +535,7 @@ async function handleMessage(
         return { ok: false, error: msg };
       }
 
-      sessions.set(session.id, {
+      await sessions.set(session.id, {
         ...session,
         status: "completed",
         signedTxBase64: message.signedTxBase64,
@@ -360,13 +544,53 @@ async function handleMessage(
       return { ok: true, data: { status: "completed" } };
     }
 
+    case "faraday:complete-sign-message-session": {
+      const session = await sessions.get(message.sessionId);
+      if (!session) {
+        return { ok: false, error: "Signing session not found." };
+      }
+      if (session.status !== "pending") {
+        return { ok: false, error: `Session is already ${session.status}.` };
+      }
+      if (session.kind !== "message" || !session.messageBase64) {
+        return { ok: false, error: "Session is not a message signing session." };
+      }
+
+      let messageBytes: Uint8Array;
+      try {
+        messageBytes = decodeBase64(session.messageBase64.trim());
+      } catch {
+        return { ok: false, error: "Stored sign-message payload is invalid base64." };
+      }
+
+      try {
+        validateSignedMessage(messageBytes, message.signatureHex, session.expectedPubkey);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Invalid message signature.";
+        await sessions.set(session.id, {
+          ...session,
+          status: "failed",
+          error: msg
+        });
+        return { ok: false, error: msg };
+      }
+
+      await sessions.set(session.id, {
+        ...session,
+        status: "completed",
+        signatureHex: message.signatureHex.trim(),
+        error: undefined
+      });
+      return { ok: true, data: { status: "completed" } };
+    }
+
     case "faraday:cancel-sign-session": {
-      const session = sessions.get(message.sessionId);
+      const session = await sessions.get(message.sessionId);
       if (!session) {
         return { ok: false, error: "Signing session not found." };
       }
 
-      sessions.set(session.id, {
+      await sessions.set(session.id, {
         ...session,
         status: "canceled",
         error: message.reason || "Signing canceled."
