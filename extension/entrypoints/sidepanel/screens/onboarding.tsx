@@ -80,7 +80,7 @@ export function OnboardingScreen() {
 
           <div style={actionsStyle}>
             <PrimaryButton onClick={() => push({ name: "pair-scan" })}>
-              Pair device
+              Import wallet
             </PrimaryButton>
             <SecondaryButton onClick={() => push({ name: "pair-paste" })}>
               Paste address

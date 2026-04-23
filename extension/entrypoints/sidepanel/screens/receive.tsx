@@ -60,7 +60,7 @@ export function ReceiveScreen() {
     return (
       <PanelShell eyebrow="Receive" title="No wallet">
         <div style={wrapStyle}>
-          <p style={helpStyle}>Pair your Faraday device first.</p>
+          <p style={helpStyle}>Import your wallet first.</p>
         </div>
       </PanelShell>
     );

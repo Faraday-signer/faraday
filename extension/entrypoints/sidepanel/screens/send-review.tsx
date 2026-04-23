@@ -1,8 +1,12 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 
 import { LinkButton, PanelShell, PrimaryButton } from "../../../src/components/panel-shell";
+import { sendRuntimeMessage } from "../../../src/lib/runtime";
 import { useNavigation, useRouteOf } from "../../../src/lib/router";
+import { buildSolTransfer } from "../../../src/lib/sol-transfer";
 import { colors, fontFamily, font, letterSpacing, radius, space } from "../../../src/lib/theme";
+import type { CreateSignSessionResult } from "../../../src/lib/types";
+import { useWallet } from "../../../src/lib/use-wallet";
 
 function shortAddress(address: string): string {
   if (address.length <= 12) return address;
@@ -61,14 +65,43 @@ const noticeStyle: CSSProperties = {
 export function SendReviewScreen() {
   const nav = useNavigation();
   const route = useRouteOf("send-review");
+  const { pairedPubkey } = useWallet();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!route) return null;
 
   const { draft } = route;
 
-  function confirm() {
-    // Transaction construction + broadcasting wire-up lands in the data PR.
-    alert("Transaction build + broadcast arrives in the data layer pass.");
+  async function confirm() {
+    if (!pairedPubkey || busy) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const { txBase64 } = await buildSolTransfer({
+        from: pairedPubkey,
+        to: draft.recipient,
+        amountSol: draft.amountUi,
+      });
+      const res = await sendRuntimeMessage<CreateSignSessionResult>({
+        type: "faraday:ext-create-sign-session",
+        txBase64,
+      });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      nav.push({
+        name: "send-sign",
+        draft,
+        txBase64,
+        sessionId: res.data.sessionId,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -99,8 +132,25 @@ export function SendReviewScreen() {
           scan the signed response back here.
         </div>
 
+        {error && (
+          <div style={{
+            padding: space.sm,
+            borderRadius: radius.md,
+            background: "rgba(255, 107, 107, 0.08)",
+            border: `1px solid ${colors.error}`,
+            color: colors.error,
+            fontSize: font.xs,
+            fontFamily: fontFamily.mono,
+            lineHeight: 1.5,
+          }}>
+            {error}
+          </div>
+        )}
+
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: space.xs, marginTop: space.sm }}>
-          <PrimaryButton onClick={confirm}>Confirm with Faraday</PrimaryButton>
+          <PrimaryButton onClick={confirm} disabled={busy || !pairedPubkey}>
+            {busy ? "Preparing…" : "Confirm with Faraday"}
+          </PrimaryButton>
           <LinkButton onClick={() => nav.back()}>Edit transaction</LinkButton>
         </div>
       </div>
