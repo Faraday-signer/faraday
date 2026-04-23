@@ -73,7 +73,7 @@ function parsePairScan(raw: string): ScanResult {
   if (lower.startsWith("faraday:unsigned:") || lower.startsWith("faraday:tx:")) {
     return {
       kind: "wrong-mode",
-      hint: "That's a transaction QR, not a pairing QR. On your Faraday, go to Home → Show Address."
+      hint: "That's a transaction QR, not a wallet QR. On your Faraday, go to Home → Show Address."
     };
   }
 
@@ -239,7 +239,7 @@ export function PairScanScreen() {
       setDetectedPubkey(result.pubkey);
       setStatus(
         result.source === "faraday-pair"
-          ? "Faraday pair QR recognised."
+          ? "Faraday wallet QR recognised."
           : result.source === "solana-uri"
             ? "Solana address QR captured."
             : "Address captured."
@@ -341,7 +341,7 @@ export function PairScanScreen() {
   }
 
   return (
-    <PanelShell eyebrow="Pair Device" title="Scan your Faraday">
+    <PanelShell eyebrow="Import wallet" title={detectedPubkey ? "Confirm wallet" : "Scan to import"}>
       <div style={wrapStyle}>
         {cameraError ? (
           <ErrorBanner
@@ -353,7 +353,7 @@ export function PairScanScreen() {
 
         {mutationError ? (
           <ErrorBanner
-            title="Pairing failed"
+            title="Import failed"
             message={mutationError}
             onRetry={confirmPair}
             retrying={saving}
@@ -361,39 +361,42 @@ export function PairScanScreen() {
           />
         ) : null}
 
-        <div style={instructionCardStyle}>
-          <span style={instructionEyebrowStyle}>On your Faraday</span>
-          <span style={instructionStepStyle}>Home → Show Address</span>
-          <span style={instructionBodyStyle}>
-            Point your webcam at the address QR on the device screen.
-          </span>
-        </div>
+        {!detectedPubkey ? (
+          <>
+            <div style={instructionCardStyle}>
+              <span style={instructionEyebrowStyle}>On your Faraday</span>
+              <span style={instructionStepStyle}>Home → Show Address</span>
+              <span style={instructionBodyStyle}>
+                Point your webcam at the address QR on the device screen.
+              </span>
+            </div>
 
-        <div style={frameStyle}>
-          <video ref={videoRef} autoPlay muted playsInline style={videoStyle} />
-          <span style={corner("tl")} aria-hidden />
-          <span style={corner("tr")} aria-hidden />
-          <span style={corner("bl")} aria-hidden />
-          <span style={corner("br")} aria-hidden />
-        </div>
+            <div style={frameStyle}>
+              <video ref={videoRef} autoPlay muted playsInline style={videoStyle} />
+              <span style={corner("tl")} aria-hidden />
+              <span style={corner("tr")} aria-hidden />
+              <span style={corner("bl")} aria-hidden />
+              <span style={corner("br")} aria-hidden />
+            </div>
 
-        <p style={statusStyle(false)}>{status}</p>
+            <p style={statusStyle(false)}>{status}</p>
 
-        {detectedPubkey ? (
+            <LinkButton onClick={() => nav.replace({ name: "pair-paste" })}>Paste address instead</LinkButton>
+          </>
+        ) : (
           <div style={previewCardStyle}>
             <span style={{ fontFamily: fontFamily.display, fontSize: font.xs, letterSpacing: 1.6, textTransform: "uppercase", color: colors.textMuted }}>
-              Pair with this address?
+              Use this address?
             </span>
             <span style={previewAddressStyle}>{detectedPubkey}</span>
-            <div style={{ display: "flex", justifyContent: "center", marginTop: space.xs }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: space.xs, marginTop: space.xs }}>
               <PrimaryButton onClick={confirmPair} disabled={saving}>
-                Confirm pair
+                {saving ? "Importing…" : "Import wallet"}
               </PrimaryButton>
+              <LinkButton onClick={retryCamera}>Scan another</LinkButton>
             </div>
           </div>
-        ) : null}
-
-        <LinkButton onClick={() => nav.replace({ name: "pair-paste" })}>Paste address instead</LinkButton>
+        )}
       </div>
     </PanelShell>
   );

@@ -71,7 +71,7 @@ export function SettingsDeviceScreen() {
 
   if (loading) {
     return (
-      <PanelShell eyebrow="Settings" title="Paired device">
+      <PanelShell eyebrow="Settings" title="Connected wallet">
         <div style={wrapStyle}>
           <p style={{ color: colors.textMuted, fontSize: font.sm }}>Loading…</p>
         </div>
@@ -81,7 +81,7 @@ export function SettingsDeviceScreen() {
 
   if (error) {
     return (
-      <PanelShell eyebrow="Settings" title="Paired device">
+      <PanelShell eyebrow="Settings" title="Connected wallet">
         <div style={wrapStyle}>
           <div style={{ ...cardStyle, borderColor: colors.error }}>
             <span style={{ color: colors.error, fontSize: font.sm }}>{error}</span>
@@ -92,7 +92,7 @@ export function SettingsDeviceScreen() {
   }
 
   return (
-    <PanelShell eyebrow="Settings" title="Paired device">
+    <PanelShell eyebrow="Settings" title="Connected wallet">
       <div style={wrapStyle}>
         {pubkey ? (
           <>
@@ -101,13 +101,13 @@ export function SettingsDeviceScreen() {
               <span style={valueStyle}>{pubkey}</span>
             </div>
             <p style={hintStyle}>
-              To remove this pairing, use the Disconnect button on the Settings screen.
+              To disconnect this wallet, use the Disconnect button on the Settings screen.
             </p>
           </>
         ) : (
           <div style={cardStyle}>
-            <span style={{ fontSize: font.sm, color: colors.textMuted }}>No device paired yet.</span>
-            <LinkButton onClick={() => nav.reset({ name: "onboarding" })}>Pair a device</LinkButton>
+            <span style={{ fontSize: font.sm, color: colors.textMuted }}>No wallet connected yet.</span>
+            <LinkButton onClick={() => nav.reset({ name: "onboarding" })}>Import wallet</LinkButton>
           </div>
         )}
       </div>

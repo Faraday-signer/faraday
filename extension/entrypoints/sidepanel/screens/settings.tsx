@@ -85,7 +85,7 @@ const confirmHelpStyle: CSSProperties = {
 };
 
 const SECTIONS = [
-  { name: "settings-device", label: "Paired device" },
+  { name: "settings-device", label: "Connected wallet" },
   { name: "settings-origins", label: "Approved sites" },
   { name: "settings-network", label: "Network" },
   { name: "settings-about", label: "About" }
@@ -130,7 +130,7 @@ export function SettingsScreen() {
           {confirming ? (
             <>
               <p style={confirmHelpStyle}>
-                Remove pairing? Your device and keys are untouched — this just forgets the public key
+                Disconnect wallet? Your device and keys are untouched — this just forgets the public key
                 in this browser.
               </p>
               <div style={{ display: "flex", gap: space.xs }}>
@@ -171,7 +171,7 @@ export function SettingsScreen() {
               >
                 ⊘ Disconnect
               </button>
-              <p style={disconnectHelpStyle}>Removes pairing from this browser.</p>
+              <p style={disconnectHelpStyle}>Disconnects the wallet from this browser.</p>
             </>
           )}
           {error ? (
