@@ -2,11 +2,14 @@ import bs58 from "bs58";
 import { registerWallet } from "@wallet-standard/wallet";
 
 import {
+  decodeHexSignature,
   decodeBase64,
   encodeBase64,
+  formatSiwsMessage,
   isValidSolanaAddress,
   SUPPORTED_SOLANA_CHAINS
 } from "../src/lib/solana";
+import type { SiwsInput } from "../src/lib/solana";
 import type {
   ConnectCheckResult,
   CreateSignSessionResult,
@@ -210,6 +213,14 @@ class FaradayWallet {
         version: "1.0.0",
         supportedTransactionVersions: ["legacy", 0],
         signTransaction: this.signTransaction
+      },
+      "solana:signMessage": {
+        version: "1.0.0",
+        signMessage: this.signMessage
+      },
+      "solana:signIn": {
+        version: "1.0.0",
+        signIn: this.signIn
       }
     };
   }
@@ -226,7 +237,7 @@ class FaradayWallet {
       address: pubkey,
       publicKey: bs58.decode(pubkey),
       chains: SUPPORTED_SOLANA_CHAINS,
-      features: ["solana:signTransaction"],
+      features: ["solana:signTransaction", "solana:signMessage", "solana:signIn"],
       label: "Faraday",
       icon: ICON_SVG
     };
@@ -379,6 +390,9 @@ class FaradayWallet {
     }
 
     const done = await this.waitForSession(create.data.sessionId);
+    if (done.kind !== "tx") {
+      throw new Error("Unexpected signing session type.");
+    }
     if (done.status !== "completed" || !done.signedTxBase64) {
       throw new Error(done.error || "Signing was not completed.");
     }
@@ -389,6 +403,204 @@ class FaradayWallet {
       }
     ];
   };
+
+  private readonly signMessage = async (...inputs: unknown[]) => {
+    if (!this.connected || !this.account) {
+      throw new Error("Connect the wallet before requesting a signature.");
+    }
+
+    debug("signMessage request received", {
+      inputCount: inputs.length,
+      account: this.account.address,
+      origin: window.location.origin
+    });
+
+    const normalized =
+      inputs.length === 1 && Array.isArray(inputs[0]) ? (inputs[0] as unknown[]) : inputs;
+
+    if (normalized.length !== 1) {
+      throw new Error("MVP supports one message per sign request.");
+    }
+
+    const first = normalized[0] as
+      | { account?: { address?: unknown }; message?: unknown }
+      | undefined;
+
+    // Spec: if the caller specifies an account, the wallet must sign with
+    // that account or throw. Faraday has a single paired account, so any
+    // mismatch is a hard reject (prevents a dapp silently getting a
+    // signature from the wrong signer).
+    const requestedAddress = first?.account?.address;
+    if (typeof requestedAddress === "string" && requestedAddress !== this.account.address) {
+      throw new Error("Requested account does not match the connected Faraday wallet.");
+    }
+
+    const messageBytes = toUint8Array(first?.message ?? first);
+    const messageBase64 = encodeBase64(messageBytes);
+
+    const create = await callBackground<CreateSignSessionResult>({
+      type: "faraday:create-sign-message-session",
+      origin: window.location.origin,
+      messageBase64
+    });
+    if (!create.ok) {
+      warn("Failed creating sign-message session", { error: create.error });
+      throw new Error(create.error);
+    }
+
+    const openWindow = await callBackground({
+      type: "faraday:open-sign-window",
+      origin: window.location.origin,
+      sessionId: create.data.sessionId
+    });
+    if (!openWindow.ok) {
+      warn("Background open-sign-window failed for message session", {
+        sessionId: create.data.sessionId,
+        error: openWindow.error
+      });
+      throw new Error(
+        `${openWindow.error} Reload Faraday in chrome://extensions and try again.`
+      );
+    }
+
+    const done = await this.waitForSession(create.data.sessionId);
+    if (done.kind !== "message") {
+      throw new Error("Unexpected signing session type.");
+    }
+    if (done.status !== "completed" || !done.signatureHex) {
+      throw new Error(done.error || "Message signing was not completed.");
+    }
+
+    return [
+      {
+        signedMessage: messageBytes,
+        signature: decodeHexSignature(done.signatureHex)
+      }
+    ];
+  };
+
+  /**
+   * Sign-In With Solana (SIWS). Builds a spec-compliant message text from
+   * the dapp's input (filling in defaults the dapp omitted), then routes
+   * it through the same create/open/wait/validate pipeline as signMessage.
+   *
+   * Anti-phishing: if the dapp specifies `domain`, it MUST match
+   * window.location.host — otherwise a malicious origin could request
+   * a signature for a *different* site's login challenge. When omitted,
+   * we fill in window.location.host ourselves, which is trusted.
+   */
+  private readonly signIn = async (...inputs: unknown[]) => {
+    if (!this.connected || !this.account) {
+      throw new Error("Connect the wallet before requesting a sign-in.");
+    }
+
+    const normalized =
+      inputs.length === 1 && Array.isArray(inputs[0]) ? (inputs[0] as unknown[]) : inputs;
+    const rawInput = (normalized[0] ?? {}) as SiwsInput;
+
+    const host = window.location.host;
+    const origin = window.location.origin;
+
+    if (rawInput.domain !== undefined && rawInput.domain !== host) {
+      throw new Error(
+        `SIWS domain "${rawInput.domain}" does not match current host "${host}".`
+      );
+    }
+
+    if (
+      typeof rawInput.address === "string" &&
+      rawInput.address.length > 0 &&
+      rawInput.address !== this.account.address
+    ) {
+      throw new Error("Requested SIWS account does not match the connected Faraday wallet.");
+    }
+
+    const resolved = {
+      domain: rawInput.domain ?? host,
+      address: rawInput.address ?? this.account.address,
+      statement: rawInput.statement,
+      uri: rawInput.uri ?? origin,
+      version: rawInput.version ?? "1",
+      chainId: rawInput.chainId,
+      nonce: rawInput.nonce ?? randomSiwsNonce(),
+      issuedAt: rawInput.issuedAt ?? new Date().toISOString(),
+      expirationTime: rawInput.expirationTime,
+      notBefore: rawInput.notBefore,
+      requestId: rawInput.requestId,
+      resources: rawInput.resources
+    };
+
+    const messageText = formatSiwsMessage(resolved);
+    const messageBytes = new TextEncoder().encode(messageText);
+    const messageBase64 = encodeBase64(messageBytes);
+
+    debug("signIn request received", {
+      domain: resolved.domain,
+      account: this.account.address,
+      origin
+    });
+
+    const create = await callBackground<CreateSignSessionResult>({
+      type: "faraday:create-sign-message-session",
+      origin,
+      messageBase64
+    });
+    if (!create.ok) {
+      warn("Failed creating SIWS session", { error: create.error });
+      throw new Error(create.error);
+    }
+
+    const openWindow = await callBackground({
+      type: "faraday:open-sign-window",
+      origin,
+      sessionId: create.data.sessionId
+    });
+    if (!openWindow.ok) {
+      warn("Background open-sign-window failed for SIWS session", {
+        sessionId: create.data.sessionId,
+        error: openWindow.error
+      });
+      throw new Error(
+        `${openWindow.error} Reload Faraday in chrome://extensions and try again.`
+      );
+    }
+
+    const done = await this.waitForSession(create.data.sessionId);
+    if (done.kind !== "message") {
+      throw new Error("Unexpected signing session type.");
+    }
+    if (done.status !== "completed" || !done.signatureHex) {
+      throw new Error(done.error || "SIWS signing was not completed.");
+    }
+
+    return [
+      {
+        account: this.account,
+        signedMessage: messageBytes,
+        signature: decodeHexSignature(done.signatureHex),
+        signatureType: "ed25519" as const
+      }
+    ];
+  };
+}
+
+/**
+ * Generate a URL-safe base64-ish nonce for SIWS. Uses the page's crypto
+ * source; falls back to `Math.random` only if the environment is missing
+ * `crypto.getRandomValues`, which no modern browser is.
+ */
+function randomSiwsNonce(): string {
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 export default defineUnlistedScript(() => {

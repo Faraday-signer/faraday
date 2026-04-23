@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import bs58 from "bs58";
+import nacl from "tweetnacl";
 
 import {
+  buildSignMessageQrPayload,
+  decodeHexSignature,
   decodeBase64,
   encodeBase64,
+  formatSiwsMessage,
   isValidSolanaAddress,
   pubkeyToBytes,
+  validateSignedMessage,
   validateSignedTransactionMatch,
   validateUnsignedTransactionPayload
 } from "./solana";
@@ -342,5 +347,115 @@ describe("validateSignedTransactionMatch", () => {
     expect(() =>
       validateSignedTransactionMatch(b64(unsigned), "@@@not-base64", signer.bs58)
     ).toThrow(/base64/i);
+  });
+});
+
+describe("buildSignMessageQrPayload", () => {
+  it("builds a 0xFF-prefixed base64 payload", () => {
+    const message = new Uint8Array(36).fill(0x41);
+    const payload = buildSignMessageQrPayload(message);
+    const decoded = decodeBase64(payload);
+    expect(decoded[0]).toBe(0xff);
+    expect(decoded.slice(1)).toEqual(message);
+  });
+
+  it("rejects messages below firmware scan threshold", () => {
+    const message = new Uint8Array(35).fill(0x41);
+    expect(() => buildSignMessageQrPayload(message)).toThrow(/too short/i);
+  });
+});
+
+describe("message signature helpers", () => {
+  const seed = new Uint8Array(32).fill(7);
+  const keypair = nacl.sign.keyPair.fromSeed(seed);
+  const signer = bs58.encode(keypair.publicKey);
+  const message = new TextEncoder().encode("faraday message signing fixture");
+  const signature = nacl.sign.detached(message, keypair.secretKey);
+  const signatureHex = Buffer.from(signature).toString("hex");
+
+  it("decodes a 64-byte hex signature", () => {
+    const decoded = decodeHexSignature(signatureHex);
+    expect(decoded.length).toBe(64);
+    expect(decoded).toEqual(signature);
+  });
+
+  it("accepts a valid signature for the expected signer", () => {
+    const verified = validateSignedMessage(message, signatureHex, signer);
+    expect(verified).toEqual(signature);
+  });
+
+  it("rejects malformed signature hex", () => {
+    expect(() => decodeHexSignature("not-hex")).toThrow(/hex signature/i);
+  });
+
+  it("rejects signature that does not match message", () => {
+    const tampered = new TextEncoder().encode("faraday message signing fixture (tampered)");
+    expect(() => validateSignedMessage(tampered, signatureHex, signer)).toThrow(/does not match/i);
+  });
+});
+
+describe("formatSiwsMessage", () => {
+  const address = "11111111111111111111111111111111";
+
+  it("emits header-only message when no optional fields are set", () => {
+    const text = formatSiwsMessage({ domain: "example.com", address });
+    expect(text).toBe(
+      `example.com wants you to sign in with your Solana account:\n${address}`
+    );
+  });
+
+  it("includes a statement block separated by blank lines", () => {
+    const text = formatSiwsMessage({
+      domain: "example.com",
+      address,
+      statement: "Log in to Example."
+    });
+    expect(text).toBe(
+      [
+        `example.com wants you to sign in with your Solana account:`,
+        address,
+        ``,
+        `Log in to Example.`
+      ].join("\n")
+    );
+  });
+
+  it("emits fields in the spec's fixed order", () => {
+    const text = formatSiwsMessage({
+      domain: "example.com",
+      address,
+      uri: "https://example.com",
+      version: "1",
+      chainId: "solana:mainnet",
+      nonce: "abc123",
+      issuedAt: "2026-01-01T00:00:00Z"
+    });
+    expect(text).toBe(
+      [
+        `example.com wants you to sign in with your Solana account:`,
+        address,
+        ``,
+        `URI: https://example.com`,
+        `Version: 1`,
+        `Chain ID: solana:mainnet`,
+        `Nonce: abc123`,
+        `Issued At: 2026-01-01T00:00:00Z`
+      ].join("\n")
+    );
+  });
+
+  it("renders resources as a bulleted list after the field block", () => {
+    const text = formatSiwsMessage({
+      domain: "example.com",
+      address,
+      uri: "https://example.com",
+      resources: ["https://example.com/tos", "https://example.com/privacy"]
+    });
+    expect(text).toContain("Resources:\n- https://example.com/tos\n- https://example.com/privacy");
+  });
+
+  it("rejects input missing the required domain or address", () => {
+    expect(() => formatSiwsMessage({ domain: "", address })).toThrow(/domain/i);
+    expect(() => formatSiwsMessage({ domain: "example.com", address: "" })).toThrow(/address/i);
   });
 });

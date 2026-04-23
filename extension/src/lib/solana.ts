@@ -1,6 +1,9 @@
 import bs58 from "bs58";
+import nacl from "tweetnacl";
 
 const BASE58_RE = /^[1-9A-HJ-NP-Za-km-z]+$/;
+const SIGN_MESSAGE_QR_PREFIX = 0xff;
+const MIN_SIGN_MESSAGE_QR_BASE64_LENGTH = 51;
 
 export const SUPPORTED_SOLANA_CHAINS = [
   "solana:mainnet",
@@ -56,6 +59,137 @@ export function pubkeyToBytes(value: string): Uint8Array {
     throw new Error("Invalid Solana pubkey length.");
   }
   return decoded;
+}
+
+export function buildSignMessageQrPayload(messageBytes: Uint8Array): string {
+  if (messageBytes.length === 0) {
+    throw new Error("Message must not be empty.");
+  }
+
+  const payload = new Uint8Array(messageBytes.length + 1);
+  payload[0] = SIGN_MESSAGE_QR_PREFIX;
+  payload.set(messageBytes, 1);
+
+  const encoded = encodeBase64(payload);
+  if (encoded.length < MIN_SIGN_MESSAGE_QR_BASE64_LENGTH) {
+    throw new Error(
+      "Message is too short for current Faraday QR sign-message scan. Use at least 36 bytes."
+    );
+  }
+  return encoded;
+}
+
+export function decodeHexSignature(signatureHex: string): Uint8Array {
+  const normalized = signatureHex.trim().replace(/^0x/i, "");
+  if (!/^[0-9a-fA-F]{128}$/.test(normalized)) {
+    throw new Error("Signed payload is not a valid 64-byte hex signature.");
+  }
+
+  const out = new Uint8Array(64);
+  for (let i = 0; i < 64; i += 1) {
+    const offset = i * 2;
+    out[i] = Number.parseInt(normalized.slice(offset, offset + 2), 16);
+  }
+  return out;
+}
+
+export function validateSignedMessage(
+  messageBytes: Uint8Array,
+  signatureHex: string,
+  expectedSigner: string
+): Uint8Array {
+  const signatureBytes = decodeHexSignature(signatureHex);
+  const pubkey = pubkeyToBytes(expectedSigner);
+  const verified = nacl.sign.detached.verify(messageBytes, signatureBytes, pubkey);
+  if (!verified) {
+    throw new Error("Message signature does not match the paired signer account.");
+  }
+  return signatureBytes;
+}
+
+export interface SiwsInput {
+  domain?: string;
+  address?: string;
+  statement?: string;
+  uri?: string;
+  version?: string;
+  chainId?: string;
+  nonce?: string;
+  issuedAt?: string;
+  expirationTime?: string;
+  notBefore?: string;
+  requestId?: string;
+  resources?: readonly string[];
+}
+
+export interface SiwsResolved {
+  domain: string;
+  address: string;
+  statement?: string;
+  uri?: string;
+  version?: string;
+  chainId?: string;
+  nonce?: string;
+  issuedAt?: string;
+  expirationTime?: string;
+  notBefore?: string;
+  requestId?: string;
+  resources?: readonly string[];
+}
+
+/**
+ * Build a Sign-In With Solana message per the Wallet-Standard / Phantom
+ * SIWS spec. Mirrors EIP-4361 field ordering. Fields are emitted in the
+ * spec's fixed order so two wallets producing the same input yield the
+ * same bytes — dapps rely on that for server-side verification.
+ *
+ * `domain` and `address` are required by the output format; every other
+ * field is optional and omitted (along with its whole section) when absent.
+ */
+export function formatSiwsMessage(input: SiwsResolved): string {
+  if (!input.domain) {
+    throw new Error("SIWS message requires a domain.");
+  }
+  if (!input.address) {
+    throw new Error("SIWS message requires an address.");
+  }
+
+  const lines: string[] = [];
+  lines.push(`${input.domain} wants you to sign in with your Solana account:`);
+  lines.push(input.address);
+
+  if (input.statement !== undefined) {
+    lines.push("");
+    lines.push(input.statement);
+  }
+
+  const fields: Array<[string, string | undefined]> = [
+    ["URI", input.uri],
+    ["Version", input.version],
+    ["Chain ID", input.chainId],
+    ["Nonce", input.nonce],
+    ["Issued At", input.issuedAt],
+    ["Expiration Time", input.expirationTime],
+    ["Not Before", input.notBefore],
+    ["Request ID", input.requestId]
+  ];
+  const presentFields = fields.filter(([, v]) => v !== undefined && v !== "");
+  const hasResources = input.resources && input.resources.length > 0;
+
+  if (presentFields.length > 0 || hasResources) {
+    lines.push("");
+    for (const [key, value] of presentFields) {
+      lines.push(`${key}: ${value}`);
+    }
+    if (hasResources) {
+      lines.push("Resources:");
+      for (const resource of input.resources!) {
+        lines.push(`- ${resource}`);
+      }
+    }
+  }
+
+  return lines.join("\n");
 }
 
 function readShortVec(data: Uint8Array, offset: number): ShortVec {
