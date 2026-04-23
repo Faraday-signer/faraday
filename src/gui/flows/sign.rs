@@ -101,7 +101,14 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                                     println!("Signature: {}...", hex::encode(&signed.signature[..16]));
                                     println!("TX size: {} bytes", signed.signed_bytes.len());
                                 }
-                                return Screen::SignShowQr { data: signed.signed_base64 };
+                                // Display the compact `faraday:sig:` envelope
+                                // (version + pubkey + 64-byte signature), not
+                                // the full signed tx — the extension already
+                                // has the unsigned bytes and will splice our
+                                // sig into the right slot. ~144-char payload
+                                // renders as a V8 QR (49×49), readable by any
+                                // webcam off the Pi's 240 px screen.
+                                return Screen::SignShowQr { data: signed.signature_envelope };
                             }
                         }
                     } else if selected == 0 && !can_sign {

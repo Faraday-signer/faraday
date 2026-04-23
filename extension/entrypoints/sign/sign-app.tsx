@@ -6,6 +6,7 @@ import { QRCodeSVG } from "qrcode.react";
 
 import { FaradayLogo } from "../../src/lib/brand";
 import { sendRuntimeMessage } from "../../src/lib/runtime";
+import { FARADAY_SIG_PREFIX, spliceFaradaySignature } from "../../src/lib/solana";
 import { colors, fontFamily, font, radius, space } from "../../src/lib/theme";
 import type { GetSignSessionResult } from "../../src/lib/types";
 
@@ -569,6 +570,33 @@ export function SignApp() {
     if (!sessionId || !session) {
       return false;
     }
+
+    // Tx path may arrive as a `faraday:sig:` envelope (Pi ships only
+    // version + pubkey + 64-byte sig). Splice it into the unsigned tx
+    // the extension already holds, ed25519-verify against the message,
+    // then fall through to the existing signed-tx validation path.
+    const trimmedPayload = signedPayload.trim();
+    let txPayload = trimmedPayload;
+    if (
+      session.kind === "tx" &&
+      trimmedPayload.startsWith(FARADAY_SIG_PREFIX) &&
+      session.txBase64
+    ) {
+      try {
+        txPayload = spliceFaradaySignature(
+          session.txBase64,
+          trimmedPayload,
+          session.expectedPubkey
+        );
+      } catch (err) {
+        warn("Failed to splice signature envelope", {
+          sessionId,
+          error: err instanceof Error ? err.message : String(err)
+        });
+        return false;
+      }
+    }
+
     const response =
       session.kind === "message"
         ? await sendRuntimeMessage({
@@ -579,7 +607,7 @@ export function SignApp() {
         : await sendRuntimeMessage({
             type: "faraday:complete-sign-session",
             sessionId,
-            signedTxBase64: signedPayload
+            signedTxBase64: txPayload
           });
     if (!response.ok) {
       warn("Failed to complete sign session", { sessionId, error: response.error });
