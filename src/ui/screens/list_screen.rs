@@ -1,4 +1,4 @@
-//! List screen template: Header (top) + List (body) + ButtonBar (bottom).
+//! List screen template: Header (top) + List (body) + right-edge hints.
 //!
 //! The canonical screen for navigation: main menu, create/load method pickers,
 //! settings, account switcher. Compose a `ListScreen` and call `draw()`.
@@ -16,7 +16,7 @@ use embedded_graphics::{
     Drawable,
 };
 
-use crate::ui::widgets::{ButtonBar, Header, HeaderKind, List, ListRow};
+use crate::ui::widgets::{EdgeHints, Header, HeaderKind, List, ListRow, GUTTER_W};
 use crate::ui::Theme;
 
 pub struct ListScreen<'a> {
@@ -34,10 +34,9 @@ pub struct ListScreen<'a> {
     pub max_visible: usize,
     /// When false, no row draws a selection highlight (read-only display).
     pub selectable: bool,
-    /// Empty ButtonBar (`ButtonBar::new()`) reclaims the footer space for
-    /// the list body — useful for pure navigation menus where Key3/Key1
-    /// always mean Back/Confirm, so labels are noise.
-    pub buttons: ButtonBar<'a>,
+    /// Per-key boxes on the right gutter. When non-empty the body / header
+    /// / footer rects are shrunk by `GUTTER_W` so content doesn't overlap.
+    pub edge_hints: EdgeHints,
 }
 
 impl<'a> ListScreen<'a> {
@@ -52,17 +51,20 @@ impl<'a> ListScreen<'a> {
         );
         display.fill_solid(&screen, theme.bg)?;
 
-        // Brand header needs a bit more Y padding around the pixel logo
-        // than the tight text-title bar.
-        let header_h = match self.header {
-            HeaderKind::Brand => theme.header_h as i32 + 8,
-            HeaderKind::Title(_) => theme.header_h as i32,
+        // Header spans the full screen width (edge to edge). Same height
+        // for Title and Brand so flows don't visually shift when moving
+        // between screens.
+        let (header_rect, rest) = split_top(screen, theme.header_h as i32);
+
+        // Reserve the right gutter for edge hints when present.
+        let body_rect = if self.edge_hints.is_empty() {
+            rest
+        } else {
+            Rectangle::new(
+                rest.top_left,
+                Size::new(rest.size.width - GUTTER_W, rest.size.height),
+            )
         };
-        let (header_rect, rest) = split_top(screen, header_h);
-        // Nav screens pass an empty ButtonBar to reclaim the footer band —
-        // Key3/Key1 still work as Back/Confirm even without on-screen labels.
-        let footer_h = if self.buttons.is_empty() { 0 } else { theme.footer_h as i32 };
-        let (body_rect, footer_rect) = split_bottom(rest, footer_h);
 
         // Pattern-move the header kind so we can re-consume the one we own.
         let kind = match self.header {
@@ -119,19 +121,8 @@ impl<'a> ListScreen<'a> {
             body_rect
         };
 
-        // Rows span the full viewport width; padding is applied inside each
-        // row so the selected highlight reaches edge-to-edge.
-        let body_rect = Rectangle::new(
-            Point::new(
-                body_rect.top_left.x,
-                body_rect.top_left.y + theme.space_sm,
-            ),
-            Size::new(
-                body_rect.size.width,
-                body_rect.size.height.saturating_sub(theme.space_sm as u32 * 2),
-            ),
-        );
-
+        // Rows span the body edge-to-edge so row heights match the gutter
+        // cells — no extra top/bottom padding, no inter-row gap.
         List {
             items: self.items,
             selected: self.selected,
@@ -140,7 +131,15 @@ impl<'a> ListScreen<'a> {
         }
         .draw(display, theme, body_rect)?;
 
-        self.buttons.draw(display, theme, footer_rect)?;
+        // Gutter column: starts at the right edge of the body, immediately
+        // below the header hairline, and extends to the bottom of the screen.
+        if !self.edge_hints.is_empty() {
+            let gutter = Rectangle::new(
+                Point::new(rest.top_left.x + rest.size.width as i32 - GUTTER_W as i32, rest.top_left.y),
+                Size::new(GUTTER_W, rest.size.height),
+            );
+            self.edge_hints.draw(display, theme, gutter)?;
+        }
 
         Ok(())
     }

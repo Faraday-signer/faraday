@@ -1,4 +1,4 @@
-//! QR screen template: Header + QR + single-line caption + ButtonBar.
+//! QR screen template: Header + QR + single-line caption + edge-hint gutter.
 //!
 //! Shared shape for ShowAddress, ExportSeedQr, SignShowQr, SignMessageResult —
 //! every screen that shows a QR for a counterparty to scan. The QR is the
@@ -15,7 +15,7 @@ use embedded_graphics::{
 };
 
 use crate::ui::layout::{split_bottom, split_top};
-use crate::ui::widgets::{ButtonBar, Header, HeaderKind, Qr};
+use crate::ui::widgets::{EdgeHints, Header, HeaderKind, Qr, GUTTER_W};
 use crate::ui::Theme;
 
 pub struct QrScreen<'a> {
@@ -24,7 +24,7 @@ pub struct QrScreen<'a> {
     pub data: &'a [u8],
     pub ec: crate::qr::encode_qr::QrEcLevel,
     pub caption: Option<&'a str>,
-    pub buttons: ButtonBar<'a>,
+    pub edge_hints: EdgeHints,
 }
 
 impl<'a> QrScreen<'a> {
@@ -40,7 +40,16 @@ impl<'a> QrScreen<'a> {
         display.fill_solid(&screen, theme.bg)?;
 
         let (header_rect, rest) = split_top(screen, theme.header_h as i32);
-        let (body_rect, footer_rect) = split_bottom(rest, theme.footer_h as i32);
+
+        let body_area = if self.edge_hints.is_empty() {
+            rest
+        } else {
+            Rectangle::new(
+                rest.top_left,
+                Size::new(rest.size.width - GUTTER_W, rest.size.height),
+            )
+        };
+        let (body_rect, _footer_rect) = split_bottom(body_area, 0);
 
         let kind = match self.header {
             HeaderKind::Title(t) => HeaderKind::Title(t),
@@ -55,7 +64,7 @@ impl<'a> QrScreen<'a> {
         let (qr_rect, caption_rect) =
             split_bottom(body_rect, caption_h);
 
-        Qr { data: self.data, ec: self.ec }.draw(display, theme, qr_rect)?;
+        Qr { data: self.data, ec: self.ec, quiet: 4 }.draw(display, theme, qr_rect)?;
 
         if let Some(caption) = self.caption {
             let baseline = caption_rect.top_left.y
@@ -71,7 +80,13 @@ impl<'a> QrScreen<'a> {
             .draw(display)?;
         }
 
-        self.buttons.draw(display, theme, footer_rect)?;
+        if !self.edge_hints.is_empty() {
+            let gutter = Rectangle::new(
+                Point::new(rest.top_left.x + rest.size.width as i32 - GUTTER_W as i32, rest.top_left.y),
+                Size::new(GUTTER_W, rest.size.height),
+            );
+            self.edge_hints.draw(display, theme, gutter)?;
+        }
 
         Ok(())
     }

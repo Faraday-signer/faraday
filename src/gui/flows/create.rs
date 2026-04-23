@@ -140,7 +140,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         }
 
         Screen::CreateShowWords { mnemonic, mut page, word_count } => {
-            let words_per_page = 6usize;
+            let words_per_page = 4usize;
             let total_pages = (word_count + words_per_page - 1) / words_per_page;
             match event {
                 InputEvent::Right | InputEvent::Down => {
@@ -316,7 +316,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         }
 
         Screen::ExportShowWords { compact_data, mnemonic, mut page, word_count, from_settings } => {
-            let words_per_page = 6usize;
+            let words_per_page = 4usize;
             let total_pages = (word_count + words_per_page - 1) / words_per_page;
             match event {
                 InputEvent::Right | InputEvent::Down | InputEvent::Confirm => {

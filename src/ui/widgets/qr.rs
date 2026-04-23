@@ -22,6 +22,11 @@ pub struct Qr<'a> {
     /// 21×21 for 12 words) to keep hand-transcription tractable. Outbound
     /// tx / signature / address QRs use `M` (standard reliability).
     pub ec: crate::qr::encode_qr::QrEcLevel,
+    /// White border in modules around the QR. Defaults to 4 (the spec
+    /// recommendation for third-party scanners). Seed-backup compare
+    /// screens pass a smaller value to make the matrix look larger —
+    /// the user only needs to eyeball it against paper, not scan it.
+    pub quiet: u32,
 }
 
 impl<'a> Qr<'a> {
@@ -39,7 +44,7 @@ impl<'a> Qr<'a> {
 
         // Largest integer module size that fits in the rect.
         let max_side = rect.size.width.min(rect.size.height) as i32;
-        let quiet = 4i32; // white border in modules
+        let quiet = self.quiet as i32;
         let matrix_side = size as i32 + quiet * 2;
         let module = (max_side / matrix_side).max(1);
         let qr_side = module * matrix_side;

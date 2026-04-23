@@ -39,6 +39,9 @@ pub struct Card<'a> {
     /// long values (addresses, hashes) that don't fit in a single row.
     pub body_lines: &'a [&'a str],
     pub rows: &'a [CardRow<'a>],
+    /// Render the title in `theme.danger` instead of `theme.accent`. Used
+    /// on mismatch / error screens so the header hero reads as a warning.
+    pub title_danger: bool,
 }
 
 impl<'a> Card<'a> {
@@ -55,10 +58,11 @@ impl<'a> Card<'a> {
         // Hero block (title + subtitle).
         if let Some(title) = self.title {
             cursor_y += 28;
+            let title_color = if self.title_danger { theme.danger } else { theme.accent };
             Text::with_alignment(
                 title,
                 Point::new(left_x, cursor_y),
-                theme.style_lg(theme.accent),
+                theme.style_lg(title_color),
                 Alignment::Left,
             )
             .draw(display)?;
@@ -74,9 +78,11 @@ impl<'a> Card<'a> {
                 .draw(display)?;
             }
 
-            // Divider under the hero block (only when body or rows follow).
+            // Divider under the hero block — positioned at the 1/3 mark of
+            // the body rect so it lands exactly on the K1/K2 gutter cell
+            // boundary. Only drawn when body or rows follow.
             if !self.rows.is_empty() || !self.body_lines.is_empty() {
-                cursor_y += theme.space_md;
+                cursor_y = rect.top_left.y + (rect.size.height as i32 / 3);
                 Rectangle::new(
                     Point::new(rect.top_left.x, cursor_y),
                     Size::new(rect.size.width, 1),
