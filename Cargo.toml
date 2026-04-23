@@ -52,7 +52,10 @@ getrandom = "0.2"
 
 # QR decoding + image buffer. Shared by both the macOS simulator (nokhwa)
 # and the Pi camera (MMAL via a raspividyuv subprocess — see pi_camera.rs).
-rqrr = "0.7"
+# `rxing` is paired with an Otsu binarize pass (src/qr/threshold.rs) so it
+# copes with hand-drawn CompactSeedQR sheets (where rxing-only and rqrr
+# both fail).
+rxing = { version = "0.7", default-features = false, features = ["image"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 # Desktop simulator (optional)

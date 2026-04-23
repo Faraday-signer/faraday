@@ -51,37 +51,61 @@ pub fn rgb_to_gray(rgb: &[u8], width: u32, height: u32) -> Vec<u8> {
 
 /// Scan mode hint from the caller. The seed-style scan screens only ever
 /// see tiny QRs (CompactSeedQR V1/V3, address QRs ≤ V5), which we can
-/// downsample aggressively before handing to rqrr. The Sign-TX screen can
-/// see dense single-frame txs (V20+) that need full resolution.
+/// downsample aggressively before handing to the decoder. The Sign-TX
+/// screen can see dense single-frame txs (V20+) that need full resolution.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScanMode {
     /// Full-resolution decode. Use when QR density is unbounded.
     Full,
     /// Center-crop square, 2× nearest-neighbour downsample. Use when the
     /// caller *knows* the QR is small (≤ V5); modules at the reticle
-    /// framing land at ~4–7 px post-downsample — well above rqrr's floor
-    /// — while rqrr walks 4× fewer pixels.
+    /// framing land at ~4–7 px post-downsample — well above the decoder's
+    /// floor — and the decoder walks 4× fewer pixels.
     SmallQr,
 }
 
-/// Try to decode a QR code from the frame. Uses the pre-computed luma
-/// plane directly and optionally downsamples first when the caller
-/// promises a small QR. Returns the raw decoded bytes on success. Does no
-/// format validation — caller inspects the bytes.
+/// Try to decode a QR code from the frame. Pipeline:
+///   1. Pick the luma plane (optionally center-cropped + downsampled for
+///      SmallQr screens).
+///   2. Otsu binarize (`src/qr/threshold.rs`) so hand-drawn CompactSeedQR
+///      sheets on gridded paper survive the decoder's finder-pattern
+///      detection — the decoder's own adaptive binarizer trips on the
+///      1 mm paper grid and fails where Otsu + a clean b/w frame works.
+///   3. Hand to `rxing` for finder-pattern detection, grid extraction,
+///      and Reed-Solomon ECC.
+///
+/// Returns the raw decoded bytes on success. Does no format validation —
+/// caller inspects the bytes.
 pub fn try_decode_qr(frame: &Frame, mode: ScanMode) -> Option<Vec<u8>> {
-    let (w, h, luma_buf) = match mode {
+    let (w, h, mut luma_buf) = match mode {
         ScanMode::Full => (frame.width, frame.height, frame.luma.clone()),
         ScanMode::SmallQr => downsample_center_square(frame, 2),
     };
-    let gimg = image::GrayImage::from_raw(w, h, luma_buf)?;
-    let mut prepared = rqrr::PreparedImage::prepare(gimg);
-    for grid in prepared.detect_grids() {
-        let mut out = Vec::new();
-        if grid.decode_to(&mut out).is_ok() && !out.is_empty() {
-            return Some(out);
-        }
+
+    let t = crate::qr::threshold::otsu_threshold(&luma_buf);
+    crate::qr::threshold::binarize_in_place(&mut luma_buf, t);
+
+    let mut hints = rxing::DecodeHints::default();
+    hints.TryHarder = Some(true);
+    match rxing::helpers::detect_in_luma_with_hints(
+        luma_buf,
+        w,
+        h,
+        Some(rxing::BarcodeFormat::QR_CODE),
+        &mut hints,
+    ) {
+        Ok(result) => Some(decode_result_to_bytes(&result)),
+        Err(_) => None,
     }
-    None
+}
+
+/// Recover the original byte payload from an rxing `RXingResult`. For
+/// ASCII text QRs we can use `getText()` directly; for binary payloads
+/// (CompactSeedQR raw entropy, base64 tx, etc.) rxing ISO-8859-1-encodes
+/// the bytes into a UTF-8 string, so we map each char's low byte back.
+fn decode_result_to_bytes(result: &rxing::RXingResult) -> Vec<u8> {
+    let text = result.getText();
+    text.chars().map(|c| (c as u32) as u8).collect()
 }
 
 /// Center-crop the frame's luma plane to a square, then nearest-neighbour
@@ -114,11 +138,11 @@ pub fn try_decode_qr_ur(
     try_decode_qr_ur_diag(frame, accumulator, mode).0
 }
 
-/// Same as `try_decode_qr_ur` but also reports whether rqrr detected *any*
-/// QR this call (even a fragment or a format we didn't finish reassembling).
-/// Camera backends use the extra signal to drive the scan-screen heartbeat
-/// so the user can distinguish "camera sees nothing" from "camera sees a
-/// fragment, waiting for more".
+/// Same as `try_decode_qr_ur` but also reports whether the decoder saw
+/// *any* QR this call (even a fragment or a format we didn't finish
+/// reassembling). Camera backends use the extra signal to drive the scan-
+/// screen heartbeat so the user can distinguish "camera sees nothing"
+/// from "camera sees a fragment, waiting for more".
 pub fn try_decode_qr_ur_diag(
     frame: &Frame,
     accumulator: &mut crate::qr::ur_decoder::UrAccumulator,
