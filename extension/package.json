@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@ngraveio/bc-ur": "^1.1.13",
     "@solana-program/system": "^0.9.1",
     "@solana/kit": "^5.5.1",
     "@wallet-standard/wallet": "^1.1.0",
