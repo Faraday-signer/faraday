@@ -21,8 +21,8 @@ fn wordlist() -> Vec<&'static str> {
 }
 
 /// Get BIP39 word at index (0-2047).
-pub fn get_word(index: usize) -> &'static str {
-    wordlist()[index]
+pub fn get_word(index: usize) -> Option<&'static str> {
+    wordlist().get(index).copied()
 }
 
 /// Get index of a BIP39 word.
@@ -182,8 +182,9 @@ mod tests {
 
     #[test]
     fn test_get_word() {
-        assert_eq!(get_word(0), "abandon");
-        assert_eq!(get_word(2047), "zoo");
+        assert_eq!(get_word(0), Some("abandon"));
+        assert_eq!(get_word(2047), Some("zoo"));
+        assert_eq!(get_word(2048), None);
     }
 
     #[test]

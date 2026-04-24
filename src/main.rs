@@ -61,11 +61,13 @@ fn run_simulator() {
     // Splash. Keep pumping the window for 2 seconds rather than sleeping —
     // a bare sleep lets key presses queue up, and the first one gets consumed
     // without action on the first iteration of the main loop.
-    app.draw(&mut fb).unwrap();
+    // Draw errors are intentionally ignored: a transient render failure must
+    // not crash the device — the next frame will retry.
+    let _ = app.draw(&mut fb);
     let buf = fb.to_rgb888();
     let splash_start = std::time::Instant::now();
     while window.is_open() && splash_start.elapsed() < Duration::from_secs(2) {
-        window.update_with_buffer(&buf, 240, 240).unwrap();
+        let _ = window.update_with_buffer(&buf, 240, 240);
     }
     app.enter_main_menu();
     // Reset idle timer so the splash duration doesn't count toward blanking.
@@ -150,10 +152,10 @@ fn run_simulator() {
                     }
                 }
             }
-            app.draw(&mut fb).unwrap();
+            let _ = app.draw(&mut fb);
         }
         let buf = fb.to_rgb888();
-        window.update_with_buffer(&buf, 240, 240).unwrap();
+        let _ = window.update_with_buffer(&buf, 240, 240);
     }
 }
 
@@ -182,8 +184,8 @@ fn run_pi() {
 
     let mut app = App::new();
 
-    // Splash
-    app.draw(&mut display).unwrap();
+    // Splash — draw errors intentionally ignored to avoid crashing the device.
+    let _ = app.draw(&mut display);
     display.flush();
     std::thread::sleep(Duration::from_secs(2));
     app.enter_main_menu();
@@ -228,7 +230,7 @@ fn run_pi() {
                     }
                 }
             }
-            app.draw(&mut display).unwrap();
+            let _ = app.draw(&mut display);
         }
         display.flush();
     }

@@ -507,8 +507,9 @@ fn build_verify_screen(mnemonic: String, checks: Vec<usize>, current: usize) -> 
     let mut ri = 0;
     while options.len() < 4 && ri < 30 {
         let word_idx = ((rng[ri] as usize) << 3 | (rng[ri + 1] as usize >> 5)) % 2048;
-        let word = bip39::get_word(word_idx);
-        if !options.contains(&word.to_string()) { options.push(word.to_string()); }
+        if let Some(word) = bip39::get_word(word_idx) {
+            if !options.contains(&word.to_string()) { options.push(word.to_string()); }
+        }
         ri += 2;
     }
 

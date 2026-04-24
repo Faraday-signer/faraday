@@ -238,19 +238,20 @@ pub fn draw_char_grid<D: DrawTarget<Color = Rgb565>>(
     let display_text = if grid.text.is_empty() {
         String::from("_")
     } else {
-        let len = grid.text.len();
-        let masked: String = (0..len - 1).map(|_| '*').collect();
+        let char_count = grid.text.chars().count();
+        let masked: String = (0..char_count - 1).map(|_| '*').collect();
         let last = grid.text.chars().last().unwrap();
         format!("{}{}", masked, last)
     };
-    // Truncate display if too long
-    let show: &str = if display_text.len() > 22 {
-        &display_text[display_text.len() - 22..]
+    // Truncate display if too long (char-safe)
+    let char_count = display_text.chars().count();
+    let show: String = if char_count > 22 {
+        display_text.chars().skip(char_count - 22).collect()
     } else {
-        &display_text
+        display_text
     };
     let text_style = MonoTextStyle::new(&FONT_9X15_BOLD, colors::TEXT_PRIMARY);
-    Text::with_alignment(show, Point::new(120, 40), text_style, Alignment::Center)
+    Text::with_alignment(&show, Point::new(120, 40), text_style, Alignment::Center)
         .draw(display)?;
 
     // Separator
