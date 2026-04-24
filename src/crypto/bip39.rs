@@ -6,6 +6,7 @@
 use hmac::Hmac;
 use pbkdf2::pbkdf2;
 use sha2::{Digest, Sha256, Sha512};
+use zeroize::Zeroizing;
 
 /// BIP39 English wordlist, fetched from bitcoin/bips at build time and SHA256-verified.
 /// Source: https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt
@@ -155,9 +156,9 @@ pub fn validate_mnemonic(mnemonic: &str) -> bool {
 /// BIP39 seed generation: PBKDF2-HMAC-SHA512, 2048 rounds.
 ///
 /// Returns a 64-byte seed. The seed is zeroized on drop.
-pub fn mnemonic_to_seed(mnemonic: &str, passphrase: &str) -> Vec<u8> {
+pub fn mnemonic_to_seed(mnemonic: &str, passphrase: &str) -> Zeroizing<Vec<u8>> {
     let salt = format!("mnemonic{}", passphrase);
-    let mut seed = vec![0u8; 64];
+    let mut seed = Zeroizing::new(vec![0u8; 64]);
 
     pbkdf2::<Hmac<Sha512>>(
         mnemonic.as_bytes(),
