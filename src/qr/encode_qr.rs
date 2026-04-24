@@ -11,6 +11,31 @@ pub fn encode_signed_tx(signed_tx_bytes: &[u8]) -> String {
     BASE64.encode(signed_tx_bytes)
 }
 
+/// Envelope version for the signature-only QR. Bumped if the payload
+/// layout below ever changes (new field order, added session hash, etc.).
+pub const SIG_ENVELOPE_VERSION: u8 = 1;
+
+/// Encode just the produced signature + signer pubkey for QR display,
+/// prefixed with the `faraday:sig:` envelope. The extension side already
+/// has the full unsigned transaction in its session state, so it only
+/// needs the signature + pubkey to locate the correct signer slot and
+/// splice the bytes in — no need to re-ship the whole tx on the return
+/// leg. Payload is 1 (version) + 32 (pubkey) + 64 (sig) = 97 bytes →
+/// ~144-char base64 renders as a V8 QR (49×49) on the Pi's 240×240
+/// screen at ~4.9 px/module, readable by any webcam.
+pub fn encode_signature_envelope(
+    signature: &[u8; 64],
+    signer_pubkey: &[u8; 32],
+) -> String {
+    let mut payload = Vec::with_capacity(1 + 32 + 64);
+    payload.push(SIG_ENVELOPE_VERSION);
+    payload.extend_from_slice(signer_pubkey);
+    payload.extend_from_slice(signature);
+    let mut s = String::from("faraday:sig:");
+    s.push_str(&BASE64.encode(&payload));
+    s
+}
+
 /// Encode a Solana public key as a base58 address for QR display.
 pub fn encode_address(public_key: &[u8; 32]) -> String {
     bs58::encode(public_key).into_string()

@@ -5,6 +5,10 @@ const BASE58_RE = /^[1-9A-HJ-NP-Za-km-z]+$/;
 const SIGN_MESSAGE_QR_PREFIX = 0xff;
 const MIN_SIGN_MESSAGE_QR_BASE64_LENGTH = 51;
 
+export const FARADAY_SIG_PREFIX = "faraday:sig:";
+const FARADAY_SIG_ENVELOPE_VERSION = 1;
+const FARADAY_SIG_ENVELOPE_LENGTH = 1 + 32 + 64;
+
 export const SUPPORTED_SOLANA_CHAINS = [
   "solana:mainnet",
   "solana:devnet",
@@ -353,4 +357,83 @@ export function validateSignedTransactionMatch(
   }
 
   return signedBytes;
+}
+
+export function parseFaradaySigEnvelope(text: string): {
+  pubkey: Uint8Array;
+  signature: Uint8Array;
+} {
+  if (!text.startsWith(FARADAY_SIG_PREFIX)) {
+    throw new Error("Missing faraday:sig: envelope prefix.");
+  }
+  const body = text.slice(FARADAY_SIG_PREFIX.length).trim();
+  let bytes: Uint8Array;
+  try {
+    bytes = decodeBase64(body);
+  } catch {
+    throw new Error("Envelope payload is not valid base64.");
+  }
+  if (bytes.length !== FARADAY_SIG_ENVELOPE_LENGTH) {
+    throw new Error(
+      `Envelope payload length ${bytes.length} (expected ${FARADAY_SIG_ENVELOPE_LENGTH}).`
+    );
+  }
+  if (bytes[0] !== FARADAY_SIG_ENVELOPE_VERSION) {
+    throw new Error(`Unsupported envelope version: ${bytes[0]}.`);
+  }
+  return {
+    pubkey: bytes.slice(1, 33),
+    signature: bytes.slice(33, 97)
+  };
+}
+
+/**
+ * Reconstruct a full signed transaction from the compact `faraday:sig:`
+ * envelope the Pi emits on the return leg. The extension already has the
+ * unsigned tx in session state, so the Pi only ships the 1+32+64 byte
+ * (version + pubkey + signature) payload — we splice the signature into
+ * the matching signer slot, ed25519-verify it against the message bytes,
+ * and return the normal base64-encoded signed tx. Downstream validation
+ * (`validateSignedTransactionMatch`) still runs unchanged.
+ */
+export function spliceFaradaySignature(
+  unsignedTxBase64: string,
+  envelopeText: string,
+  expectedSigner: string
+): string {
+  const { pubkey, signature } = parseFaradaySigEnvelope(envelopeText);
+
+  const expectedBytes = pubkeyToBytes(expectedSigner);
+  for (let i = 0; i < 32; i += 1) {
+    if (pubkey[i] !== expectedBytes[i]) {
+      throw new Error("Envelope signer does not match the paired account.");
+    }
+  }
+
+  let unsignedBytes: Uint8Array;
+  try {
+    unsignedBytes = decodeBase64(unsignedTxBase64.trim());
+  } catch {
+    throw new Error("Unsigned transaction payload is not valid base64.");
+  }
+
+  const parsed = parseEnvelope(unsignedBytes);
+  const signerIndex = parsed.signerAddresses.indexOf(expectedSigner);
+  if (signerIndex < 0) {
+    throw new Error("Transaction does not include the paired signer account.");
+  }
+
+  const verified = nacl.sign.detached.verify(parsed.messageBytes, signature, pubkey);
+  if (!verified) {
+    throw new Error("Envelope signature does not verify against transaction message.");
+  }
+
+  const sigCountInfo = readShortVec(unsignedBytes, 0);
+  const slotStart = sigCountInfo.bytesRead + signerIndex * 64;
+
+  const spliced = new Uint8Array(unsignedBytes.length);
+  spliced.set(unsignedBytes);
+  spliced.set(signature, slotStart);
+
+  return encodeBase64(spliced);
 }
