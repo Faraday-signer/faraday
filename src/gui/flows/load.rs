@@ -41,10 +41,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
 
                     if let Some(mnemonic) = decoded.mnemonic {
                         let preview_address = app.derive_address(&mnemonic, "");
-                        return Screen::LoadFinalize {
+                        return Screen::LoadSeedLoaded {
                             mnemonic,
                             preview_address,
-                            selected: 0,
+                            shown_at: std::time::Instant::now(),
                         };
                     }
                     if let Some(_addr) = &decoded.address {
@@ -91,10 +91,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     let mnemonic = entered.join(" ");
                     if bip39::validate_mnemonic(&mnemonic) {
                         let preview_address = app.derive_address(&mnemonic, "");
-                        return Screen::LoadFinalize {
+                        return Screen::LoadSeedLoaded {
                             mnemonic,
                             preview_address,
-                            selected: 0,
+                            shown_at: std::time::Instant::now(),
                         };
                     }
                     // Invalid checksum — surface an error screen so the user
@@ -119,6 +119,14 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 _ => {}
             }
             Screen::LoadInvalidMnemonic { word_count }
+        }
+
+        Screen::LoadSeedLoaded { mnemonic, preview_address, shown_at } => {
+            // Splash auto-dismisses from `tick()`. Any button press here is
+            // a no-op — the user shouldn't have to acknowledge; the screen
+            // just fades itself out to the passphrase decision.
+            let _ = event;
+            Screen::LoadSeedLoaded { mnemonic, preview_address, shown_at }
         }
 
         Screen::LoadFinalize { mnemonic, preview_address, mut selected } => {

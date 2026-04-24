@@ -63,35 +63,31 @@ pub fn draw_mark<D: DrawTarget<Color = Rgb565>>(
 }
 
 // =====================================================================
-// Full logo (mark + pixel-art wordmark).
-// Extracted from assets/brand/faraday-logo-small.svg, rasterized at 1:1
-// (95x21), cropped to the bbox of the inked pixels. 1 bit per pixel.
+// Full logo (mark + wordmark). Extracted directly from the SVG path
+// geometry at the native 60x10 grid (unit = 12.836). Each cell is
+// sampled at its center — no rasterization, no filter artifacts.
+// 1 bit per pixel, packed MSB-first into two u32 chunks per row.
 // =====================================================================
 
-pub const LOGO_WIDTH: u32 = 83;
-pub const LOGO_HEIGHT: u32 = 15;
+pub const LOGO_WIDTH: u32 = 60;
+pub const LOGO_HEIGHT: u32 = 10;
 
 #[rustfmt::skip]
-const LOGO: [[u32; 3]; 15] = [
-    [0xf1f07f00, 0x00000006, 0x00000000],
-    [0xf1f07f00, 0x00000006, 0x00000000],
-    [0xc0304000, 0x00000006, 0x00000000],
-    [0xc030400f, 0x0ef1f076, 0x1e186000],
-    [0xce30400f, 0x0ef1f076, 0x1e186000],
-    [0x0e007e00, 0xc38008ce, 0x01986000],
-    [0x0e00400f, 0xc201f8c6, 0x1f986000],
-    [0xce30403f, 0xc203f8c6, 0x7f9de000],
-    [0xc0304030, 0xc20308c6, 0x61858000],
-    [0xc0304031, 0xc20338ce, 0x63858000],
-    [0xf1f0400e, 0xcfc1e876, 0x1d830000],
-    [0xf1f0400e, 0xcfc1e876, 0x1d830000],
-    [0x00000000, 0x00000000, 0x00030000],
-    [0x00000000, 0x00000000, 0x001c0000],
-    [0x00000000, 0x00000000, 0x001c0000],
+const LOGO: [[u32; 2]; 10] = [
+    [0x661f0000, 0x00100000],
+    [0x81100000, 0x00100000],
+    [0x81101c6c, 0x70d1c440],
+    [0x181e0230, 0x09302440],
+    [0x18101e20, 0x7911e440],
+    [0x81102220, 0x89122280],
+    [0x81102620, 0x99326280],
+    [0x66101a78, 0x68d1a100],
+    [0x00000000, 0x00000100],
+    [0x00000000, 0x00000600],
 ];
 
 /// Draw the Faraday logo (mark + wordmark) at (x, y) with integer scale.
-/// Scale 1 = 83x15, 2 = 166x30, 3 = 249x45 (too wide for 240 screen).
+/// Scale 1 = 60x10, 2 = 120x20, 3 = 180x30, 4 = 240x40 (fills screen width).
 pub fn draw_logo<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     x: i32,
@@ -117,3 +113,4 @@ pub fn draw_logo<D: DrawTarget<Color = Rgb565>>(
     }
     Ok(())
 }
+
