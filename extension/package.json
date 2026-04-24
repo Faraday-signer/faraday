@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@solana-program/system": "^0.9.1",
     "@solana/kit": "^5.5.1",
     "@wallet-standard/wallet": "^1.1.0",
     "@zxing/browser": "^0.1.5",
@@ -19,7 +20,8 @@
     "qrcode.react": "^4.2.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "swr": "^2.4.1"
+    "swr": "^2.4.1",
+    "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.284",

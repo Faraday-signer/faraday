@@ -161,7 +161,7 @@ pub enum Screen {
     },
     SignShowQr { data: String },
     SignMessageInput { grid: CharGrid },
-    SignMessageReview { message_bytes: Vec<u8>, scroll: usize, selected: usize },
+    SignMessageReview { message_bytes: Vec<u8>, scroll: usize },
     SignMessageResult { signature_hex: String },
 
     // Settings
@@ -307,13 +307,14 @@ impl CharGrid {
                 }
             }
             InputEvent::Back => {
-                if self.text.is_empty() {
-                    return true;
-                }
-                self.text.pop();
+                // K3 = always return to the previous screen. Deleting
+                // last character is K2's job now.
+                return true;
             }
             InputEvent::Secondary => {
-                self.caps = !self.caps;
+                // K2 = delete last character. Caps toggle still available
+                // via the CAPS button in the action row.
+                self.text.pop();
             }
             InputEvent::PowerOffShortcut => {}
         }

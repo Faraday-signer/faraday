@@ -45,15 +45,27 @@ pub fn sign_transaction_bytes(
     let sigs_end = 1 + num_sigs * 64;
     let message_bytes = &unsigned_tx_bytes[sigs_end..];
 
+    // Versioned-tx detection. Legacy messages start with the header; V0+
+    // prefix one version byte whose high bit is set (`0x80` = V0). We only
+    // need the prefix length for *parsing*; the signature is computed over
+    // the message bytes as they sit on the wire (prefix included), so
+    // `signing_key.sign(message_bytes)` below stays unchanged.
+    let version_prefix_len = match message_bytes.first() {
+        Some(&b) if b & 0x80 != 0 => 1,
+        _ => 0,
+    };
+
     // Find the signer's position in the account keys
-    // Message format: [num_required_sigs: u8] [num_readonly_signed: u8] [num_readonly_unsigned: u8]
+    // Message format: [version_prefix?: u8]
+    //                 [num_required_sigs: u8] [num_readonly_signed: u8] [num_readonly_unsigned: u8]
     //                 [num_account_keys: compact-u16] [account_keys: 32 bytes each] [...]
-    if message_bytes.len() < 4 {
+    let keys_count_offset = version_prefix_len + 3;
+    if message_bytes.len() < keys_count_offset + 1 {
         return Err("Message too short");
     }
 
-    let num_account_keys = read_compact_u16(message_bytes, 3)?;
-    let keys_start = 3 + compact_u16_len(message_bytes, 3);
+    let num_account_keys = read_compact_u16(message_bytes, keys_count_offset)?;
+    let keys_start = keys_count_offset + compact_u16_len(message_bytes, keys_count_offset);
 
     let signer_index = find_signer_index(message_bytes, keys_start, num_account_keys.0, public_key)?;
 
@@ -194,6 +206,28 @@ mod tests {
         tx
     }
 
+    /// Same shape but with the `0x80` V0 versioned-message prefix. Regression
+    /// test for the legacy-only parser that used to drop V0 txs on the floor
+    /// (signer couldn't locate its pubkey in the account keys because the
+    /// parse offset was shifted by the version byte).
+    fn build_unsigned_v0_tx(signer_pubkey: &[u8; 32]) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.push(1);                         // num_signatures
+        tx.extend_from_slice(&[0u8; 64]);   // placeholder sig
+        tx.push(0x80);                      // v0 version prefix
+        tx.push(1);                         // num_required_signatures
+        tx.push(0);                         // num_readonly_signed
+        tx.push(1);                         // num_readonly_unsigned
+        tx.push(2);                         // num_account_keys (compact-u16)
+        tx.extend_from_slice(signer_pubkey);
+        tx.extend_from_slice(&[0u8; 32]);   // system program
+        tx.extend_from_slice(&[7u8; 32]);   // recent blockhash
+        tx.push(0);                         // num_instructions
+        // No address-table lookups — empty list.
+        tx.push(0);
+        tx
+    }
+
     #[test]
     fn test_sign_message() {
         let kp = test_keypair(0);
@@ -264,6 +298,49 @@ mod tests {
         // Extract the message portion from the signed tx and re-verify externally.
         let sigs_end = 1 + 1 * 64;
         let message = &signed.signed_bytes[sigs_end..];
+        assert!(verify_signature(message, &signed.signature, &kp.public_key).is_ok());
+    }
+
+    /// Live V0 payload captured off the device. Used to reproduce signing
+    /// against a realistic versioned tx (6 static account keys, not our
+    /// synthetic 2-key shape).
+    const DEVICE_V0_TX_B64: &str = include_str!("../../testdata/fixtures/v0_tx.b64");
+
+    #[test]
+    fn sign_tx_v0_device_capture_with_test_mnemonic() {
+        use crate::crypto::{bip39, slip0010};
+        // Test mnemonic's derived keypair is `GAthe6Gh…MsfT`, which is
+        // account[0] (the signer) of the captured tx.
+        let mnemonic =
+            "warm stage brain flag busy bless situate fox push crouch caution direct";
+        let seed = bip39::mnemonic_to_seed(mnemonic, "");
+        let kp = slip0010::derive_solana_keypair(&seed, 0);
+
+        let b64 = DEVICE_V0_TX_B64.trim();
+        let signed = sign_transaction_base64(&b64, &kp.private_key, &kp.public_key)
+            .expect("V0 device tx must sign cleanly with the test mnemonic");
+
+        // Version prefix must survive, signature must verify against the
+        // full message bytes (prefix included) — this is what the Solana
+        // network expects.
+        let sigs_end = 1 + 1 * 64;
+        let message = &signed.signed_bytes[sigs_end..];
+        assert_eq!(message[0], 0x80);
+        assert!(verify_signature(message, &signed.signature, &kp.public_key).is_ok());
+    }
+
+    #[test]
+    fn sign_tx_v0_versioned_round_trip() {
+        // V0 versioned-tx signing was silently failing before the fix: the
+        // parser assumed the header started at message byte 0, so on a V0
+        // tx (where byte 0 is `0x80`) it read bogus values for the account-
+        // keys offset and `find_signer_index` couldn't locate the signer.
+        let kp = test_keypair(0);
+        let tx = build_unsigned_v0_tx(&kp.public_key);
+        let signed = sign_transaction_bytes(&tx, &kp.private_key, &kp.public_key).unwrap();
+        let sigs_end = 1 + 1 * 64;
+        let message = &signed.signed_bytes[sigs_end..];
+        assert_eq!(message[0], 0x80, "v0 prefix must survive signing unchanged");
         assert!(verify_signature(message, &signed.signature, &kp.public_key).is_ok());
     }
 

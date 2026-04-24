@@ -43,7 +43,7 @@ impl Theme {
         Self {
             width: 240,
             height: 240,
-            header_h: 21,
+            header_h: 29,
             footer_h: 26,
 
             bg: Rgb565::new(0, 5, 4),       // #001721

@@ -154,9 +154,17 @@ const qrCardStyle: CSSProperties = {
   background: colors.qrSurface,
   padding: space.md,
   borderRadius: radius.lg,
+  width: "100%",
+  boxSizing: "border-box",
   display: "grid",
   placeItems: "center",
   boxShadow: `0 0 0 1px ${colors.borderStrong}, 0 20px 40px rgba(0, 0, 0, 0.4)`
+};
+
+const qrSvgStyle: CSSProperties = {
+  width: "100%",
+  height: "auto",
+  display: "block"
 };
 
 const primaryButtonStyle: CSSProperties = {
@@ -249,10 +257,26 @@ function DisplayScreen({
   onAdvance: () => void;
   onCancel: () => void;
 }) {
+  const isMessage = session.kind === "message";
+  const qrValue = isMessage ? session.messageQrBase64 : session.txBase64;
+  if (!qrValue) {
+    return (
+      <>
+        <h1 style={titleStyle}>Signing unavailable</h1>
+        <p style={{ ...subtitleStyle, color: colors.error, textAlign: "center" }}>
+          Missing payload for this signing session.
+        </p>
+        <button type="button" onClick={onCancel} style={secondaryLinkStyle}>
+          Cancel
+        </button>
+      </>
+    );
+  }
+
   return (
     <>
       <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: space.xs }}>
-        <h1 style={titleStyle}>Sign Transaction</h1>
+        <h1 style={titleStyle}>{isMessage ? "Sign Message" : "Sign Transaction"}</h1>
         <p style={subtitleStyle}>
           from <strong style={{ color: colors.text }}>{hostFromOrigin(session.origin)}</strong>
         </p>
@@ -261,16 +285,19 @@ function DisplayScreen({
 
       <div style={qrCardStyle}>
         <QRCodeSVG
-          value={session.txBase64}
+          value={qrValue}
           size={320}
           level="M"
           includeMargin={false}
           bgColor={colors.qrSurface}
           fgColor={colors.qrModule}
+          style={qrSvgStyle}
         />
       </div>
 
-      <p style={{ ...subtitleStyle, textAlign: "center" }}>Scan this QR with your Faraday device.</p>
+      <p style={{ ...subtitleStyle, textAlign: "center" }}>
+        Scan this QR with your Faraday device.
+      </p>
 
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: space.sm }}>
         <button type="button" onClick={onAdvance} style={primaryButtonStyle}>
@@ -538,15 +565,22 @@ export function SignApp() {
     };
   }, [sessionId]);
 
-  async function completeSession(signedTxBase64: string): Promise<boolean> {
-    if (!sessionId) {
+  async function completeSession(signedPayload: string): Promise<boolean> {
+    if (!sessionId || !session) {
       return false;
     }
-    const response = await sendRuntimeMessage({
-      type: "faraday:complete-sign-session",
-      sessionId,
-      signedTxBase64
-    });
+    const response =
+      session.kind === "message"
+        ? await sendRuntimeMessage({
+            type: "faraday:complete-sign-message-session",
+            sessionId,
+            signatureHex: signedPayload
+          })
+        : await sendRuntimeMessage({
+            type: "faraday:complete-sign-session",
+            sessionId,
+            signedTxBase64: signedPayload
+          });
     if (!response.ok) {
       warn("Failed to complete sign session", { sessionId, error: response.error });
       return false;

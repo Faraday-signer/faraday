@@ -19,7 +19,7 @@ export type Route =
   | { name: "receive" }
   | { name: "send-compose" }
   | { name: "send-review"; draft: SendDraft }
-  | { name: "send-sign"; draft: SendDraft; txBase64: string }
+  | { name: "send-sign"; draft: SendDraft; txBase64: string; sessionId: string }
   | { name: "settings" }
   | { name: "settings-device" }
   | { name: "settings-origins" }

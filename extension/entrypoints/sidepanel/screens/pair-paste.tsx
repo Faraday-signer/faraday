@@ -70,11 +70,11 @@ export function PairPasteScreen() {
   }
 
   return (
-    <PanelShell eyebrow="Pair Device" title="Paste address">
+    <PanelShell eyebrow="Import wallet" title="Paste address">
       <div style={wrapStyle}>
         {mutationError ? (
           <ErrorBanner
-            title="Pairing failed"
+            title="Import failed"
             message={mutationError}
             onRetry={confirm}
             retrying={saving}
@@ -99,7 +99,7 @@ export function PairPasteScreen() {
 
         <div style={{ display: "flex", justifyContent: "center" }}>
           <PrimaryButton onClick={confirm} disabled={!looksValid || saving}>
-            {saving ? "Pairing…" : "Pair this address"}
+            {saving ? "Importing…" : "Import wallet"}
           </PrimaryButton>
         </div>
 

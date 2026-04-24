@@ -84,17 +84,20 @@ impl<'a> List<'a> {
         let selected = self.selected.min(self.items.len() - 1);
         let start = visible_start(self.items.len(), visible, self.selected);
 
-        let gap = theme.space_xs;
-        let total_gap = gap * (visible as i32 - 1);
-        let row_h = ((rect.size.height as i32 - total_gap) / visible as i32).max(0);
+        // Slot count is fixed to `max_visible` for the layout grid so row
+        // heights match the edge-hint gutter cells. Short lists leave the
+        // trailing slots empty (e.g. a 2-option menu occupies the top two
+        // slots, aligning with K1 and K2 on the right).
+        let slots = self.max_visible.max(1) as i32;
+        let row_h = (rect.size.height as i32 / slots).max(0);
 
-        for slot in 0..visible {
+        for slot in 0..self.max_visible {
             let idx = start + slot;
             if idx >= self.items.len() {
                 break;
             }
             let row = self.items[idx];
-            let y = rect.top_left.y + slot as i32 * (row_h + gap);
+            let y = rect.top_left.y + slot as i32 * row_h;
             let row_rect = Rectangle::new(
                 Point::new(rect.top_left.x, y),
                 Size::new(rect.size.width, row_h as u32),
