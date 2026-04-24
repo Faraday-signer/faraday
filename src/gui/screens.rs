@@ -33,7 +33,7 @@ impl App {
     /// Draw the current screen.
     pub fn draw<D: DrawTarget<Color = Rgb565>>(&self, display: &mut D) -> Result<(), D::Error> {
         match &self.screen {
-            Screen::Splash => draw_splash(display),
+            Screen::Splash => draw_boot_splash(display),
 
             Screen::MainMenu { selected } => {
                 let addr = self.wallet.as_ref().map(|w| w.address.as_str());
@@ -136,6 +136,7 @@ impl App {
             Screen::LoadInvalidMnemonic { word_count } => {
                 draw_invalid_mnemonic(display, *word_count)
             }
+            Screen::LoadSeedLoaded { .. } => draw_load_seed_loaded(display),
             Screen::LoadFinalize { preview_address, selected, .. } => {
                 draw_load_finalize(display, preview_address, *selected)
             }
@@ -243,19 +244,78 @@ impl App {
     }
 }
 
-/// Splash / reposo screen. Full-pixel-art Faraday logo, centered, at 2x scale
-/// on the dark-navy background. Doubles as the idle screen.
-pub fn draw_splash<D: DrawTarget<Color = Rgb565>>(display: &mut D) -> Result<(), D::Error> {
+/// Boot splash: logo centered on the screen, no animation. Shown for the
+/// ~2 s power-on beat before the menu comes up.
+pub fn draw_boot_splash<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+) -> Result<(), D::Error> {
+    display.clear(colors::FD_BG)?;
+    const SCREEN: i32 = 240;
+    const SCALE: u32 = 3;
+    let logo_w = (logo::LOGO_WIDTH * SCALE) as i32;
+    let logo_h = (logo::LOGO_HEIGHT * SCALE) as i32;
+    let x = (SCREEN - logo_w) / 2;
+    let y = (SCREEN - logo_h) / 2;
+    logo::draw_logo(display, x, y, SCALE, colors::FD_ACCENT)?;
+    Ok(())
+}
+
+/// Sleep / reposo screen. Same approach as before (small bitmap rendered
+/// at integer scale so every "pixel" is a chunky block) — only the art has
+/// changed. Adds a DVD-screensaver bounce: each axis moves independently,
+/// with a hard inset from the edges so the logo never touches the corners.
+pub fn draw_splash<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    elapsed_ms: u64,
+) -> Result<(), D::Error> {
     display.clear(colors::FD_BG)?;
 
-    let scale: u32 = 2;
-    let logo_w = logo::LOGO_WIDTH * scale;
-    let logo_h = logo::LOGO_HEIGHT * scale;
-    let x = (240 - logo_w as i32) / 2;
-    let y = (240 - logo_h as i32) / 2;
-    logo::draw_logo(display, x, y, scale, colors::FD_ACCENT)?;
+    const SCREEN: i32 = 240;
+    const INSET: i32 = 16; // hard margin from any edge — corners never touch
+    const SCALE: u32 = 3;
+    let logo_w = (logo::LOGO_WIDTH * SCALE) as i32;
+    let logo_h = (logo::LOGO_HEIGHT * SCALE) as i32;
+
+    let x_min = INSET;
+    let x_max = SCREEN - INSET - logo_w;
+    let y_min = INSET;
+    let y_max = SCREEN - INSET - logo_h;
+
+    // Slow overall, and y clearly faster than x relative to its range so
+    // the logo climbs / falls across several rows between side bounces.
+    let (x, y) = bounce(elapsed_ms, x_min, x_max, y_min, y_max, 6, 16);
+
+    logo::draw_logo(display, x, y, SCALE, colors::FD_ACCENT)?;
 
     Ok(())
+}
+
+/// Triangle-wave position: given `t` ms since start and a range `[min, max]`,
+/// returns the current coordinate bouncing at `speed_pps` pixels/sec. The
+/// wave is symmetric (out-and-back takes `2 * range / speed` seconds).
+fn bounce(
+    t_ms: u64,
+    x_min: i32,
+    x_max: i32,
+    y_min: i32,
+    y_max: i32,
+    x_speed_pps: u64,
+    y_speed_pps: u64,
+) -> (i32, i32) {
+    (
+        triangle(t_ms, x_min, x_max, x_speed_pps),
+        triangle(t_ms, y_min, y_max, y_speed_pps),
+    )
+}
+
+fn triangle(t_ms: u64, min: i32, max: i32, speed_pps: u64) -> i32 {
+    let range = (max - min).max(1) as u64;
+    // Position traversed at `speed_pps * t_ms / 1000`, wrapped into a
+    // triangle of period 2*range.
+    let travel = (speed_pps.saturating_mul(t_ms)) / 1000;
+    let phase = travel % (2 * range);
+    let offset = if phase <= range { phase } else { 2 * range - phase };
+    min + offset as i32
 }
 
 /// Main menu: list register (Header + List + right-edge hints) via `src/ui/`.
@@ -303,7 +363,11 @@ fn shorten_address(addr: &str) -> String {
     if addr.len() <= 10 {
         return addr.to_string();
     }
-    alloc::format!("{}…{}", &addr[..4], &addr[addr.len() - 4..])
+    // ASCII "..." instead of the unicode ellipsis — the bitmap font
+    // used on the Pi panel doesn't carry `…`, so `GAth…MsfT` renders
+    // as `GAthMsfT` with no visible separator. Three literal dots keep
+    // the intent clear on any glyph set.
+    alloc::format!("{}...{}", &addr[..4], &addr[addr.len() - 4..])
 }
 
 /// Invalid mnemonic card. Shown when the 12/24 entered words don't form a
@@ -562,6 +626,52 @@ fn draw_export_seed_qr_menu<D: DrawTarget<Color = Rgb565>>(
     .draw(display, &theme)
 }
 
+/// Transient "seed loaded" splash. No chrome, no prompts — a big
+/// brand-coloured "SEED LOADED ✓" centered on the screen. `tick()`
+/// auto-advances to the passphrase decision after a short beat so
+/// the user never has to press anything to dismiss it.
+fn draw_load_seed_loaded<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+) -> Result<(), D::Error> {
+    use crate::ui::Theme;
+    use embedded_graphics::{
+        primitives::{PrimitiveStyle, Line},
+        text::{Alignment, Text},
+    };
+
+    let theme = Theme::faraday_240();
+
+    let screen = Rectangle::new(
+        Point::zero(),
+        Size::new(theme.width, theme.height),
+    );
+    display.fill_solid(&screen, theme.bg)?;
+
+    let cx = theme.width as i32 / 2;
+    let cy = theme.height as i32 / 2;
+
+    // Tick glyph, drawn as two lines so it scales cleanly on the 240 px
+    // panel. The profont glyphs don't include a standalone check, so
+    // hand-rolling keeps it big and unambiguous.
+    let tick_color = theme.accent;
+    let tick_stroke = PrimitiveStyle::with_stroke(tick_color, 4);
+    let short_start = Point::new(cx - 34, cy - 30);
+    let pivot = Point::new(cx - 10, cy - 6);
+    let long_end = Point::new(cx + 36, cy - 56);
+    Line::new(short_start, pivot).into_styled(tick_stroke).draw(display)?;
+    Line::new(pivot, long_end).into_styled(tick_stroke).draw(display)?;
+
+    Text::with_alignment(
+        "SEED LOADED",
+        Point::new(cx, cy + 40),
+        theme.style_lg(theme.accent),
+        Alignment::Center,
+    )
+    .draw(display)?;
+
+    Ok(())
+}
+
 fn draw_load_finalize<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     preview_address: &str,
@@ -572,28 +682,22 @@ fn draw_load_finalize<D: DrawTarget<Color = Rgb565>>(
 
     let theme = Theme::faraday_240();
 
-    // Abbreviate the address so it fits the description band: first 6 chars
-    // + ellipsis + last 4 chars. Long enough to visually verify, short
-    // enough to never wrap.
-    let addr_short = if preview_address.len() > 12 {
-        let head = &preview_address[..6];
-        let tail = &preview_address[preview_address.len() - 4..];
-        format!("{head}…{tail}")
-    } else {
-        preview_address.to_string()
-    };
+    // Address moves to the header chip (same slot as the main menu's
+    // wallet short) so users keep continuity from the preceding
+    // verification register. `first4…last4` is the house style.
+    let addr_short = shorten_address(preview_address);
 
     let rows: [ListRow; 2] = [
         ListRow::with_subtitle("DONE", "No passphrase"),
-        ListRow::with_subtitle("ADD PASSPHRASE", "Extra security layer"),
+        ListRow::with_subtitle("ENCRYPT", "Add passphrase"),
     ];
     let sel = selected.min(1);
 
     ListScreen {
-        header: HeaderKind::Title("SEED LOADED"),
+        header: HeaderKind::Title("PASSPHRASE"),
         counter: None,
-        right_label: None,
-        description: Some(&addr_short),
+        right_label: Some(&addr_short),
+        description: None,
         items: &rows,
         selected: sel,
         max_visible: 3,
