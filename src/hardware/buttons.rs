@@ -121,6 +121,7 @@ impl Buttons {
 
     /// Wait indefinitely for any button press.
     pub fn wait_for_any(&mut self) -> ButtonEvent {
+        // Safe: Duration::ZERO means "wait forever", so wait_for_press always returns Some.
         self.wait_for_press(Duration::ZERO).unwrap()
     }
 }

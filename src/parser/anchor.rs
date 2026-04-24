@@ -12,6 +12,7 @@ use sha2::{Digest, Sha256};
 pub fn discriminator(name: &str) -> [u8; 8] {
     let preimage = format!("global:{name}");
     let hash = Sha256::digest(preimage.as_bytes());
+    // Safe: SHA256 always produces 32 bytes, slicing [..8] always fits [u8; 8].
     hash[..8].try_into().unwrap()
 }
 
