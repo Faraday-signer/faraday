@@ -4,11 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BrowserQRCodeReader } from "@zxing/browser";
 import { QRCodeSVG } from "qrcode.react";
 
+import { AnimatedQr } from "../../src/components/animated-qr";
 import { FaradayLogo } from "../../src/lib/brand";
 import { sendRuntimeMessage } from "../../src/lib/runtime";
 import { FARADAY_SIG_PREFIX, spliceFaradaySignature } from "../../src/lib/solana";
 import { colors, fontFamily, font, radius, space } from "../../src/lib/theme";
 import type { GetSignSessionResult } from "../../src/lib/types";
+import { encodeTxForQr } from "../../src/lib/ur-encode";
 
 type Step = "display" | "scan";
 type ScanState = "starting" | "scanning" | "success" | "error";
@@ -260,6 +262,30 @@ function DisplayScreen({
 }) {
   const isMessage = session.kind === "message";
   const qrValue = isMessage ? session.messageQrBase64 : session.txBase64;
+  const qrPayload = useMemo(() => {
+    if (!qrValue) {
+      return null;
+    }
+    if (isMessage) {
+      return { kind: "static" as const, value: qrValue };
+    }
+    return encodeTxForQr(qrValue);
+  }, [isMessage, qrValue]);
+  const [animatedIndex, setAnimatedIndex] = useState(0);
+
+  useEffect(() => {
+    setAnimatedIndex(0);
+    if (!qrPayload || qrPayload.kind !== "animated") {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setAnimatedIndex((prev) => (prev + 1) % qrPayload.frames.length);
+    }, qrPayload.intervalMs);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [qrPayload]);
+
   if (!qrValue) {
     return (
       <>
@@ -285,16 +311,35 @@ function DisplayScreen({
       </div>
 
       <div style={qrCardStyle}>
-        <QRCodeSVG
-          value={qrValue}
-          size={320}
-          level="M"
-          includeMargin={false}
-          bgColor={colors.qrSurface}
-          fgColor={colors.qrModule}
-          style={qrSvgStyle}
-        />
+        {qrPayload && qrPayload.kind === "animated" ? (
+          <AnimatedQr
+            frames={qrPayload.frames}
+            size={320}
+            intervalMs={qrPayload.intervalMs}
+            level="M"
+            bgColor={colors.qrSurface}
+            fgColor={colors.qrModule}
+            svgStyle={qrSvgStyle}
+            showCounter={false}
+          />
+        ) : (
+          <QRCodeSVG
+            value={qrValue}
+            size={320}
+            level="M"
+            includeMargin={false}
+            bgColor={colors.qrSurface}
+            fgColor={colors.qrModule}
+            style={qrSvgStyle}
+          />
+        )}
       </div>
+
+      {qrPayload && qrPayload.kind === "animated" ? (
+        <p style={{ ...subtitleStyle, fontFamily: fontFamily.mono, fontSize: font.sm }}>
+          Animated UR frame {animatedIndex + 1}/{qrPayload.frames.length}
+        </p>
+      ) : null}
 
       <p style={{ ...subtitleStyle, textAlign: "center" }}>
         Scan this QR with your Faraday device.
