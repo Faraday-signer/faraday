@@ -25,6 +25,7 @@ pub fn identify(program_id: &[u8; 32]) -> Option<KnownProgram> {
         "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo" => "Meteora DLMM",
         "PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY" => "Phoenix",
         "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P" => "Pump.fun",
+        "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf" => "Squads",
         _ => return None,
     };
     Some(KnownProgram { name })

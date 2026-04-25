@@ -24,6 +24,7 @@ pub(crate) mod token_registry;
 // dApp parsers
 mod jupiter;
 mod raydium;
+mod squads;
 
 use sha2::Digest;
 
@@ -658,6 +659,7 @@ fn dispatch(
         Some("Raydium CPMM") => {
             raydium::cpmm::parse(&ix.data, &ix.account_indices, all_accounts, ata_map)
         }
+        Some("Squads") => squads::parse(&ix.data, &resolved_accounts),
         Some(name) => ParsedInstruction {
             program: name.into(),
             items: vec![ReviewItem::Header(name.into())],
