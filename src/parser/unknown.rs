@@ -14,7 +14,7 @@ pub fn parse(program_id: &[u8; 32], data: &[u8], accounts: &[[u8; 32]]) -> Parse
     );
 
     let mut items = vec![
-        ReviewItem::Header("Unknown Program".into()),
+        ReviewItem::Header(format!("Unknown {}", program_short)),
         ReviewItem::Warning("Unrecognized program — review carefully".into()),
         ReviewItem::Field {
             label: "Program".into(),
