@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@theme {
+  /* Surfaces — a calm, near-black palette. */
+  --color-bg:        #0a0e14;
+  --color-surface:   #11161d;
+  --color-elevated: #161c25;
+  --color-border:    #21262d;
+  --color-border-strong: #2d343d;
+
+  /* Text */
+  --color-fg:        #e6edf3;
+  --color-muted:     #8b949e;
+  --color-dim:       #6e7681;
+
+  /* Brand */
+  --color-accent:        #1af8ff;
+  --color-accent-soft:   rgba(26, 248, 255, 0.10);
+  --color-accent-strong: #00d8e0;
+
+  /* Semantic */
+  --color-success: #3fb950;
+  --color-warning: #d29922;
+  --color-danger:  #f85149;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, "Roboto Mono", monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+
+/* Global base */
+body { background: var(--color-bg); color: var(--color-fg); }
+
+button { font-family: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+
+/* A subtle glow we re-use on the brand mark + primary buttons */
+.glow-accent { box-shadow: 0 0 0 1px var(--color-accent-soft) inset, 0 8px 24px -12px rgba(26, 248, 255, 0.35); }

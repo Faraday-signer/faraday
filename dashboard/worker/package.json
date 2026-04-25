@@ -1,0 +1,18 @@
+{
+  "name": "faraday-squads-indexer",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240924.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^3.78.0"
+  },
+  "dependencies": {
+    "bs58": "^6.0.0"
+  }
+}
