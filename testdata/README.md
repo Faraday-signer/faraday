@@ -13,6 +13,24 @@ Real Solana transactions captured from mainnet for testing the parser.
      - `<name>.gif` — animated GIF with infinite loop (for testing with the physical device)
      - `<name>.txt` — raw UR strings, one per line (for testing the UR decoder directly without camera)
 3. **`cargo test`** — the test `test_real_transactions_parse_without_panic` reads every `.bin` file and runs it through the full parser pipeline, printing the decoded output.
+4. **Optional `<name>.expected`** sidecar — if a file with this name sits next to `<name>.bin`, the test reads it as a `key=value` file and asserts the listed predicates against the parsed transaction. Useful for locking in classifier behavior on real fixtures so regressions surface as test failures.
+
+   Supported keys:
+   - `primary_program=Jupiter` — `primary_instruction()` must select an ix with this program label.
+   - `not_primary_program=AssocToken` — primary must **not** be this program (catches the classic "Create Token Account hijacks the hero" bug).
+   - `hero_title=SWAP` — the `@H1` hero row built by `build_review_lines` must equal this value (`SWAP` / `TRANSFER` / `ACTION` / etc).
+   - `hero_contains=SOL` — any hero row (`@H1` / `@H2` / `@HM` / `@SWAPPAIR`) must contain this substring. Less brittle than `hero_title` for asserting "the dest mint resolved".
+
+   Lines starting with `#` are comments. Unknown keys are skipped (with a log line) so future expectations don't break old fixtures.
+
+   Example: `test_txs_bin/jupiter_swap_with_create_ata.expected`
+   ```
+   # Regression: ATA-create side-effect must not eclipse the swap
+   primary_program=Jupiter
+   not_primary_program=AssocToken
+   hero_title=SWAP
+   hero_contains=SOL
+   ```
 
 ## Quick start
 

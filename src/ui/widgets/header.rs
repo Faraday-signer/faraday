@@ -73,12 +73,9 @@ impl<'a> Header<'a> {
         // For Brand headers we align the right text to the logo's vertical
         // center so the pubkey chip sits on the same visual line as the
         // logo instead of hugging the bottom edge of the (taller) band.
-        let x_right =
-            rect.top_left.x + rect.size.width as i32 - theme.space_md;
+        let x_right = rect.top_left.x + rect.size.width as i32 - theme.space_md;
         let right_baseline = match self.kind {
-            HeaderKind::Brand => {
-                rect.top_left.y + rect.size.height as i32 / 2 + 5
-            }
+            HeaderKind::Brand => rect.top_left.y + rect.size.height as i32 / 2 + 5,
             HeaderKind::Title(_) => baseline,
         };
         if let Some((now, total)) = self.counter {

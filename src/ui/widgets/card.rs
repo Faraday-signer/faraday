@@ -58,7 +58,11 @@ impl<'a> Card<'a> {
         // Hero block (title + subtitle).
         if let Some(title) = self.title {
             cursor_y += 28;
-            let title_color = if self.title_danger { theme.danger } else { theme.accent };
+            let title_color = if self.title_danger {
+                theme.danger
+            } else {
+                theme.accent
+            };
             Text::with_alignment(
                 title,
                 Point::new(left_x, cursor_y),
@@ -110,8 +114,7 @@ impl<'a> Card<'a> {
 
         // Key/value rows.
         if !self.rows.is_empty() {
-            let remaining_h = rect.size.height as i32
-                - (cursor_y - rect.top_left.y);
+            let remaining_h = rect.size.height as i32 - (cursor_y - rect.top_left.y);
             let row_h = remaining_h / self.rows.len() as i32;
             for (i, row) in self.rows.iter().enumerate() {
                 let baseline = cursor_y + row_h * i as i32 + row_h / 2 + 6;

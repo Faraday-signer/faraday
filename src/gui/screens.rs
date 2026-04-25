@@ -1,7 +1,7 @@
 //! Screen layouts — all UI pages.
 
 use embedded_graphics::{
-    mono_font::{ascii::FONT_6X10, ascii::FONT_9X15, ascii::FONT_10X20, MonoTextStyle},
+    mono_font::{ascii::FONT_10X20, ascii::FONT_6X10, ascii::FONT_9X15, MonoTextStyle},
     pixelcolor::Rgb565,
     prelude::*,
     primitives::{PrimitiveStyle, PrimitiveStyleBuilder, Rectangle},
@@ -11,8 +11,7 @@ use embedded_graphics::{
 use crate::gui::app::{App, Screen};
 use crate::gui::colors;
 use crate::gui::components::{
-    draw_char_grid, draw_option_list,
-    draw_qr, draw_status_bar, draw_word_picker,
+    draw_char_grid, draw_option_list, draw_qr, draw_status_bar, draw_word_picker,
 };
 use crate::gui::logo;
 
@@ -23,10 +22,22 @@ struct MenuItem {
 }
 
 const MENU_ITEMS: [MenuItem; 4] = [
-    MenuItem { label: "CREATE",   subtitle: "new wallet" },
-    MenuItem { label: "LOAD",     subtitle: "existing wallet" },
-    MenuItem { label: "SIGN",     subtitle: "transaction" },
-    MenuItem { label: "SETTINGS", subtitle: "and device info" },
+    MenuItem {
+        label: "CREATE",
+        subtitle: "new wallet",
+    },
+    MenuItem {
+        label: "LOAD",
+        subtitle: "existing wallet",
+    },
+    MenuItem {
+        label: "SIGN",
+        subtitle: "transaction",
+    },
+    MenuItem {
+        label: "SETTINGS",
+        subtitle: "and device info",
+    },
 ];
 
 impl App {
@@ -41,33 +52,51 @@ impl App {
             }
 
             // Create flow
-            Screen::CreateWordCount { selected } => {
-                draw_create_word_count(display, *selected)
-            }
-            Screen::CreateMethod { selected, .. } => {
-                draw_create_method(display, *selected)
-            }
-            Screen::CreateCameraEntropy { word_count, frames_collected, .. } => {
-                draw_camera_entropy(
-                    display,
-                    *word_count,
-                    *frames_collected,
-                    self.seed_loaded(),
-                    self.has_camera_frame(),
-                )
-            }
-            Screen::CreateCoinFlips { word_count, bits, selected } => {
-                draw_coin_flips(display, *word_count, bits, *selected, self.seed_loaded())
-            }
-            Screen::CreateDiceRolls { word_count, rolls, selected } => {
-                draw_dice_rolls(display, *word_count, rolls, *selected, self.seed_loaded())
-            }
-            Screen::CreateShowWords { mnemonic, page, word_count } => {
-                draw_show_words(display, mnemonic, *page, *word_count, self.seed_loaded())
-            }
-            Screen::CreateVerify { checks, current, options, correct_idx: _, selected, mnemonic: _ } => {
+            Screen::CreateWordCount { selected } => draw_create_word_count(display, *selected),
+            Screen::CreateMethod { selected, .. } => draw_create_method(display, *selected),
+            Screen::CreateCameraEntropy {
+                word_count,
+                frames_collected,
+                ..
+            } => draw_camera_entropy(
+                display,
+                *word_count,
+                *frames_collected,
+                self.seed_loaded(),
+                self.has_camera_frame(),
+            ),
+            Screen::CreateCoinFlips {
+                word_count,
+                bits,
+                selected,
+            } => draw_coin_flips(display, *word_count, bits, *selected, self.seed_loaded()),
+            Screen::CreateDiceRolls {
+                word_count,
+                rolls,
+                selected,
+            } => draw_dice_rolls(display, *word_count, rolls, *selected, self.seed_loaded()),
+            Screen::CreateShowWords {
+                mnemonic,
+                page,
+                word_count,
+            } => draw_show_words(display, mnemonic, *page, *word_count, self.seed_loaded()),
+            Screen::CreateVerify {
+                checks,
+                current,
+                options,
+                correct_idx: _,
+                selected,
+                mnemonic: _,
+            } => {
                 let word_num = checks[*current] + 1;
-                draw_verify_word(display, word_num, options, *selected, *current + 1, checks.len())
+                draw_verify_word(
+                    display,
+                    word_num,
+                    options,
+                    *selected,
+                    *current + 1,
+                    checks.len(),
+                )
             }
             Screen::CreatePassphrasePrompt { selected, .. } => {
                 draw_passphrase_prompt(display, *selected)
@@ -81,7 +110,12 @@ impl App {
             Screen::CreatePassphraseMismatch { .. } => {
                 draw_passphrase_mismatch(display, self.seed_loaded())
             }
-            Screen::CreateConfirm { address, passphrase, mnemonic, .. } => {
+            Screen::CreateConfirm {
+                address,
+                passphrase,
+                mnemonic,
+                ..
+            } => {
                 let wc = mnemonic.split_whitespace().count();
                 draw_wallet_confirm(display, "NEW WALLET", address, !passphrase.is_empty(), wc)
             }
@@ -95,9 +129,12 @@ impl App {
             Screen::ExportSeedQrMenu { selected, .. } => {
                 draw_export_seed_qr_menu(display, self.seedqr_title(), *selected)
             }
-            Screen::ExportShowWords { mnemonic, page, word_count, .. } => {
-                draw_show_words(display, mnemonic, *page, *word_count, self.seed_loaded())
-            }
+            Screen::ExportShowWords {
+                mnemonic,
+                page,
+                word_count,
+                ..
+            } => draw_show_words(display, mnemonic, *page, *word_count, self.seed_loaded()),
             Screen::ExportSeedQr { compact_data, .. } => {
                 // CompactSeedQR: raw 16/32 entropy bytes at ECL L so the grid
                 // stays as small as possible for hand-transcription (12w →
@@ -107,23 +144,35 @@ impl App {
                 // visual check vs. the hand-transcribed paper is easier.
                 draw_fullscreen_qr(display, compact_data, crate::qr::encode_qr::QrEcLevel::L, 2)
             }
-            Screen::ExportSeedQrBlock { compact_data, block_index, .. } => {
-                draw_qr_block(display, compact_data, *block_index, self.seed_loaded())
-            }
+            Screen::ExportSeedQrBlock {
+                compact_data,
+                block_index,
+                ..
+            } => draw_qr_block(display, compact_data, *block_index, self.seed_loaded()),
 
             // Load flow
-            Screen::LoadMethod { selected } => {
-                draw_load_method(display, *selected)
-            }
+            Screen::LoadMethod { selected } => draw_load_method(display, *selected),
             Screen::LoadScanQr => {
                 #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                 {
-                    draw_scan_overlay(display, "Scan SeedQR", "Point camera at SeedQR",
-                        self.seed_loaded(), self.has_camera_frame(), self.camera_error_str(), self.scan_diag)?;
+                    draw_scan_overlay(
+                        display,
+                        "Scan SeedQR",
+                        "Point camera at SeedQR",
+                        self.seed_loaded(),
+                        self.has_camera_frame(),
+                        self.camera_error_str(),
+                        self.scan_diag,
+                    )?;
                 }
                 #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                 {
-                    draw_message(display, "Scan SeedQR", "Point camera at\nSeedQR code", self.seed_loaded())?;
+                    draw_message(
+                        display,
+                        "Scan SeedQR",
+                        "Point camera at\nSeedQR code",
+                        self.seed_loaded(),
+                    )?;
                 }
                 Ok(())
             }
@@ -152,7 +201,12 @@ impl App {
             Screen::LoadPassphraseMismatch { .. } => {
                 draw_passphrase_mismatch(display, self.seed_loaded())
             }
-            Screen::LoadConfirm { address, passphrase, mnemonic, .. } => {
+            Screen::LoadConfirm {
+                address,
+                passphrase,
+                mnemonic,
+                ..
+            } => {
                 let wc = mnemonic.split_whitespace().count();
                 draw_wallet_confirm(display, "LOAD WALLET", address, !passphrase.is_empty(), wc)
             }
@@ -162,29 +216,58 @@ impl App {
             Screen::SignScanTx => {
                 #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                 {
-                    draw_scan_overlay(display, "Sign TX", "Point camera at TX QR",
-                        self.seed_loaded(), self.has_camera_frame(), self.camera_error_str(), self.scan_diag)
+                    draw_scan_overlay(
+                        display,
+                        "Sign TX",
+                        "Point camera at TX QR",
+                        self.seed_loaded(),
+                        self.has_camera_frame(),
+                        self.camera_error_str(),
+                        self.scan_diag,
+                    )
                 }
                 #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                 {
-                    draw_message(display, "Sign TX", "Scan unsigned TX QR\nX: Sign Message", self.seed_loaded())
+                    draw_message(
+                        display,
+                        "Sign TX",
+                        "Scan unsigned TX QR\nX: Sign Message",
+                        self.seed_loaded(),
+                    )
                 }
             }
-            Screen::SignReview { info_lines, scroll, selected, can_sign, .. } => {
-                draw_tx_review(display, info_lines, *scroll, *selected, *can_sign, self.seed_loaded())
-            }
-            Screen::SignShowQr { data } => {
-                draw_fullscreen_qr(display, data.as_bytes(), crate::qr::encode_qr::QrEcLevel::M, 4)
-            }
-            Screen::SignMessageReview { message_bytes, scroll, .. } => {
-                draw_message_review(display, message_bytes, *scroll, self.seed_loaded())
-            }
-            Screen::SignMessageInput { grid } => {
-                draw_passphrase_grid(display, grid, "SIGN MSG")
-            }
-            Screen::SignMessageResult { signature_hex } => {
-                draw_fullscreen_qr(display, signature_hex.as_bytes(), crate::qr::encode_qr::QrEcLevel::M, 4)
-            }
+            Screen::SignReview {
+                info_lines,
+                scroll,
+                selected,
+                can_sign,
+                ..
+            } => draw_tx_review(
+                display,
+                info_lines,
+                *scroll,
+                *selected,
+                *can_sign,
+                self.seed_loaded(),
+            ),
+            Screen::SignShowQr { data } => draw_fullscreen_qr(
+                display,
+                data.as_bytes(),
+                crate::qr::encode_qr::QrEcLevel::M,
+                4,
+            ),
+            Screen::SignMessageReview {
+                message_bytes,
+                scroll,
+                ..
+            } => draw_message_review(display, message_bytes, *scroll, self.seed_loaded()),
+            Screen::SignMessageInput { grid } => draw_passphrase_grid(display, grid, "SIGN MSG"),
+            Screen::SignMessageResult { signature_hex } => draw_fullscreen_qr(
+                display,
+                signature_hex.as_bytes(),
+                crate::qr::encode_qr::QrEcLevel::M,
+                4,
+            ),
 
             // Settings
             Screen::SettingsMenu { selected } => {
@@ -199,34 +282,54 @@ impl App {
             Screen::SettingsVerifyAddressScan => {
                 #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                 {
-                    draw_scan_overlay(display, "Verify Address", "Point camera at address QR",
-                        self.seed_loaded(), self.has_camera_frame(), self.camera_error_str(), self.scan_diag)
+                    draw_scan_overlay(
+                        display,
+                        "Verify Address",
+                        "Point camera at address QR",
+                        self.seed_loaded(),
+                        self.has_camera_frame(),
+                        self.camera_error_str(),
+                        self.scan_diag,
+                    )
                 }
                 #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                 {
-                    draw_message(display, "Verify Address", "Scan address QR\nto verify it's yours", self.seed_loaded())
+                    draw_message(
+                        display,
+                        "Verify Address",
+                        "Scan address QR\nto verify it's yours",
+                        self.seed_loaded(),
+                    )
                 }
             }
             Screen::SettingsVerifyAddressResult { address, result } => {
                 draw_verify_address_result_card(display, address, result)
             }
-            Screen::SettingsAbout => {
-                draw_about(display, self.seed_loaded())
-            }
-            Screen::SettingsPowerOff { selected } => {
-                draw_power_off(display, *selected)
-            }
+            Screen::SettingsAbout => draw_about(display, self.seed_loaded()),
+            Screen::SettingsPowerOff { selected } => draw_power_off(display, *selected),
 
             // Verify backup flow
             Screen::VerifyBackupScan => {
                 #[cfg(any(feature = "simulator", target_os = "linux"))]
                 {
-                    draw_scan_overlay(display, "Verify Backup", "Scan your paper SeedQR",
-                        self.seed_loaded(), self.has_camera_frame(), self.camera_error_str(), self.scan_diag)
+                    draw_scan_overlay(
+                        display,
+                        "Verify Backup",
+                        "Scan your paper SeedQR",
+                        self.seed_loaded(),
+                        self.has_camera_frame(),
+                        self.camera_error_str(),
+                        self.scan_diag,
+                    )
                 }
                 #[cfg(not(any(feature = "simulator", target_os = "linux")))]
                 {
-                    draw_message(display, "Verify Backup", "Scan your paper\nSeedQR", self.seed_loaded())
+                    draw_message(
+                        display,
+                        "Verify Backup",
+                        "Scan your paper\nSeedQR",
+                        self.seed_loaded(),
+                    )
                 }
             }
             Screen::VerifyBackupSeedMismatch => draw_verify_backup_seed_mismatch(display),
@@ -237,7 +340,10 @@ impl App {
                 draw_verify_backup_passphrase_mismatch(display)
             }
             Screen::VerifyBackupSuccess => {
-                let has_passphrase = self.wallet.as_ref().map_or(false, |w| !w.passphrase.is_empty());
+                let has_passphrase = self
+                    .wallet
+                    .as_ref()
+                    .map_or(false, |w| !w.passphrase.is_empty());
                 draw_verify_backup_success(display, has_passphrase)
             }
         }
@@ -376,11 +482,15 @@ fn draw_invalid_mnemonic<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     word_count: usize,
 ) -> Result<(), D::Error> {
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, CardRow, HeaderKind};
+    use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
     use crate::ui::{screens::CardScreen, Theme};
 
     let theme = Theme::faraday_240();
-    let count_str = if word_count == 12 { "12 WORDS" } else { "24 WORDS" };
+    let count_str = if word_count == 12 {
+        "12 WORDS"
+    } else {
+        "24 WORDS"
+    };
     let rows: [CardRow; 2] = [
         CardRow::new("ENTERED", count_str),
         CardRow::new("CHECK", "BIP39 failed"),
@@ -413,7 +523,7 @@ fn draw_passphrase_grid<D: DrawTarget<Color = Rgb565>>(
     grid: &crate::gui::app::CharGrid,
     title: &str,
 ) -> Result<(), D::Error> {
-    use crate::gui::app::{GRID_COLS, GridAction};
+    use crate::gui::app::{GridAction, GRID_COLS};
     use crate::ui::layout::{split_bottom, split_top};
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
     use crate::ui::Theme;
@@ -423,10 +533,7 @@ fn draw_passphrase_grid<D: DrawTarget<Color = Rgb565>>(
     };
 
     let theme = Theme::faraday_240();
-    let screen = Rectangle::new(
-        Point::zero(),
-        Size::new(theme.width, theme.height),
-    );
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
 
     let (header_rect, rest) = split_top(screen, theme.header_h as i32);
@@ -459,10 +566,7 @@ fn draw_passphrase_grid<D: DrawTarget<Color = Rgb565>>(
         for col in 0..GRID_COLS {
             let x = grid_rect.top_left.x + col as i32 * cell_w;
             let y = grid_rect.top_left.y + row as i32 * row_h;
-            let cell = Rectangle::new(
-                Point::new(x, y),
-                Size::new(cell_w as u32, row_h as u32),
-            );
+            let cell = Rectangle::new(Point::new(x, y), Size::new(cell_w as u32, row_h as u32));
             let is_selected = grid.row == row && grid.col == col;
 
             if is_selected {
@@ -499,10 +603,7 @@ fn draw_passphrase_grid<D: DrawTarget<Color = Rgb565>>(
     for (start_col, span, action, label) in actions {
         let x = grid_rect.top_left.x + start_col as i32 * cell_w;
         let w = span as i32 * cell_w;
-        let rect = Rectangle::new(
-            Point::new(x, action_y),
-            Size::new(w as u32, row_h as u32),
-        );
+        let rect = Rectangle::new(Point::new(x, action_y), Size::new(w as u32, row_h as u32));
         let is_selected = current_action == Some(action);
         if is_selected {
             rect.into_styled(PrimitiveStyle::with_fill(theme.accent))
@@ -745,7 +846,7 @@ fn draw_wallet_confirm<D: DrawTarget<Color = Rgb565>>(
     has_passphrase: bool,
     word_count: usize,
 ) -> Result<(), D::Error> {
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, CardRow, HeaderKind};
+    use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
     use crate::ui::{screens::CardScreen, Theme};
 
     let theme = Theme::faraday_240();
@@ -768,7 +869,11 @@ fn draw_wallet_confirm<D: DrawTarget<Color = Rgb565>>(
     // Seed length row: quick sanity check that the created/loaded wallet
     // matches the word count the user picked. Path/network are both fixed
     // and would just be noise.
-    let length = if word_count == 24 { "24 WORDS" } else { "12 WORDS" };
+    let length = if word_count == 24 {
+        "24 WORDS"
+    } else {
+        "12 WORDS"
+    };
     let rows: [CardRow; 1] = [CardRow::new("SEED", length)];
 
     CardScreen {
@@ -909,8 +1014,13 @@ fn draw_accounts_list<D: DrawTarget<Color = Rgb565>>(
     }
 
     // Own the formatted strings so ListRow borrows survive past this closure.
-    let nums: Vec<String> = (1..=accounts.len()).map(|i| alloc::format!("{:02}", i)).collect();
-    let shorts: Vec<String> = accounts.iter().map(|(_, addr)| shorten_address(addr)).collect();
+    let nums: Vec<String> = (1..=accounts.len())
+        .map(|i| alloc::format!("{:02}", i))
+        .collect();
+    let shorts: Vec<String> = accounts
+        .iter()
+        .map(|(_, addr)| shorten_address(addr))
+        .collect();
     let rows: Vec<ListRow> = (0..accounts.len())
         .map(|i| ListRow {
             prefix: Some(&nums[i]),
@@ -954,10 +1064,7 @@ fn draw_settings_menu<D: DrawTarget<Color = Rgb565>>(
         ListRow::new("ABOUT"),
         ListRow::new("POWER OFF"),
     ];
-    let empty: [ListRow; 2] = [
-        ListRow::new("ABOUT"),
-        ListRow::new("POWER OFF"),
-    ];
+    let empty: [ListRow; 2] = [ListRow::new("ABOUT"), ListRow::new("POWER OFF")];
     let items: &[ListRow] = if seed_loaded { &loaded } else { &empty };
     let total = items.len();
     let sel = selected.min(total - 1);
@@ -1016,7 +1123,11 @@ fn draw_show_words<D: DrawTarget<Color = Rgb565>>(
         max_visible: words_per_page,
         selectable: false,
         edge_hints: EdgeHints::new()
-            .k1(if is_last { EdgeIcon::Check } else { EdgeIcon::ArrowRight })
+            .k1(if is_last {
+                EdgeIcon::Check
+            } else {
+                EdgeIcon::ArrowRight
+            })
             .k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
@@ -1099,10 +1210,7 @@ fn draw_qr_block<D: DrawTarget<Color = Rgb565>>(
 
     // Header spans full width; the body (zoom + minimap) shrinks by the
     // gutter so content doesn't overlap the K1/K2/K3 column.
-    let header_rect = Rectangle::new(
-        Point::zero(),
-        Size::new(theme.width, theme.header_h),
-    );
+    let header_rect = Rectangle::new(Point::zero(), Size::new(theme.width, theme.header_h));
     let body_w = (theme.width - GUTTER_W) as i32;
 
     // Must match the ECL used for the full seed QR so the block view shows
@@ -1162,15 +1270,11 @@ fn draw_qr_block<D: DrawTarget<Color = Rgb565>>(
         for c in 0..block_side {
             let module_r = br * block_side + r;
             let module_c = bc * block_side + c;
-            let on = module_r < qr_size
-                && module_c < qr_size
-                && matrix[module_r * qr_size + module_c];
+            let on =
+                module_r < qr_size && module_c < qr_size && matrix[module_r * qr_size + module_c];
             let fill = if on { colors::BLACK } else { colors::WHITE };
             Rectangle::new(
-                Point::new(
-                    zoom_x + c as i32 * cell_size,
-                    zoom_y + r as i32 * cell_size,
-                ),
+                Point::new(zoom_x + c as i32 * cell_size, zoom_y + r as i32 * cell_size),
                 Size::new(inner as u32, inner as u32),
             )
             .into_styled(PrimitiveStyle::with_fill(fill))
@@ -1209,7 +1313,10 @@ fn draw_qr_block<D: DrawTarget<Color = Rgb565>>(
             }
             if matrix[r * qr_size + c] {
                 Rectangle::new(
-                    Point::new(mini_x + c as i32 * mini_scale, mini_y + r as i32 * mini_scale),
+                    Point::new(
+                        mini_x + c as i32 * mini_scale,
+                        mini_y + r as i32 * mini_scale,
+                    ),
                     Size::new(mini_scale as u32, mini_scale as u32),
                 )
                 .into_styled(PrimitiveStyle::with_fill(colors::BLACK))
@@ -1271,14 +1378,18 @@ fn draw_message<D: DrawTarget<Color = Rgb565>>(
     let style = MonoTextStyle::new(&FONT_9X15, colors::TEXT_SECONDARY);
     let mut y = 100i32;
     for line in message.split('\n') {
-        Text::with_alignment(line, Point::new(120, y), style, Alignment::Center)
-            .draw(display)?;
+        Text::with_alignment(line, Point::new(120, y), style, Alignment::Center).draw(display)?;
         y += 20;
     }
 
     let hint = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    Text::with_alignment("Press any key", Point::new(120, 230), hint, Alignment::Center)
-        .draw(display)?;
+    Text::with_alignment(
+        "Press any key",
+        Point::new(120, 230),
+        hint,
+        Alignment::Center,
+    )
+    .draw(display)?;
 
     Ok(())
 }
@@ -1299,25 +1410,88 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
     use crate::ui::layout::{split_bottom, split_top};
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
     use crate::ui::Theme;
+    use embedded_graphics::primitives::{Line, PrimitiveStyle};
 
     let theme = Theme::faraday_240();
-    let screen = Rectangle::new(
-        Point::zero(),
-        Size::new(theme.width, theme.height),
-    );
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
 
     let (header_rect, rest) = split_top(screen, theme.header_h as i32);
-    let (body_rect, footer_rect) = split_bottom(rest, theme.footer_h as i32);
+    let (body_rect, _footer_rect) = split_bottom(rest, theme.footer_h as i32);
 
-    // Header counter shows the scroll window position so users know whether
-    // there's more below they haven't seen.
     let line_h: i32 = 14;
-    let body_h = body_rect.size.height as i32 - theme.space_sm * 2;
-    let visible_lines = (body_h / line_h).max(1) as usize;
-    let total = info_lines.len();
-    let max_scroll = total.saturating_sub(visible_lines);
-    let counter = if total > visible_lines {
+    let content_w = body_rect.size.width as i32 - GUTTER_W as i32 - theme.space_md - theme.space_sm;
+    // Width per glyph.
+    //  - HeroTitle uses embedded_graphics FONT_9X15 (fixed 9px).
+    //  - Everything else uses u8g2_font_profont17_mr. Profont17 is nominally
+    //    a 9-wide pixel font: the previous `/7` estimate was optimistic and
+    //    let lines render ~25% wider than the available body, which is why
+    //    long amounts visibly poked past the right edge into the gutter.
+    //    Treat both as 9px so wrap caps match what actually renders.
+    let max_chars_small = (content_w / 9).max(8) as usize;
+    let max_chars_title = (content_w / 9).max(6) as usize;
+    let rows = build_review_rows(info_lines, max_chars_small, max_chars_title);
+
+    // Split the row list into the pinned hero block (runs of @H1/@H2/@HM/
+    // @SWAPPAIR at the top) and the scrollable detail block (everything
+    // after). A tx without hero markers collapses to "details only" and
+    // renders like before.
+    let hero_end = rows
+        .iter()
+        .position(|r| {
+            !matches!(
+                r.kind,
+                ReviewRowKind::HeroTitle
+                    | ReviewRowKind::HeroSub
+                    | ReviewRowKind::HeroMeta
+                    | ReviewRowKind::SwapPair
+            )
+        })
+        .unwrap_or(rows.len());
+    let hero_rows = &rows[..hero_end];
+    let detail_rows = &rows[hero_end..];
+
+    // Hero zone: each row contributes its natural height. SwapPair takes
+    // two lines (amount row + symbol row) so it needs 2× line_h. HeroTitle
+    // uses the 9x15 font which wants a little extra vertical room so
+    // ascenders don't clip into the divider.
+    let hero_pad_top = theme.space_sm;
+    let hero_content_h: i32 = hero_rows
+        .iter()
+        .map(|r| match r.kind {
+            ReviewRowKind::SwapPair => 2 * line_h + 2,
+            _ => line_h,
+        })
+        .sum::<i32>()
+        + if hero_rows
+            .iter()
+            .any(|r| matches!(r.kind, ReviewRowKind::HeroTitle))
+        {
+            2
+        } else {
+            0
+        };
+    let hero_zone_h = if hero_rows.is_empty() {
+        0
+    } else {
+        hero_pad_top + hero_content_h + theme.space_sm
+    };
+
+    let (hero_rect, below_hero) = split_top(body_rect, hero_zone_h);
+    let divider_h = if !hero_rows.is_empty() && !detail_rows.is_empty() {
+        1
+    } else {
+        0
+    };
+    let (divider_rect, detail_rect) = split_top(below_hero, divider_h);
+
+    // Scroll + counter apply only to the detail block. Counter is rendered
+    // in the header so the user knows how much detail is below the fold.
+    let detail_h = detail_rect.size.height as i32 - theme.space_sm * 2;
+    let visible_details = (detail_h / line_h).max(1) as usize;
+    let total_details = detail_rows.len();
+    let max_scroll = total_details.saturating_sub(visible_details);
+    let counter = if total_details > visible_details {
         Some((scroll.min(max_scroll) + 1, max_scroll + 1))
     } else {
         None
@@ -1330,32 +1504,188 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
     }
     .draw(display, &theme, header_rect)?;
 
-    // Body lines. Accept either "! line" (with space) or "!line" as the
-    // warning prefix — both exist in the upstream parser output.
-    let x = body_rect.top_left.x + theme.space_md;
-    let start_y = body_rect.top_left.y + theme.space_sm + 10;
-    let end = total.min(scroll + visible_lines);
+    // Pinned hero block. No scroll applied — this stays put so the "what am
+    // I signing?" summary is always visible.
+    let hero_x = hero_rect.top_left.x + theme.space_md;
+    let hero_right_x = hero_rect.top_left.x + hero_rect.size.width as i32
+        - GUTTER_W as i32
+        - theme.space_sm;
+    let mut hero_y = hero_rect.top_left.y + hero_pad_top + 10;
+    for row in hero_rows {
+        match row.kind {
+            ReviewRowKind::HeroTitle => {
+                let style = MonoTextStyle::new(&FONT_9X15, theme.accent);
+                Text::with_alignment(&row.text, Point::new(hero_x, hero_y), style, Alignment::Left)
+                    .draw(display)?;
+                hero_y += line_h + 2;
+            }
+            ReviewRowKind::HeroMeta => {
+                Text::with_alignment(
+                    &row.text,
+                    Point::new(hero_x, hero_y),
+                    theme.style_sm(theme.muted),
+                    Alignment::Left,
+                )
+                .draw(display)?;
+                hero_y += line_h;
+            }
+            ReviewRowKind::SwapPair => {
+                // Four fields in tab-delimited text: amt_in / sym_in /
+                // amt_out / sym_out. Columns split the hero content width;
+                // amount renders in accent (cyan) on the amount row, symbol
+                // in muted small on the line below. A small "to" connector
+                // sits between the two columns on the amount row.
+                let parts: Vec<&str> = row.text.splitn(4, '\t').collect();
+                let (amt_in, sym_in, amt_out, sym_out) = match parts.as_slice() {
+                    [a, b, c, d] => (*a, *b, *c, *d),
+                    _ => ("?", "?", "?", "?"),
+                };
+
+                // "to" is rendered in profont17_mr at ~18px wide. Position
+                // it centered between the two columns and leave >= 4px of
+                // breathing room on each side — the right column has to
+                // start *after* "to" ends, not overlap with it. The old
+                // `+/- 6` offsets allowed the right column to start 6px
+                // inside the "to" glyphs.
+                let center_x = (hero_x + hero_right_x) / 2;
+                let col_left_x = hero_x;
+                let connector_x = center_x - 9; // shift to visually centre "to"
+                let col_right_x = center_x + 13; // 9 (half of "to") + 4 padding
+
+                // MonoTextStyle is Copy; u8g2 styles aren't — just rebuild
+                // them per use.
+                let amount_style = MonoTextStyle::new(&FONT_9X15, theme.accent);
+
+                // Row 1: amount | "to" | amount
+                Text::with_alignment(
+                    amt_in,
+                    Point::new(col_left_x, hero_y),
+                    amount_style,
+                    Alignment::Left,
+                )
+                .draw(display)?;
+                Text::with_alignment(
+                    "to",
+                    Point::new(connector_x, hero_y),
+                    theme.style_sm(theme.dim),
+                    Alignment::Left,
+                )
+                .draw(display)?;
+                Text::with_alignment(
+                    amt_out,
+                    Point::new(col_right_x, hero_y),
+                    amount_style,
+                    Alignment::Left,
+                )
+                .draw(display)?;
+
+                // Row 2: symbol | (blank) | symbol
+                let sym_y = hero_y + line_h + 2;
+                Text::with_alignment(
+                    sym_in,
+                    Point::new(col_left_x, sym_y),
+                    theme.style_sm(theme.muted),
+                    Alignment::Left,
+                )
+                .draw(display)?;
+                Text::with_alignment(
+                    sym_out,
+                    Point::new(col_right_x, sym_y),
+                    theme.style_sm(theme.muted),
+                    Alignment::Left,
+                )
+                .draw(display)?;
+
+                hero_y += 2 * line_h + 2;
+            }
+            _ => {
+                // HeroSub and any accidental non-hero that snuck through —
+                // render as body text so we don't silently drop content.
+                Text::with_alignment(
+                    &row.text,
+                    Point::new(hero_x, hero_y),
+                    theme.style_sm(theme.text),
+                    Alignment::Left,
+                )
+                .draw(display)?;
+                hero_y += line_h;
+            }
+        }
+    }
+
+    // Thin divider between hero and details (only when both exist).
+    if divider_h > 0 {
+        Line::new(
+            Point::new(
+                divider_rect.top_left.x + theme.space_md,
+                divider_rect.top_left.y,
+            ),
+            Point::new(
+                divider_rect.top_left.x + divider_rect.size.width as i32
+                    - GUTTER_W as i32
+                    - theme.space_sm,
+                divider_rect.top_left.y,
+            ),
+        )
+        .into_styled(PrimitiveStyle::with_stroke(theme.border, 1))
+        .draw(display)?;
+    }
+
+    // Scrollable detail block. Reserve the bottom line of the detail zone
+    // for a "more below" hint when the user hasn't reached the end of the
+    // details — that way the scroll affordance is always visible without
+    // burning a row in the pinned hero.
+    let show_more_hint = scroll < max_scroll;
+    let content_visible = if show_more_hint {
+        visible_details.saturating_sub(1).max(1)
+    } else {
+        visible_details
+    };
+    let detail_x = detail_rect.top_left.x + theme.space_md;
+    let detail_start_y = detail_rect.top_left.y + theme.space_sm + 10;
+    let end = total_details.min(scroll + content_visible);
     for (vi, idx) in (scroll..end).enumerate() {
-        let line = &info_lines[idx];
-        let (text, color) = if let Some(rest) = line.strip_prefix("! ") {
-            (rest, theme.danger)
-        } else if let Some(rest) = line.strip_prefix('!') {
-            (rest, theme.danger)
-        } else {
-            (line.as_str(), theme.text)
-        };
-        let y = start_y + vi as i32 * line_h;
+        let row = &detail_rows[idx];
+        let y = detail_start_y + vi as i32 * line_h;
+        match row.kind {
+            ReviewRowKind::Danger => {
+                Text::with_alignment(
+                    &row.text,
+                    Point::new(detail_x, y),
+                    theme.style_sm(theme.danger),
+                    Alignment::Left,
+                )
+                .draw(display)?;
+            }
+            _ => {
+                Text::with_alignment(
+                    &row.text,
+                    Point::new(detail_x, y),
+                    theme.style_sm(theme.text),
+                    Alignment::Left,
+                )
+                .draw(display)?;
+            }
+        }
+    }
+
+    if show_more_hint {
+        let hint_y = detail_rect.top_left.y + detail_rect.size.height as i32 - theme.space_sm - 2;
         Text::with_alignment(
-            text,
-            Point::new(x, y),
-            theme.style_sm(color),
+            "more below ▼",
+            Point::new(detail_x, hint_y),
+            theme.style_sm(theme.muted),
             Alignment::Left,
         )
         .draw(display)?;
     }
 
     EdgeHints::new()
-        .k1(if can_sign { EdgeIcon::Check } else { EdgeIcon::None })
+        .k1(if can_sign {
+            EdgeIcon::Check
+        } else {
+            EdgeIcon::None
+        })
         .k3(EdgeIcon::Cross)
         .draw(
             display,
@@ -1367,6 +1697,115 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
         )?;
 
     Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum ReviewRowKind {
+    HeroTitle,
+    HeroSub,
+    HeroMeta,
+    /// Two-column swap pair. The row's `text` field carries four
+    /// tab-separated values: `amount_in \t symbol_in \t amount_out \t symbol_out`.
+    /// Rendered as two stacked columns (amount above symbol) with a
+    /// small "to" connector between — scales to any amount length because
+    /// each side gets its own column instead of fighting for one line.
+    SwapPair,
+    Normal,
+    Danger,
+}
+
+struct ReviewRow {
+    text: String,
+    kind: ReviewRowKind,
+}
+
+fn build_review_rows(info_lines: &[String], max_small: usize, max_title: usize) -> Vec<ReviewRow> {
+    let mut rows = Vec::new();
+    for line in info_lines {
+        // Swap-pair marker is kept as a single row — the renderer lays
+        // the four fields out manually into two columns, so wrapping it
+        // would destroy that structure.
+        if let Some(rest) = line.strip_prefix("@SWAPPAIR ") {
+            rows.push(ReviewRow {
+                text: rest.to_string(),
+                kind: ReviewRowKind::SwapPair,
+            });
+            continue;
+        }
+
+        let (kind, text) = if let Some(rest) = line.strip_prefix("@H1 ") {
+            (ReviewRowKind::HeroTitle, rest)
+        } else if let Some(rest) = line.strip_prefix("@H2 ") {
+            (ReviewRowKind::HeroSub, rest)
+        } else if let Some(rest) = line.strip_prefix("@HM ") {
+            (ReviewRowKind::HeroMeta, rest)
+        } else if let Some(rest) = line.strip_prefix("! ") {
+            (ReviewRowKind::Danger, rest)
+        } else if let Some(rest) = line.strip_prefix('!') {
+            (ReviewRowKind::Danger, rest)
+        } else {
+            (ReviewRowKind::Normal, line.as_str())
+        };
+
+        let max_chars = match kind {
+            ReviewRowKind::HeroTitle => max_title,
+            _ => max_small,
+        };
+
+        for wrapped in wrap_line_for_width(text, max_chars) {
+            rows.push(ReviewRow {
+                text: wrapped,
+                kind,
+            });
+        }
+    }
+    rows
+}
+
+fn wrap_line_for_width(text: &str, max_chars: usize) -> Vec<String> {
+    if text.is_empty() {
+        return vec![String::new()];
+    }
+
+    let mut out = Vec::new();
+    let mut current = String::new();
+
+    for word in text.split_whitespace() {
+        if word.len() > max_chars {
+            if !current.is_empty() {
+                out.push(current.clone());
+                current.clear();
+            }
+            let mut start = 0;
+            while start < word.len() {
+                let end = (start + max_chars).min(word.len());
+                out.push(word[start..end].to_string());
+                start = end;
+            }
+            continue;
+        }
+
+        if current.is_empty() {
+            current.push_str(word);
+        } else if current.len() + 1 + word.len() <= max_chars {
+            current.push(' ');
+            current.push_str(word);
+        } else {
+            out.push(current.clone());
+            current.clear();
+            current.push_str(word);
+        }
+    }
+
+    if !current.is_empty() {
+        out.push(current);
+    }
+
+    if out.is_empty() {
+        vec![String::new()]
+    } else {
+        out
+    }
 }
 
 fn draw_message_review<D: DrawTarget<Color = Rgb565>>(
@@ -1389,7 +1828,8 @@ fn draw_message_review<D: DrawTarget<Color = Rgb565>>(
 
     let text = core::str::from_utf8(message_bytes).unwrap_or("(binary data)");
     let max_chars_per_line = 38usize;
-    let lines: Vec<&str> = text.as_bytes()
+    let lines: Vec<&str> = text
+        .as_bytes()
         .chunks(max_chars_per_line)
         .map(|chunk| core::str::from_utf8(chunk).unwrap_or(""))
         .collect();
@@ -1404,7 +1844,8 @@ fn draw_message_review<D: DrawTarget<Color = Rgb565>>(
         &format!("{} bytes", message_bytes.len()),
         Point::new(5, 50 + max_visible as i32 * 12 + 5),
         label_style,
-    ).draw(display)?;
+    )
+    .draw(display)?;
 
     let theme = Theme::faraday_240();
     EdgeHints::new()
@@ -1456,8 +1897,13 @@ fn draw_verify_address_result<D: DrawTarget<Color = Rgb565>>(
         .into_styled(PrimitiveStyle::with_fill(colors::BG_CARD))
         .draw(display)?;
     let banner_style = MonoTextStyle::new(&FONT_10X20, banner_color);
-    Text::with_alignment(banner_text, Point::new(120, banner_y + 22), banner_style, Alignment::Center)
-        .draw(display)?;
+    Text::with_alignment(
+        banner_text,
+        Point::new(120, banner_y + 22),
+        banner_style,
+        Alignment::Center,
+    )
+    .draw(display)?;
 
     // Detail line: path / not-derived / not-an-address explanation.
     let detail_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
@@ -1470,7 +1916,8 @@ fn draw_verify_address_result<D: DrawTarget<Color = Rgb565>>(
                 Point::new(120, 160),
                 detail_style,
                 Alignment::Center,
-            ).draw(display)?;
+            )
+            .draw(display)?;
         }
         AddressMatch::NotFound => {
             Text::with_alignment(
@@ -1478,13 +1925,15 @@ fn draw_verify_address_result<D: DrawTarget<Color = Rgb565>>(
                 Point::new(120, 158),
                 detail_style,
                 Alignment::Center,
-            ).draw(display)?;
+            )
+            .draw(display)?;
             Text::with_alignment(
                 "(checked 10 std + CLI paths)",
                 Point::new(120, 172),
                 sub,
                 Alignment::Center,
-            ).draw(display)?;
+            )
+            .draw(display)?;
         }
         AddressMatch::InvalidFormat => {
             Text::with_alignment(
@@ -1492,19 +1941,26 @@ fn draw_verify_address_result<D: DrawTarget<Color = Rgb565>>(
                 Point::new(120, 158),
                 detail_style,
                 Alignment::Center,
-            ).draw(display)?;
+            )
+            .draw(display)?;
             Text::with_alignment(
                 "Scan a plain address QR",
                 Point::new(120, 172),
                 sub,
                 Alignment::Center,
-            ).draw(display)?;
+            )
+            .draw(display)?;
         }
     }
 
     let hint = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    Text::with_alignment("Press any key to return", Point::new(120, 230), hint, Alignment::Center)
-        .draw(display)?;
+    Text::with_alignment(
+        "Press any key to return",
+        Point::new(120, 230),
+        hint,
+        Alignment::Center,
+    )
+    .draw(display)?;
 
     Ok(())
 }
@@ -1515,7 +1971,7 @@ fn draw_show_address<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     address: Option<&str>,
 ) -> Result<(), D::Error> {
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, CardRow, HeaderKind};
+    use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
     use crate::ui::{screens::CardScreen, Theme};
 
     let theme = Theme::faraday_240();
@@ -1526,13 +1982,13 @@ fn draw_show_address<D: DrawTarget<Color = Rgb565>>(
             // Full-screen QR — any chrome shrinks the scan target; BACK button
             // returns to settings.
             use crate::ui::widgets::Qr;
-            use embedded_graphics::{geometry::{Point, Size}, primitives::Rectangle};
+            use embedded_graphics::{
+                geometry::{Point, Size},
+                primitives::Rectangle,
+            };
 
             let uri = alloc::format!("solana:{}", addr);
-            let screen = Rectangle::new(
-                Point::zero(),
-                Size::new(theme.width, theme.height),
-            );
+            let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
             display.fill_solid(&screen, theme.bg)?;
             Qr {
                 data: uri.as_bytes(),
@@ -1547,7 +2003,7 @@ fn draw_show_address<D: DrawTarget<Color = Rgb565>>(
             CardScreen {
                 header: HeaderKind::Title("ADDRESS"),
                 counter: None,
-        right_label: None,
+                right_label: None,
                 title: Some("NO WALLET"),
                 subtitle: Some("Create or load one first"),
                 body_lines: &[],
@@ -1565,7 +2021,7 @@ fn draw_about<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     _seed_loaded: bool,
 ) -> Result<(), D::Error> {
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, CardRow, HeaderKind};
+    use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
     use crate::ui::{screens::CardScreen, Theme};
 
     let theme = Theme::faraday_240();
@@ -1664,10 +2120,7 @@ fn draw_word_picker_new<D: DrawTarget<Color = Rgb565>>(
     use crate::ui::Theme;
 
     let theme = Theme::faraday_240();
-    let screen = Rectangle::new(
-        Point::zero(),
-        Size::new(theme.width, theme.height),
-    );
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
 
     let (header_rect, rest) = split_top(screen, theme.header_h as i32);
@@ -1726,10 +2179,7 @@ fn draw_word_picker_new<D: DrawTarget<Color = Rgb565>>(
         .collect();
 
     let body_inset = Rectangle::new(
-        Point::new(
-            list_rect.top_left.x,
-            list_rect.top_left.y + theme.space_sm,
-        ),
+        Point::new(list_rect.top_left.x, list_rect.top_left.y + theme.space_sm),
         Size::new(
             list_rect.size.width,
             list_rect.size.height.saturating_sub(theme.space_sm as u32),
@@ -1747,10 +2197,8 @@ fn draw_word_picker_new<D: DrawTarget<Color = Rgb565>>(
 }
 
 /// "Load a wallet first" — user hit SIGN on the main menu without a seed.
-fn draw_sign_no_wallet<D: DrawTarget<Color = Rgb565>>(
-    display: &mut D,
-) -> Result<(), D::Error> {
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, CardRow, HeaderKind};
+fn draw_sign_no_wallet<D: DrawTarget<Color = Rgb565>>(display: &mut D) -> Result<(), D::Error> {
+    use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
     use crate::ui::{screens::CardScreen, Theme};
     let theme = Theme::faraday_240();
     let body = ["Create or load a wallet", "before signing."];
@@ -1777,7 +2225,7 @@ fn draw_verify_address_result_card<D: DrawTarget<Color = Rgb565>>(
     result: &crate::crypto::derivation::AddressMatch,
 ) -> Result<(), D::Error> {
     use crate::crypto::derivation::AddressMatch;
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, CardRow, HeaderKind};
+    use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
     use crate::ui::{screens::CardScreen, Theme};
 
     let theme = Theme::faraday_240();
@@ -1789,16 +2237,8 @@ fn draw_verify_address_result_card<D: DrawTarget<Color = Rgb565>>(
             let line = alloc::format!("Account {}", account);
             ("MATCH", "Derived from your seed", Some(line))
         }
-        AddressMatch::NotFound => (
-            "NOT YOURS",
-            "Not derivable from your seed",
-            None,
-        ),
-        AddressMatch::InvalidFormat => (
-            "INVALID",
-            "Not a Solana address",
-            None,
-        ),
+        AddressMatch::NotFound => ("NOT YOURS", "Not derivable from your seed", None),
+        AddressMatch::InvalidFormat => ("INVALID", "Not a Solana address", None),
     };
 
     // Account row only on matches — no point showing "Account —" otherwise.
@@ -1825,13 +2265,10 @@ fn draw_verify_address_result_card<D: DrawTarget<Color = Rgb565>>(
 fn draw_verify_backup_seed_mismatch<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
 ) -> Result<(), D::Error> {
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, CardRow, HeaderKind};
+    use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
     use crate::ui::{screens::CardScreen, Theme};
     let theme = Theme::faraday_240();
-    let body = [
-        "The scanned QR is not",
-        "this wallet's seed.",
-    ];
+    let body = ["The scanned QR is not", "this wallet's seed."];
     let rows: [CardRow; 0] = [];
     CardScreen {
         header: HeaderKind::Title("VERIFY BACKUP"),
@@ -1852,13 +2289,10 @@ fn draw_verify_backup_seed_mismatch<D: DrawTarget<Color = Rgb565>>(
 fn draw_verify_backup_passphrase_mismatch<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
 ) -> Result<(), D::Error> {
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, CardRow, HeaderKind};
+    use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
     use crate::ui::{screens::CardScreen, Theme};
     let theme = Theme::faraday_240();
-    let body = [
-        "Passphrase doesn't",
-        "match this wallet.",
-    ];
+    let body = ["Passphrase doesn't", "match this wallet."];
     let rows: [CardRow; 0] = [];
     CardScreen {
         header: HeaderKind::Title("VERIFY BACKUP"),
@@ -1879,7 +2313,7 @@ fn draw_verify_backup_success<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     has_passphrase: bool,
 ) -> Result<(), D::Error> {
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, CardRow, HeaderKind};
+    use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
     use crate::ui::{screens::CardScreen, Theme};
     let theme = Theme::faraday_240();
     let subtitle = if has_passphrase {
@@ -1915,13 +2349,13 @@ fn draw_fullscreen_qr<D: DrawTarget<Color = Rgb565>>(
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::Qr;
     use crate::ui::Theme;
-    use embedded_graphics::{geometry::{Point, Size}, primitives::Rectangle};
+    use embedded_graphics::{
+        geometry::{Point, Size},
+        primitives::Rectangle,
+    };
 
     let theme = Theme::faraday_240();
-    let screen = Rectangle::new(
-        Point::zero(),
-        Size::new(theme.width, theme.height),
-    );
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
     Qr { data, ec, quiet }.draw(display, &theme, screen)
 }
@@ -1931,14 +2365,11 @@ fn draw_passphrase_mismatch<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     _seed_loaded: bool,
 ) -> Result<(), D::Error> {
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, CardRow, HeaderKind};
+    use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
     use crate::ui::{screens::CardScreen, Theme};
 
     let theme = Theme::faraday_240();
-    let body = [
-        "Your two entries did",
-        "not match. Try again.",
-    ];
+    let body = ["Your two entries did", "not match. Try again."];
     let rows: [CardRow; 0] = [];
 
     CardScreen {
@@ -2195,10 +2626,7 @@ fn draw_entropy_picker<D: DrawTarget<Color = Rgb565>>(
             let row = (i / cols) as i32;
             let x = picker_rect.top_left.x + col * cell_w;
             let y = picker_rect.top_left.y + row * cell_h;
-            let cell = Rectangle::new(
-                Point::new(x, y),
-                Size::new(cell_w as u32, cell_h as u32),
-            );
+            let cell = Rectangle::new(Point::new(x, y), Size::new(cell_w as u32, cell_h as u32));
             let is_selected = i == selected;
             if is_selected {
                 cell.into_styled(PrimitiveStyle::with_fill(theme.accent))
@@ -2268,23 +2696,30 @@ fn draw_accounts<D: DrawTarget<Color = Rgb565>>(
         .draw(display)?;
 
         // Derivation path
-        Text::new(path, Point::new(14, y + 13), path_style)
-            .draw(display)?;
+        Text::new(path, Point::new(14, y + 13), path_style).draw(display)?;
 
         // Truncated address
         let truncated = if addr.len() > 30 {
-            alloc::format!("{}...{}", &addr[..12], &addr[addr.len()-8..])
+            alloc::format!("{}...{}", &addr[..12], &addr[addr.len() - 8..])
         } else {
             addr.clone()
         };
-        let a_style = if is_selected { addr_style_selected } else { addr_style_normal };
-        Text::new(&truncated, Point::new(14, y + 28), a_style)
-            .draw(display)?;
+        let a_style = if is_selected {
+            addr_style_selected
+        } else {
+            addr_style_normal
+        };
+        Text::new(&truncated, Point::new(14, y + 28), a_style).draw(display)?;
     }
 
     let hint = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    Text::with_alignment("Press any key to return", Point::new(120, 232), hint, Alignment::Center)
-        .draw(display)?;
+    Text::with_alignment(
+        "Press any key to return",
+        Point::new(120, 232),
+        hint,
+        Alignment::Center,
+    )
+    .draw(display)?;
 
     Ok(())
 }
@@ -2308,10 +2743,7 @@ fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
     use crate::ui::Theme;
 
     let theme = Theme::faraday_240();
-    let screen = Rectangle::new(
-        Point::zero(),
-        Size::new(theme.width, theme.height),
-    );
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
 
     // Camera states we handle differently:
     // - error: dark full-screen card with the MMAL/V4L2 failure wrapped out
@@ -2458,37 +2890,36 @@ fn draw_scan_diag<D: DrawTarget<Color = Rgb565>>(
         .draw(display)?;
 
     {
-            // Solana-green progress bar filling left-to-right on a dim
-            // track, with a small `n/total` label pinned to the right of
-            // the strip. Much clearer than a text-only `UR 3/7` as frames
-            // arrive — the bar width doubles as an instantly-readable
-            // completion cue.
-            let bar_x: i32 = 18;
-            let bar_y: i32 = 34;
-            let bar_h: u32 = 4;
-            let bar_w_total: u32 = 180;
-            Rectangle::new(Point::new(bar_x, bar_y), Size::new(bar_w_total, bar_h))
-                .into_styled(PrimitiveStyle::with_fill(colors::BORDER_DEFAULT))
+        // Solana-green progress bar filling left-to-right on a dim
+        // track, with a small `n/total` label pinned to the right of
+        // the strip. Much clearer than a text-only `UR 3/7` as frames
+        // arrive — the bar width doubles as an instantly-readable
+        // completion cue.
+        let bar_x: i32 = 18;
+        let bar_y: i32 = 34;
+        let bar_h: u32 = 4;
+        let bar_w_total: u32 = 180;
+        Rectangle::new(Point::new(bar_x, bar_y), Size::new(bar_w_total, bar_h))
+            .into_styled(PrimitiveStyle::with_fill(colors::BORDER_DEFAULT))
+            .draw(display)?;
+        let filled = if total == 0 {
+            0
+        } else {
+            (n.min(total) as u32 * bar_w_total) / total as u32
+        };
+        if filled > 0 {
+            Rectangle::new(Point::new(bar_x, bar_y), Size::new(filled, bar_h))
+                .into_styled(PrimitiveStyle::with_fill(colors::FD_ACCENT))
                 .draw(display)?;
-            let filled = if total == 0 {
-                0
-            } else {
-                (n.min(total) as u32 * bar_w_total) / total as u32
-            };
-            if filled > 0 {
-                Rectangle::new(Point::new(bar_x, bar_y), Size::new(filled, bar_h))
-                    .into_styled(PrimitiveStyle::with_fill(colors::FD_ACCENT))
-                    .draw(display)?;
-            }
-            let label = format!("{}/{}", n, total);
-            let label_color = if n >= total {
-                colors::FD_ACCENT
-            } else {
-                colors::TEXT_SECONDARY
-            };
-            let style = MonoTextStyle::new(&FONT_6X10, label_color);
-            Text::with_alignment(&label, Point::new(234, 39), style, Alignment::Right)
-                .draw(display)?;
+        }
+        let label = format!("{}/{}", n, total);
+        let label_color = if n >= total {
+            colors::FD_ACCENT
+        } else {
+            colors::TEXT_SECONDARY
+        };
+        let style = MonoTextStyle::new(&FONT_6X10, label_color);
+        Text::with_alignment(&label, Point::new(234, 39), style, Alignment::Right).draw(display)?;
     }
 
     Ok(())

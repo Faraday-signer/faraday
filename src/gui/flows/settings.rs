@@ -8,8 +8,16 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         Screen::SettingsMenu { mut selected } => {
             let item_count = if app.wallet.is_some() { 6 } else { 2 };
             match event {
-                InputEvent::Up => { if selected > 0 { selected -= 1; } }
-                InputEvent::Down => { if selected + 1 < item_count { selected += 1; } }
+                InputEvent::Up => {
+                    if selected > 0 {
+                        selected -= 1;
+                    }
+                }
+                InputEvent::Down => {
+                    if selected + 1 < item_count {
+                        selected += 1;
+                    }
+                }
                 InputEvent::Confirm => {
                     if app.wallet.is_some() {
                         return match selected {
@@ -20,7 +28,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             },
                             2 => {
                                 let accounts = build_accounts_list(app);
-                                Screen::SettingsAccounts { accounts, selected: 0 }
+                                Screen::SettingsAccounts {
+                                    accounts,
+                                    selected: 0,
+                                }
                             }
                             3 => Screen::SettingsVerifyAddressScan,
                             4 => Screen::SettingsAbout,
@@ -43,17 +54,32 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
 
         Screen::SettingsShowAddress => {
             match event {
-                InputEvent::Confirm | InputEvent::Back => return Screen::SettingsMenu { selected: 0 },
+                InputEvent::Confirm | InputEvent::Back => {
+                    return Screen::SettingsMenu { selected: 0 }
+                }
                 _ => {}
             }
             Screen::SettingsShowAddress
         }
 
-        Screen::SettingsAccounts { accounts, mut selected } => {
+        Screen::SettingsAccounts {
+            accounts,
+            mut selected,
+        } => {
             match event {
-                InputEvent::Up => { if selected > 0 { selected -= 1; } }
-                InputEvent::Down => { if selected + 1 < accounts.len() { selected += 1; } }
-                InputEvent::Confirm | InputEvent::Back => return Screen::SettingsMenu { selected: 2 },
+                InputEvent::Up => {
+                    if selected > 0 {
+                        selected -= 1;
+                    }
+                }
+                InputEvent::Down => {
+                    if selected + 1 < accounts.len() {
+                        selected += 1;
+                    }
+                }
+                InputEvent::Confirm | InputEvent::Back => {
+                    return Screen::SettingsMenu { selected: 2 }
+                }
                 _ => {}
             }
             Screen::SettingsAccounts { accounts, selected }
@@ -78,18 +104,18 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     };
 
                     let addr = derivation::normalize_address_input(&raw);
-                    let result = derivation::verify_address(
-                        &wallet.mnemonic,
-                        &wallet.passphrase,
-                        &addr,
-                        10,
-                    );
-                    let display_addr = if matches!(result, derivation::AddressMatch::InvalidFormat) {
+                    let result =
+                        derivation::verify_address(&wallet.mnemonic, &wallet.passphrase, &addr, 10);
+                    let display_addr = if matches!(result, derivation::AddressMatch::InvalidFormat)
+                    {
                         raw
                     } else {
                         addr
                     };
-                    return Screen::SettingsVerifyAddressResult { address: display_addr, result };
+                    return Screen::SettingsVerifyAddressResult {
+                        address: display_addr,
+                        result,
+                    };
                 }
                 InputEvent::Back => return Screen::SettingsMenu { selected: 3 },
                 _ => {}
@@ -121,8 +147,12 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         // Row 0 = NO (safe default), Row 1 = YES (destructive).
         Screen::SettingsPowerOff { mut selected } => {
             match event {
-                InputEvent::Up => { selected = 0; }
-                InputEvent::Down => { selected = 1; }
+                InputEvent::Up => {
+                    selected = 0;
+                }
+                InputEvent::Down => {
+                    selected = 1;
+                }
                 InputEvent::Confirm => {
                     if selected == 1 {
                         // YES — wipe the wallet from RAM and power off.
@@ -156,7 +186,8 @@ fn build_accounts_list(app: &App) -> Vec<(String, String)> {
     };
 
     let accounts = derivation::derive_multiple_accounts(&wallet.mnemonic, &wallet.passphrase, 3);
-    accounts.iter()
+    accounts
+        .iter()
         .map(|kp| (kp.derivation_path.clone(), derivation::address(kp)))
         .collect()
 }

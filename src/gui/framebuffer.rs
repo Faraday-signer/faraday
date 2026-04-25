@@ -28,16 +28,19 @@ impl Framebuffer {
 
     /// Convert pixel buffer to RGB888 (for desktop display).
     pub fn to_rgb888(&self) -> Vec<u32> {
-        self.pixels.iter().map(|&p| {
-            let r = ((p >> 11) & 0x1F) as u32;
-            let g = ((p >> 5) & 0x3F) as u32;
-            let b = (p & 0x1F) as u32;
-            // Scale up: 5-bit to 8-bit, 6-bit to 8-bit
-            let r8 = (r << 3) | (r >> 2);
-            let g8 = (g << 2) | (g >> 4);
-            let b8 = (b << 3) | (b >> 2);
-            (r8 << 16) | (g8 << 8) | b8
-        }).collect()
+        self.pixels
+            .iter()
+            .map(|&p| {
+                let r = ((p >> 11) & 0x1F) as u32;
+                let g = ((p >> 5) & 0x3F) as u32;
+                let b = (p & 0x1F) as u32;
+                // Scale up: 5-bit to 8-bit, 6-bit to 8-bit
+                let r8 = (r << 3) | (r >> 2);
+                let g8 = (g << 2) | (g >> 4);
+                let b8 = (b << 3) | (b >> 2);
+                (r8 << 16) | (g8 << 8) | b8
+            })
+            .collect()
     }
 
     /// Convert to raw bytes for ST7789 SPI (big-endian RGB565).
@@ -94,14 +97,11 @@ impl DrawTarget for Framebuffer {
         I: IntoIterator<Item = Pixel<Self::Color>>,
     {
         for Pixel(coord, color) in pixels.into_iter() {
-            if coord.x >= 0
-                && coord.x < WIDTH as i32
-                && coord.y >= 0
-                && coord.y < HEIGHT as i32
-            {
+            if coord.x >= 0 && coord.x < WIDTH as i32 && coord.y >= 0 && coord.y < HEIGHT as i32 {
                 let idx = (coord.y as u32 * WIDTH + coord.x as u32) as usize;
                 let raw = embedded_graphics_core::pixelcolor::raw::RawU16::from(color);
-                self.pixels[idx] = embedded_graphics_core::pixelcolor::raw::RawData::into_inner(raw);
+                self.pixels[idx] =
+                    embedded_graphics_core::pixelcolor::raw::RawData::into_inner(raw);
             }
         }
         Ok(())

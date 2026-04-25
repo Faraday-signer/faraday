@@ -72,9 +72,7 @@ impl JupiterInstruction {
             Self::RouteWithTokenLedger => "route_with_token_ledger",
             Self::SharedAccountsRoute => "shared_accounts_route",
             Self::SharedAccountsRouteV2 => "shared_accounts_route_v2",
-            Self::SharedAccountsRouteWithTokenLedger => {
-                "shared_accounts_route_with_token_ledger"
-            }
+            Self::SharedAccountsRouteWithTokenLedger => "shared_accounts_route_with_token_ledger",
             Self::ExactOutRoute => "exact_out_route",
             Self::ExactOutRouteV2 => "exact_out_route_v2",
             Self::SharedAccountsExactOutRoute => "shared_accounts_exact_out_route",
@@ -148,9 +146,9 @@ fn swap_enum_byte_size(data: &[u8]) -> Result<usize, &'static str> {
     }
     let extra: usize = match data[0] {
         // Fieldless variants
-        0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 9 | 10 | 11 | 13 | 14 | 19 | 20 | 22 | 25 | 26
-        | 30 | 31 | 32 | 34 | 35 | 36 | 37 | 38 | 40 | 41 | 42 | 48 | 50 | 51 | 52 | 53
-        | 54 | 55 | 56 | 57 | 59 | 61 | 63 => 0,
+        0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 9 | 10 | 11 | 13 | 14 | 19 | 20 | 22 | 25 | 26 | 30
+        | 31 | 32 | 34 | 35 | 36 | 37 | 38 | 40 | 41 | 42 | 48 | 50 | 51 | 52 | 53 | 54 | 55
+        | 56 | 57 | 59 | 61 | 63 => 0,
 
         // Single-field: bool or Side enum (1 byte)
         8 | 12 | 15 | 16 | 17 | 18 | 21 | 23 | 24 | 27 | 28 | 39 | 60 | 62 => 1,
@@ -190,8 +188,7 @@ fn swap_enum_byte_size(data: &[u8]) -> Result<usize, &'static str> {
                     if data.len() < 6 {
                         return Err("StabbleStableSwap vec too short");
                     }
-                    let n =
-                        u32::from_le_bytes([data[2], data[3], data[4], data[5]]) as usize;
+                    let n = u32::from_le_bytes([data[2], data[3], data[4], data[5]]) as usize;
                     1 + 4 + n * 2
                 }
                 _ => return Err("Invalid StabbleStableSwap option tag"),
@@ -237,21 +234,14 @@ fn read_u16(data: &[u8], pos: usize) -> Result<u16, &'static str> {
         .ok_or("Insufficient data for u16")
 }
 
-fn get_account(
-    account_indices: &[u8],
-    idx: usize,
-    all_accounts: &[[u8; 32]],
-) -> Option<[u8; 32]> {
+fn get_account(account_indices: &[u8], idx: usize, all_accounts: &[[u8; 32]]) -> Option<[u8; 32]> {
     let key_idx = *account_indices.get(idx)? as usize;
     all_accounts.get(key_idx).copied()
 }
 
 // ── Amount parsing ───────────────────────────────────────────────────────────
 
-fn parse_amounts(
-    data: &[u8],
-    layout: &DataLayout,
-) -> Result<(u64, u64, u16, u8), &'static str> {
+fn parse_amounts(data: &[u8], layout: &DataLayout) -> Result<(u64, u64, u16, u8), &'static str> {
     let mut pos = 8; // skip discriminator
     if matches!(layout, DataLayout::RoutePlanFirst) {
         pos += skip_route_plan(&data[pos..])?;
@@ -357,6 +347,58 @@ fn resolve_mints_from_ata(result: &mut SwapResult, ata_map: &AtaMap) {
     }
 }
 
+/// Last-resort mint resolution for swap variants where the mint doesn't
+/// appear in the ix account args *and* the token account is created in
+/// an inner CPI we can't see (Jupiter's `RouteV2` / `ExactOutRouteV2`
+/// temp WSOL wrappers, notably). Scans the whole tx account list for
+/// any known-token mint pubkey and fills in whichever side is still None
+/// — but only when exactly one candidate is present, so we don't mis-label
+/// a token ↔ token swap where both sides are unknown.
+///
+/// The alternative (leaving it as "raw units") produces the user-visible
+/// `"11598426 raw units"` regression. A small heuristic that gets the
+/// common SOL-side of swaps right is better than a principled one that
+/// never fires.
+fn resolve_mints_from_account_list(result: &mut SwapResult, all_accounts: &[[u8; 32]]) {
+    if result.source_mint.is_some() && result.dest_mint.is_some() {
+        return;
+    }
+
+    let known: Vec<[u8; 32]> = all_accounts
+        .iter()
+        .copied()
+        .filter(|k| token_registry::lookup(k).is_some())
+        .collect();
+
+    // Collect what's already in use so we don't double-assign.
+    let mut used: Vec<[u8; 32]> = Vec::new();
+    if let Some(m) = result.source_mint {
+        used.push(m);
+    }
+    if let Some(m) = result.dest_mint {
+        used.push(m);
+    }
+
+    let candidates: Vec<[u8; 32]> = known
+        .into_iter()
+        .filter(|k| !used.contains(k))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+
+    if candidates.len() == 1 {
+        let only = candidates[0];
+        // Assign to whichever side is unresolved. If both are, we can't
+        // disambiguate which is source vs dest from a single candidate —
+        // do nothing rather than guess and mislabel direction.
+        match (result.source_mint, result.dest_mint) {
+            (None, Some(_)) => result.source_mint = Some(only),
+            (Some(_), None) => result.dest_mint = Some(only),
+            _ => {}
+        }
+    }
+}
+
 // ── Output formatting ────────────────────────────────────────────────────────
 
 fn format_token_side(label: &str, mint: &Option<[u8; 32]>, amount: u64) -> Vec<ReviewItem> {
@@ -365,7 +407,9 @@ fn format_token_side(label: &str, mint: &Option<[u8; 32]>, amount: u64) -> Vec<R
     match mint {
         Some(m) => match token_registry::lookup(m) {
             Some(info) => {
-                let formatted = token_registry::format_amount(amount, info.decimals);
+                // Hero @H2 row consumer — short form so whale-sized balances
+                // don't overflow the hero line. See format_amount_short docs.
+                let formatted = token_registry::format_amount_short(amount, info.decimals);
                 items.push(ReviewItem::Field {
                     label: label.into(),
                     value: format!("{} {}", formatted, info.symbol),
@@ -473,13 +517,15 @@ pub fn parse(
 ) -> ParsedInstruction {
     let disc = match read_disc8(data, 0) {
         Ok(d) => d,
-        Err(_) => return ParsedInstruction {
-            program: "Jupiter".into(),
-            items: vec![
-                ReviewItem::Header("Jupiter".into()),
-                ReviewItem::Warning("Instruction data too short".into()),
-            ],
-        },
+        Err(_) => {
+            return ParsedInstruction {
+                program: "Jupiter".into(),
+                items: vec![
+                    ReviewItem::Header("Jupiter".into()),
+                    ReviewItem::Warning("Instruction data too short".into()),
+                ],
+            }
+        }
     };
     let ix_type = match identify_instruction(&disc) {
         Some(t) => t,
@@ -502,6 +548,7 @@ pub fn parse(
 
     let mut result = build_swap_result(data, account_indices, all_accounts, &ix_type);
     resolve_mints_from_ata(&mut result, ata_map);
+    resolve_mints_from_account_list(&mut result, all_accounts);
     format_swap(&result)
 }
 
@@ -518,10 +565,7 @@ mod tests {
 
     fn field_value<'a>(items: &'a [ReviewItem], label: &str) -> Option<&'a str> {
         items.iter().find_map(|item| match item {
-            ReviewItem::Field {
-                label: l,
-                value: v,
-            } if l == label => Some(v.as_str()),
+            ReviewItem::Field { label: l, value: v } if l == label => Some(v.as_str()),
             _ => None,
         })
     }
@@ -611,8 +655,7 @@ mod tests {
         let usdc = usdc_mint();
         let dummy = [0xAA; 32];
         let accounts = [
-            dummy, dummy, dummy, dummy, dummy, dummy, dummy, sol, usdc, dummy, dummy, dummy,
-            dummy,
+            dummy, dummy, dummy, dummy, dummy, dummy, dummy, sol, usdc, dummy, dummy, dummy, dummy,
         ];
         let account_indices: Vec<u8> = (0..13).collect();
 
@@ -629,10 +672,7 @@ mod tests {
             field_value(&ix.items, "You receive (min)"),
             Some("150 USDC")
         );
-        assert_eq!(
-            field_value(&ix.items, "Slippage"),
-            Some("50 bps (0.50%)")
-        );
+        assert_eq!(field_value(&ix.items, "Slippage"), Some("50 bps (0.50%)"));
         assert!(!has_warning(&ix.items));
     }
 
@@ -679,10 +719,7 @@ mod tests {
 
         let ix = parse(&data, &account_indices, &accounts, &AtaMap::new());
         assert_eq!(field_value(&ix.items, "You spend"), Some("1 SOL"));
-        assert_eq!(
-            field_value(&ix.items, "You receive (min)"),
-            Some("50 USDC")
-        );
+        assert_eq!(field_value(&ix.items, "You receive (min)"), Some("50 USDC"));
     }
 
     #[test]
@@ -737,7 +774,7 @@ mod tests {
     fn test_skip_route_plan_single_fieldless_step() {
         // One step with swap variant 0 (Saber, fieldless) + 3 bytes
         let data = [
-            1, 0, 0, 0, // count=1
+            1, 0, 0, 0,  // count=1
             0,  // swap variant 0 (Saber): 1 byte
             50, // percent
             0,  // input_index

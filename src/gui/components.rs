@@ -1,16 +1,18 @@
 //! UI components: cards, status bar, text rendering, option lists, char grid.
 
 use embedded_graphics::{
-    mono_font::{ascii::FONT_6X10, ascii::FONT_9X15, ascii::FONT_9X15_BOLD, ascii::FONT_10X20, MonoTextStyle},
+    mono_font::{
+        ascii::FONT_10X20, ascii::FONT_6X10, ascii::FONT_9X15, ascii::FONT_9X15_BOLD, MonoTextStyle,
+    },
     pixelcolor::Rgb565,
     prelude::*,
     primitives::{PrimitiveStyle, PrimitiveStyleBuilder, Rectangle, RoundedRectangle},
     text::{Alignment, Text},
 };
 
+use crate::gui::app::{CharGrid, GridAction, GRID_COLS};
 use crate::gui::colors;
 use crate::gui::icons::{self, Icon};
-use crate::gui::app::{CharGrid, GridAction, GRID_COLS};
 
 /// A card in the main menu grid.
 pub struct Card<'a> {
@@ -29,9 +31,19 @@ impl<'a> Card<'a> {
         h: u32,
     ) -> Result<(), D::Error> {
         let (bg, border, text_color, icon_color) = if self.selected {
-            (colors::BG_CARD_SELECTED, colors::BORDER_SELECTED, colors::TEXT_PRIMARY, colors::SOLANA_GREEN)
+            (
+                colors::BG_CARD_SELECTED,
+                colors::BORDER_SELECTED,
+                colors::TEXT_PRIMARY,
+                colors::SOLANA_GREEN,
+            )
         } else {
-            (colors::BG_CARD, colors::BORDER_DEFAULT, colors::TEXT_SECONDARY, colors::TEXT_SECONDARY)
+            (
+                colors::BG_CARD,
+                colors::BORDER_DEFAULT,
+                colors::TEXT_SECONDARY,
+                colors::TEXT_SECONDARY,
+            )
         };
 
         let card_style = PrimitiveStyleBuilder::new()
@@ -63,8 +75,13 @@ impl<'a> Card<'a> {
         let label_style = MonoTextStyle::new(&FONT_9X15_BOLD, text_color);
         let text_x = x + w as i32 / 2;
         let text_y = y + h as i32 - 10;
-        Text::with_alignment(self.label, Point::new(text_x, text_y), label_style, Alignment::Center)
-            .draw(display)?;
+        Text::with_alignment(
+            self.label,
+            Point::new(text_x, text_y),
+            label_style,
+            Alignment::Center,
+        )
+        .draw(display)?;
 
         Ok(())
     }
@@ -85,8 +102,7 @@ pub fn draw_icon_colored<D: DrawTarget<Color = Rgb565>>(
         let word = ((byte_hi as u16) << 8) | (byte_lo as u16);
         for col in 0..16i32 {
             if (word >> (15 - col)) & 1 == 1 {
-                Pixel(Point::new(x + col, y + row), color)
-                    .draw(display)?;
+                Pixel(Point::new(x + col, y + row), color).draw(display)?;
             }
         }
     }
@@ -108,8 +124,7 @@ pub fn draw_status_bar<D: DrawTarget<Color = Rgb565>>(
         .draw(display)?;
 
     let style = MonoTextStyle::new(&FONT_9X15_BOLD, colors::TEXT_SECONDARY);
-    Text::with_alignment(title, Point::new(120, 15), style, Alignment::Center)
-        .draw(display)?;
+    Text::with_alignment(title, Point::new(120, 15), style, Alignment::Center).draw(display)?;
 
     if seed_loaded {
         Rectangle::new(Point::new(224, 6), Size::new(8, 8))
@@ -128,8 +143,7 @@ pub fn draw_text_centered<D: DrawTarget<Color = Rgb565>>(
     color: Rgb565,
 ) -> Result<(), D::Error> {
     let style = MonoTextStyle::new(&FONT_10X20, color);
-    Text::with_alignment(text, Point::new(120, y), style, Alignment::Center)
-        .draw(display)?;
+    Text::with_alignment(text, Point::new(120, y), style, Alignment::Center).draw(display)?;
     Ok(())
 }
 
@@ -179,9 +193,17 @@ pub fn draw_option_list<D: DrawTarget<Color = Rgb565>>(
         let is_selected = i == selected;
 
         let (bg, border, text_color) = if is_selected {
-            (colors::BG_CARD_SELECTED, colors::BORDER_SELECTED, colors::TEXT_PRIMARY)
+            (
+                colors::BG_CARD_SELECTED,
+                colors::BORDER_SELECTED,
+                colors::TEXT_PRIMARY,
+            )
         } else {
-            (colors::BG_CARD, colors::BORDER_DEFAULT, colors::TEXT_SECONDARY)
+            (
+                colors::BG_CARD,
+                colors::BORDER_DEFAULT,
+                colors::TEXT_SECONDARY,
+            )
         };
 
         let style = PrimitiveStyleBuilder::new()
@@ -205,17 +227,24 @@ pub fn draw_option_list<D: DrawTarget<Color = Rgb565>>(
         }
 
         let text_style = MonoTextStyle::new(&FONT_9X15_BOLD, text_color);
-        Text::with_alignment(option, Point::new(120, y + 24), text_style, Alignment::Center)
-            .draw(display)?;
+        Text::with_alignment(
+            option,
+            Point::new(120, y + 24),
+            text_style,
+            Alignment::Center,
+        )
+        .draw(display)?;
     }
 
     // Scroll indicators when off-screen rows exist.
     let arrow_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
     if scroll > 0 {
-        Text::with_alignment("▲", Point::new(230, 30), arrow_style, Alignment::Center).draw(display)?;
+        Text::with_alignment("▲", Point::new(230, 30), arrow_style, Alignment::Center)
+            .draw(display)?;
     }
     if scroll + max_visible < options.len() {
-        Text::with_alignment("▼", Point::new(230, 235), arrow_style, Alignment::Center).draw(display)?;
+        Text::with_alignment("▼", Point::new(230, 235), arrow_style, Alignment::Center)
+            .draw(display)?;
     }
 
     Ok(())
@@ -250,8 +279,7 @@ pub fn draw_char_grid<D: DrawTarget<Color = Rgb565>>(
         &display_text
     };
     let text_style = MonoTextStyle::new(&FONT_9X15_BOLD, colors::TEXT_PRIMARY);
-    Text::with_alignment(show, Point::new(120, 40), text_style, Alignment::Center)
-        .draw(display)?;
+    Text::with_alignment(show, Point::new(120, 40), text_style, Alignment::Center).draw(display)?;
 
     // Separator
     Rectangle::new(Point::new(10, 48), Size::new(220, 1))
@@ -287,9 +315,12 @@ pub fn draw_char_grid<D: DrawTarget<Color = Rgb565>>(
                     .stroke_color(colors::BORDER_SELECTED)
                     .stroke_width(1)
                     .build();
-                Rectangle::new(Point::new(x - 1, y - 1), Size::new(cell_w as u32, cell_h as u32))
-                    .into_styled(sel_style)
-                    .draw(display)?;
+                Rectangle::new(
+                    Point::new(x - 1, y - 1),
+                    Size::new(cell_w as u32, cell_h as u32),
+                )
+                .into_styled(sel_style)
+                .draw(display)?;
             }
 
             let mut ch = chars[row][col];
@@ -297,7 +328,11 @@ pub fn draw_char_grid<D: DrawTarget<Color = Rgb565>>(
                 ch = ch.to_ascii_uppercase();
             }
 
-            let style = if is_selected { char_style_selected } else { char_style_normal };
+            let style = if is_selected {
+                char_style_selected
+            } else {
+                char_style_normal
+            };
             let ch_str = alloc::string::String::from(ch);
             Text::with_alignment(
                 &ch_str,
@@ -338,7 +373,11 @@ pub fn draw_char_grid<D: DrawTarget<Color = Rgb565>>(
             } else if label == "DEL" {
                 (colors::BG_CARD_SELECTED, colors::DANGER, colors::DANGER)
             } else {
-                (colors::BG_CARD_SELECTED, colors::BORDER_SELECTED, colors::TEXT_PRIMARY)
+                (
+                    colors::BG_CARD_SELECTED,
+                    colors::BORDER_SELECTED,
+                    colors::TEXT_PRIMARY,
+                )
             }
         } else {
             (colors::BG_CARD, colors::BORDER_DEFAULT, colors::TEXT_MUTED)
@@ -402,8 +441,13 @@ pub fn draw_word_picker<D: DrawTarget<Color = Rgb565>>(
     // Current prefix + cursor character
     let preview = alloc::format!("{}[{}]", picker.prefix, picker.current_char());
     let prefix_style = MonoTextStyle::new(&FONT_10X20, colors::TEXT_PRIMARY);
-    Text::with_alignment(&preview, Point::new(120, 58), prefix_style, Alignment::Center)
-        .draw(display)?;
+    Text::with_alignment(
+        &preview,
+        Point::new(120, 58),
+        prefix_style,
+        Alignment::Center,
+    )
+    .draw(display)?;
 
     // Hint: left/right to change letter, X to append
     let hint_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
@@ -443,16 +487,24 @@ pub fn draw_word_picker<D: DrawTarget<Color = Rgb565>>(
                 .draw(display)?;
         }
 
-        let style = if is_selected { list_style_selected } else { list_style_normal };
+        let style = if is_selected {
+            list_style_selected
+        } else {
+            list_style_normal
+        };
         let display_str = alloc::format!("  {}", word);
-        Text::new(&display_str, Point::new(15, y), style)
-            .draw(display)?;
+        Text::new(&display_str, Point::new(15, y), style).draw(display)?;
     }
 
     if filtered.is_empty() {
         let style = MonoTextStyle::new(&FONT_9X15, colors::TEXT_MUTED);
-        Text::with_alignment("(no matches)", Point::new(120, 120), style, Alignment::Center)
-            .draw(display)?;
+        Text::with_alignment(
+            "(no matches)",
+            Point::new(120, 120),
+            style,
+            Alignment::Center,
+        )
+        .draw(display)?;
     }
 
     Ok(())

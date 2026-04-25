@@ -46,13 +46,13 @@ impl Theme {
             header_h: 29,
             footer_h: 26,
 
-            bg: Rgb565::new(0, 5, 4),       // #001721
-            surface: Rgb565::new(0, 9, 7),  // #002536
-            text: Rgb565::new(28, 57, 28),  // #E7E7E7
-            muted: Rgb565::new(17, 39, 21), // #8C9CA8
-            dim: Rgb565::new(11, 28, 16),   // #5E7180
-            accent: Rgb565::new(3, 62, 31), // #1AF8FF
-            border: Rgb565::new(2, 16, 11), // #114358
+            bg: Rgb565::new(0, 5, 4),        // #001721
+            surface: Rgb565::new(0, 9, 7),   // #002536
+            text: Rgb565::new(28, 57, 28),   // #E7E7E7
+            muted: Rgb565::new(17, 39, 21),  // #8C9CA8
+            dim: Rgb565::new(11, 28, 16),    // #5E7180
+            accent: Rgb565::new(3, 62, 31),  // #1AF8FF
+            border: Rgb565::new(2, 16, 11),  // #114358
             danger: Rgb565::new(31, 13, 13), // #FF6B6B
 
             space_xs: 4,

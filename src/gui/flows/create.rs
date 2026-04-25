@@ -8,10 +8,15 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
     match screen {
         Screen::CreateWordCount { mut selected } => {
             match event {
-                InputEvent::Up | InputEvent::Down => { selected = 1 - selected; }
+                InputEvent::Up | InputEvent::Down => {
+                    selected = 1 - selected;
+                }
                 InputEvent::Confirm => {
                     let word_count = if selected == 0 { 12 } else { 24 };
-                    return Screen::CreateMethod { word_count, selected: 0 };
+                    return Screen::CreateMethod {
+                        word_count,
+                        selected: 0,
+                    };
                 }
                 InputEvent::Back => return Screen::MainMenu { selected: 0 },
                 _ => {}
@@ -19,26 +24,59 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             Screen::CreateWordCount { selected }
         }
 
-        Screen::CreateMethod { word_count, mut selected } => {
+        Screen::CreateMethod {
+            word_count,
+            mut selected,
+        } => {
             match event {
-                InputEvent::Up => { if selected > 0 { selected -= 1; } }
-                InputEvent::Down => { if selected < 3 { selected += 1; } }
+                InputEvent::Up => {
+                    if selected > 0 {
+                        selected -= 1;
+                    }
+                }
+                InputEvent::Down => {
+                    if selected < 3 {
+                        selected += 1;
+                    }
+                }
                 InputEvent::Confirm => {
                     return match selected {
                         0 => generate_wallet(word_count),
-                        1 => Screen::CreateCameraEntropy { word_count, frames_collected: 0, entropy: Vec::new() },
-                        2 => Screen::CreateCoinFlips { word_count, bits: Vec::new(), selected: 0 },
-                        3 => Screen::CreateDiceRolls { word_count, rolls: Vec::new(), selected: 0 },
-                        _ => Screen::CreateMethod { word_count, selected },
+                        1 => Screen::CreateCameraEntropy {
+                            word_count,
+                            frames_collected: 0,
+                            entropy: Vec::new(),
+                        },
+                        2 => Screen::CreateCoinFlips {
+                            word_count,
+                            bits: Vec::new(),
+                            selected: 0,
+                        },
+                        3 => Screen::CreateDiceRolls {
+                            word_count,
+                            rolls: Vec::new(),
+                            selected: 0,
+                        },
+                        _ => Screen::CreateMethod {
+                            word_count,
+                            selected,
+                        },
                     };
                 }
                 InputEvent::Back => return Screen::CreateWordCount { selected: 0 },
                 _ => {}
             }
-            Screen::CreateMethod { word_count, selected }
+            Screen::CreateMethod {
+                word_count,
+                selected,
+            }
         }
 
-        Screen::CreateCameraEntropy { word_count, mut frames_collected, mut entropy } => {
+        Screen::CreateCameraEntropy {
+            word_count,
+            mut frames_collected,
+            mut entropy,
+        } => {
             // Each capture is a SHA-256 of a multi-megapixel sensor image XOR'd
             // with a nanosecond counter; two frames give ~512 bits of uniform
             // material into mnemonic_from_entropy, well above the 128/256-bit
@@ -76,78 +114,150 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     if frames_collected >= total_frames {
                         let mnemonic = bip39::mnemonic_from_entropy(&entropy, word_count)
                             .expect("Valid word count");
-                        return Screen::CreateShowWords { mnemonic, page: 0, word_count };
+                        return Screen::CreateShowWords {
+                            mnemonic,
+                            page: 0,
+                            word_count,
+                        };
                     }
                 }
-                InputEvent::Back => return Screen::CreateMethod { word_count, selected: 1 },
+                InputEvent::Back => {
+                    return Screen::CreateMethod {
+                        word_count,
+                        selected: 1,
+                    }
+                }
                 _ => {}
             }
-            Screen::CreateCameraEntropy { word_count, frames_collected, entropy }
+            Screen::CreateCameraEntropy {
+                word_count,
+                frames_collected,
+                entropy,
+            }
         }
 
-        Screen::CreateCoinFlips { word_count, mut bits, mut selected } => {
+        Screen::CreateCoinFlips {
+            word_count,
+            mut bits,
+            mut selected,
+        } => {
             let total_flips = if word_count == 12 { 128 } else { 256 };
             match event {
-                InputEvent::Left | InputEvent::Right => { selected = 1 - selected; }
+                InputEvent::Left | InputEvent::Right => {
+                    selected = 1 - selected;
+                }
                 InputEvent::Confirm => {
                     bits.push(selected == 0);
                     if bits.len() >= total_flips {
                         let mut entropy = vec![0u8; total_flips / 8];
                         for (i, &bit) in bits.iter().enumerate() {
-                            if bit { entropy[i / 8] |= 1 << (7 - (i % 8)); }
+                            if bit {
+                                entropy[i / 8] |= 1 << (7 - (i % 8));
+                            }
                         }
                         let mnemonic = bip39::mnemonic_from_raw_entropy(&entropy)
                             .expect("Valid entropy length");
-                        return Screen::CreateShowWords { mnemonic, page: 0, word_count };
+                        return Screen::CreateShowWords {
+                            mnemonic,
+                            page: 0,
+                            word_count,
+                        };
                     }
                 }
                 InputEvent::Back => {
                     if bits.is_empty() {
-                        return Screen::CreateMethod { word_count, selected: 1 };
+                        return Screen::CreateMethod {
+                            word_count,
+                            selected: 1,
+                        };
                     }
                     bits.pop();
                 }
                 _ => {}
             }
-            Screen::CreateCoinFlips { word_count, bits, selected }
+            Screen::CreateCoinFlips {
+                word_count,
+                bits,
+                selected,
+            }
         }
 
-        Screen::CreateDiceRolls { word_count, mut rolls, mut selected } => {
+        Screen::CreateDiceRolls {
+            word_count,
+            mut rolls,
+            mut selected,
+        } => {
             let total_rolls = if word_count == 12 { 50 } else { 99 };
             match event {
-                InputEvent::Up => { if selected >= 3 { selected -= 3; } }
-                InputEvent::Down => { if selected + 3 <= 5 { selected += 3; } }
-                InputEvent::Left => { if selected > 0 { selected -= 1; } }
-                InputEvent::Right => { if selected < 5 { selected += 1; } }
+                InputEvent::Up => {
+                    if selected >= 3 {
+                        selected -= 3;
+                    }
+                }
+                InputEvent::Down => {
+                    if selected + 3 <= 5 {
+                        selected += 3;
+                    }
+                }
+                InputEvent::Left => {
+                    if selected > 0 {
+                        selected -= 1;
+                    }
+                }
+                InputEvent::Right => {
+                    if selected < 5 {
+                        selected += 1;
+                    }
+                }
                 InputEvent::Confirm => {
                     rolls.push(selected as u8 + 1);
                     if rolls.len() >= total_rolls {
                         let rolls_str: String = rolls.iter().map(|r| r.to_string()).collect();
-                        let mnemonic = bip39::mnemonic_from_entropy(rolls_str.as_bytes(), word_count)
-                            .expect("Valid word count");
-                        return Screen::CreateShowWords { mnemonic, page: 0, word_count };
+                        let mnemonic =
+                            bip39::mnemonic_from_entropy(rolls_str.as_bytes(), word_count)
+                                .expect("Valid word count");
+                        return Screen::CreateShowWords {
+                            mnemonic,
+                            page: 0,
+                            word_count,
+                        };
                     }
                 }
                 InputEvent::Back => {
                     if rolls.is_empty() {
-                        return Screen::CreateMethod { word_count, selected: 2 };
+                        return Screen::CreateMethod {
+                            word_count,
+                            selected: 2,
+                        };
                     }
                     rolls.pop();
                 }
                 _ => {}
             }
-            Screen::CreateDiceRolls { word_count, rolls, selected }
+            Screen::CreateDiceRolls {
+                word_count,
+                rolls,
+                selected,
+            }
         }
 
-        Screen::CreateShowWords { mnemonic, mut page, word_count } => {
+        Screen::CreateShowWords {
+            mnemonic,
+            mut page,
+            word_count,
+        } => {
             let words_per_page = 4usize;
             let total_pages = (word_count + words_per_page - 1) / words_per_page;
             match event {
                 InputEvent::Right | InputEvent::Down => {
-                    if page + 1 < total_pages { page += 1; }
+                    if page + 1 < total_pages {
+                        page += 1;
+                    }
                 }
                 InputEvent::Left | InputEvent::Up => {
-                    if page > 0 { page -= 1; }
+                    if page > 0 {
+                        page -= 1;
+                    }
                 }
                 InputEvent::Confirm => {
                     if page + 1 == total_pages {
@@ -159,45 +269,96 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 InputEvent::Back => return Screen::CreateWordCount { selected: 0 },
                 _ => {}
             }
-            Screen::CreateShowWords { mnemonic, page, word_count }
+            Screen::CreateShowWords {
+                mnemonic,
+                page,
+                word_count,
+            }
         }
 
-        Screen::CreateVerify { mnemonic, checks, current, options, correct_idx, mut selected } => {
+        Screen::CreateVerify {
+            mnemonic,
+            checks,
+            current,
+            options,
+            correct_idx,
+            mut selected,
+        } => {
             match event {
-                InputEvent::Up => { if selected > 0 { selected -= 1; } }
-                InputEvent::Down => { if selected < 3 { selected += 1; } }
+                InputEvent::Up => {
+                    if selected > 0 {
+                        selected -= 1;
+                    }
+                }
+                InputEvent::Down => {
+                    if selected < 3 {
+                        selected += 1;
+                    }
+                }
                 InputEvent::Confirm => {
                     if selected == correct_idx {
                         let next = current + 1;
                         if next >= checks.len() {
-                            return Screen::CreatePassphrasePrompt { mnemonic, selected: 0 };
+                            return Screen::CreatePassphrasePrompt {
+                                mnemonic,
+                                selected: 0,
+                            };
                         } else {
                             return build_verify_screen(mnemonic, checks, next);
                         }
                     }
                     return Screen::CreateVerify {
-                        mnemonic, checks, current, options, correct_idx, selected: 0,
+                        mnemonic,
+                        checks,
+                        current,
+                        options,
+                        correct_idx,
+                        selected: 0,
                     };
                 }
                 InputEvent::Back => {
                     let word_count = mnemonic.split_whitespace().count();
-                    return Screen::CreateShowWords { mnemonic, page: 0, word_count };
+                    return Screen::CreateShowWords {
+                        mnemonic,
+                        page: 0,
+                        word_count,
+                    };
                 }
                 _ => {}
             }
-            Screen::CreateVerify { mnemonic, checks, current, options, correct_idx, selected }
+            Screen::CreateVerify {
+                mnemonic,
+                checks,
+                current,
+                options,
+                correct_idx,
+                selected,
+            }
         }
 
-        Screen::CreatePassphrasePrompt { mnemonic, mut selected } => {
+        Screen::CreatePassphrasePrompt {
+            mnemonic,
+            mut selected,
+        } => {
             match event {
-                InputEvent::Up | InputEvent::Down => { selected = 1 - selected; }
+                InputEvent::Up | InputEvent::Down => {
+                    selected = 1 - selected;
+                }
                 InputEvent::Confirm => {
                     if selected == 0 {
                         let passphrase = String::new();
                         let address = app.derive_address(&mnemonic, &passphrase);
-                        return Screen::CreateConfirm { mnemonic, passphrase, address, selected: 0 };
+                        return Screen::CreateConfirm {
+                            mnemonic,
+                            passphrase,
+                            address,
+                            selected: 0,
+                        };
                     } else {
-                        return Screen::CreatePassphraseInput { mnemonic, grid: CharGrid::new() };
+                        return Screen::CreatePassphraseInput {
+                            mnemonic,
+                            grid: CharGrid::new(),
+                        };
                     }
                 }
                 InputEvent::Back => {
@@ -213,70 +374,125 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             let done = grid.handle_input(event);
             if done {
                 if grid.text.is_empty() && event == InputEvent::Back {
-                    return Screen::CreatePassphrasePrompt { mnemonic, selected: 1 };
+                    return Screen::CreatePassphrasePrompt {
+                        mnemonic,
+                        selected: 1,
+                    };
                 }
                 let passphrase = grid.text;
-                return Screen::CreatePassphraseConfirm { mnemonic, passphrase, grid: CharGrid::new() };
+                return Screen::CreatePassphraseConfirm {
+                    mnemonic,
+                    passphrase,
+                    grid: CharGrid::new(),
+                };
             }
             Screen::CreatePassphraseInput { mnemonic, grid }
         }
 
-        Screen::CreatePassphraseConfirm { mnemonic, passphrase, mut grid } => {
+        Screen::CreatePassphraseConfirm {
+            mnemonic,
+            passphrase,
+            mut grid,
+        } => {
             let done = grid.handle_input(event);
             if done {
                 if grid.text.is_empty() && event == InputEvent::Back {
                     let mut first_grid = CharGrid::new();
                     first_grid.text = passphrase;
-                    return Screen::CreatePassphraseInput { mnemonic, grid: first_grid };
+                    return Screen::CreatePassphraseInput {
+                        mnemonic,
+                        grid: first_grid,
+                    };
                 }
                 if grid.text == passphrase {
                     let address = app.derive_address(&mnemonic, &passphrase);
-                    return Screen::CreateConfirm { mnemonic, passphrase, address, selected: 0 };
+                    return Screen::CreateConfirm {
+                        mnemonic,
+                        passphrase,
+                        address,
+                        selected: 0,
+                    };
                 } else {
                     return Screen::CreatePassphraseMismatch { mnemonic };
                 }
             }
-            Screen::CreatePassphraseConfirm { mnemonic, passphrase, grid }
+            Screen::CreatePassphraseConfirm {
+                mnemonic,
+                passphrase,
+                grid,
+            }
         }
 
         Screen::CreatePassphraseMismatch { mnemonic } => {
             match event {
                 InputEvent::Confirm | InputEvent::Back => {
-                    return Screen::CreatePassphraseInput { mnemonic, grid: CharGrid::new() };
+                    return Screen::CreatePassphraseInput {
+                        mnemonic,
+                        grid: CharGrid::new(),
+                    };
                 }
                 _ => {}
             }
             Screen::CreatePassphraseMismatch { mnemonic }
         }
 
-        Screen::CreateConfirm { mnemonic, passphrase, address, mut selected } => {
+        Screen::CreateConfirm {
+            mnemonic,
+            passphrase,
+            address,
+            mut selected,
+        } => {
             match event {
-                InputEvent::Left | InputEvent::Right => { selected = 1 - selected; }
+                InputEvent::Left | InputEvent::Right => {
+                    selected = 1 - selected;
+                }
                 InputEvent::Confirm => {
                     if selected == 0 {
                         let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(&mnemonic)
                             .unwrap_or_default();
                         app.load_wallet(mnemonic, passphrase);
                         return Screen::ExportSeedQrMenu {
-                            compact_data, selected: 0, from_settings: false,
+                            compact_data,
+                            selected: 0,
+                            from_settings: false,
                         };
                     } else {
                         return Screen::MainMenu { selected: 0 };
                     }
                 }
                 InputEvent::Back => {
-                    return Screen::CreatePassphrasePrompt { mnemonic, selected: 0 };
+                    return Screen::CreatePassphrasePrompt {
+                        mnemonic,
+                        selected: 0,
+                    };
                 }
                 _ => {}
             }
-            Screen::CreateConfirm { mnemonic, passphrase, address, selected }
+            Screen::CreateConfirm {
+                mnemonic,
+                passphrase,
+                address,
+                selected,
+            }
         }
 
-        Screen::ExportSeedQrMenu { compact_data, mut selected, from_settings } => {
+        Screen::ExportSeedQrMenu {
+            compact_data,
+            mut selected,
+            from_settings,
+        } => {
             const ITEMS: usize = 4; // Show words / Paper backup / Verify / Back
             match event {
-                InputEvent::Up => { if selected > 0 { selected -= 1; } }
-                InputEvent::Down => { if selected + 1 < ITEMS { selected += 1; } }
+                InputEvent::Up => {
+                    if selected > 0 {
+                        selected -= 1;
+                    }
+                }
+                InputEvent::Down => {
+                    if selected + 1 < ITEMS {
+                        selected += 1;
+                    }
+                }
                 InputEvent::Confirm => match selected {
                     0 => {
                         // Gate SHOW WORDS behind a warning — plaintext seed is
@@ -289,11 +505,20 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             .unwrap_or_default();
                         let word_count = mnemonic.split_whitespace().count();
                         return Screen::ShowWordsWarning {
-                            compact_data, mnemonic, word_count,
-                            selected: 0, from_settings,
+                            compact_data,
+                            mnemonic,
+                            word_count,
+                            selected: 0,
+                            from_settings,
                         };
                     }
-                    1 => return Screen::ExportSeedQrBlock { compact_data, block_index: 0, from_settings },
+                    1 => {
+                        return Screen::ExportSeedQrBlock {
+                            compact_data,
+                            block_index: 0,
+                            from_settings,
+                        }
+                    }
                     2 => return Screen::VerifyBackupScan,
                     _ => {
                         return if from_settings {
@@ -312,10 +537,20 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 }
                 _ => {}
             }
-            Screen::ExportSeedQrMenu { compact_data, selected, from_settings }
+            Screen::ExportSeedQrMenu {
+                compact_data,
+                selected,
+                from_settings,
+            }
         }
 
-        Screen::ExportShowWords { compact_data, mnemonic, mut page, word_count, from_settings } => {
+        Screen::ExportShowWords {
+            compact_data,
+            mnemonic,
+            mut page,
+            word_count,
+            from_settings,
+        } => {
             let words_per_page = 4usize;
             let total_pages = (word_count + words_per_page - 1) / words_per_page;
             match event {
@@ -324,24 +559,39 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         page += 1;
                     } else {
                         return Screen::ExportSeedQrMenu {
-                            compact_data, selected: 0, from_settings,
+                            compact_data,
+                            selected: 0,
+                            from_settings,
                         };
                     }
                 }
                 InputEvent::Left | InputEvent::Up => {
-                    if page > 0 { page -= 1; }
+                    if page > 0 {
+                        page -= 1;
+                    }
                 }
                 InputEvent::Back => {
                     return Screen::ExportSeedQrMenu {
-                        compact_data, selected: 0, from_settings,
+                        compact_data,
+                        selected: 0,
+                        from_settings,
                     };
                 }
                 _ => {}
             }
-            Screen::ExportShowWords { compact_data, mnemonic, page, word_count, from_settings }
+            Screen::ExportShowWords {
+                compact_data,
+                mnemonic,
+                page,
+                word_count,
+                from_settings,
+            }
         }
 
-        Screen::ExportSeedQr { compact_data, from_settings } => {
+        Screen::ExportSeedQr {
+            compact_data,
+            from_settings,
+        } => {
             match event {
                 // Final review screen shown after the block-by-block walkthrough.
                 // Confirm advances to the scan-based verification; Back returns
@@ -351,15 +601,24 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     let blocks_per_side: usize = if compact_data.len() == 16 { 3 } else { 5 };
                     let last = blocks_per_side * blocks_per_side - 1;
                     return Screen::ExportSeedQrBlock {
-                        compact_data, block_index: last, from_settings,
+                        compact_data,
+                        block_index: last,
+                        from_settings,
                     };
                 }
                 _ => {}
             }
-            Screen::ExportSeedQr { compact_data, from_settings }
+            Screen::ExportSeedQr {
+                compact_data,
+                from_settings,
+            }
         }
 
-        Screen::ExportSeedQrBlock { compact_data, mut block_index, from_settings } => {
+        Screen::ExportSeedQrBlock {
+            compact_data,
+            mut block_index,
+            from_settings,
+        } => {
             // Derive block-grid size from the QR size: 16 entropy bytes → 21×21
             // → 3×3 blocks of 7 modules; 32 bytes → 25×25 → 5×5 blocks of 5.
             let blocks_per_side: usize = if compact_data.len() == 16 { 3 } else { 5 };
@@ -371,7 +630,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     // side-by-side check; that screen then advances to the
                     // scan-based verification.
                     if block_index + 1 >= total {
-                        return Screen::ExportSeedQr { compact_data, from_settings };
+                        return Screen::ExportSeedQr {
+                            compact_data,
+                            from_settings,
+                        };
                     }
                     block_index += 1;
                 }
@@ -391,22 +653,39 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 }
                 InputEvent::Back => {
                     return Screen::ExportSeedQrMenu {
-                        compact_data, selected: 1, from_settings,
+                        compact_data,
+                        selected: 1,
+                        from_settings,
                     };
                 }
                 _ => {}
             }
-            Screen::ExportSeedQrBlock { compact_data, block_index, from_settings }
+            Screen::ExportSeedQrBlock {
+                compact_data,
+                block_index,
+                from_settings,
+            }
         }
 
         // "Reveals your seed" gate — CANCEL / SHOW. Used when entering the
         // backup flow from Settings so users who wander in are forced to
         // acknowledge the consequence. Create flow skips this because the
         // user just explicitly chose to create the wallet.
-        Screen::ExportSeedWarning { mut selected, from_settings } => {
+        Screen::ExportSeedWarning {
+            mut selected,
+            from_settings,
+        } => {
             match event {
-                InputEvent::Up => { if selected > 0 { selected -= 1; } }
-                InputEvent::Down => { if selected < 1 { selected += 1; } }
+                InputEvent::Up => {
+                    if selected > 0 {
+                        selected -= 1;
+                    }
+                }
+                InputEvent::Down => {
+                    if selected < 1 {
+                        selected += 1;
+                    }
+                }
                 InputEvent::Confirm => {
                     if selected == 1 {
                         // SHOW — proceed to the SeedQR menu.
@@ -415,11 +694,12 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             .as_ref()
                             .map(|w| w.mnemonic.clone())
                             .unwrap_or_default();
-                        let compact_data =
-                            crate::qr::encode_qr::encode_compact_seed_qr(&mnemonic)
-                                .unwrap_or_default();
+                        let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(&mnemonic)
+                            .unwrap_or_default();
                         return Screen::ExportSeedQrMenu {
-                            compact_data, selected: 0, from_settings,
+                            compact_data,
+                            selected: 0,
+                            from_settings,
                         };
                     }
                     return if from_settings {
@@ -437,33 +717,64 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 }
                 _ => {}
             }
-            Screen::ExportSeedWarning { selected, from_settings }
+            Screen::ExportSeedWarning {
+                selected,
+                from_settings,
+            }
         }
 
         // CANCEL (row 0, default) returns to the backup menu; SHOW (row 1)
         // proceeds to the plaintext word display.
-        Screen::ShowWordsWarning { compact_data, mnemonic, word_count, mut selected, from_settings } => {
+        Screen::ShowWordsWarning {
+            compact_data,
+            mnemonic,
+            word_count,
+            mut selected,
+            from_settings,
+        } => {
             match event {
-                InputEvent::Up => { if selected > 0 { selected -= 1; } }
-                InputEvent::Down => { if selected < 1 { selected += 1; } }
+                InputEvent::Up => {
+                    if selected > 0 {
+                        selected -= 1;
+                    }
+                }
+                InputEvent::Down => {
+                    if selected < 1 {
+                        selected += 1;
+                    }
+                }
                 InputEvent::Confirm => {
                     if selected == 1 {
                         return Screen::ExportShowWords {
-                            compact_data, mnemonic, page: 0, word_count, from_settings,
+                            compact_data,
+                            mnemonic,
+                            page: 0,
+                            word_count,
+                            from_settings,
                         };
                     }
                     return Screen::ExportSeedQrMenu {
-                        compact_data, selected: 0, from_settings,
+                        compact_data,
+                        selected: 0,
+                        from_settings,
                     };
                 }
                 InputEvent::Back => {
                     return Screen::ExportSeedQrMenu {
-                        compact_data, selected: 0, from_settings,
+                        compact_data,
+                        selected: 0,
+                        from_settings,
                     };
                 }
                 _ => {}
             }
-            Screen::ShowWordsWarning { compact_data, mnemonic, word_count, selected, from_settings }
+            Screen::ShowWordsWarning {
+                compact_data,
+                mnemonic,
+                word_count,
+                selected,
+                from_settings,
+            }
         }
 
         _ => unreachable!("create::handle called with non-create screen"),
@@ -473,10 +784,14 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
 fn generate_wallet(word_count: usize) -> Screen {
     let mut entropy = [0u8; 32];
     getrandom::getrandom(&mut entropy).expect("Failed to get random entropy");
-    let mnemonic = bip39::mnemonic_from_entropy(&entropy, word_count)
-        .expect("Failed to generate mnemonic");
+    let mnemonic =
+        bip39::mnemonic_from_entropy(&entropy, word_count).expect("Failed to generate mnemonic");
     entropy.zeroize();
-    Screen::CreateShowWords { mnemonic, page: 0, word_count }
+    Screen::CreateShowWords {
+        mnemonic,
+        page: 0,
+        word_count,
+    }
 }
 
 fn start_verification(mnemonic: String, word_count: usize) -> Screen {
@@ -489,7 +804,9 @@ fn start_verification(mnemonic: String, word_count: usize) -> Screen {
     let mut i = 0;
     while checks.len() < num_checks && i < 32 {
         let idx = rng[i] as usize % words.len();
-        if !checks.contains(&idx) { checks.push(idx); }
+        if !checks.contains(&idx) {
+            checks.push(idx);
+        }
         i += 1;
     }
     checks.sort();
@@ -508,7 +825,9 @@ fn build_verify_screen(mnemonic: String, checks: Vec<usize>, current: usize) -> 
     while options.len() < 4 && ri < 30 {
         let word_idx = ((rng[ri] as usize) << 3 | (rng[ri + 1] as usize >> 5)) % 2048;
         let word = bip39::get_word(word_idx);
-        if !options.contains(&word.to_string()) { options.push(word.to_string()); }
+        if !options.contains(&word.to_string()) {
+            options.push(word.to_string());
+        }
         ri += 2;
     }
 
@@ -516,6 +835,11 @@ fn build_verify_screen(mnemonic: String, checks: Vec<usize>, current: usize) -> 
     options.swap(0, correct_pos);
 
     Screen::CreateVerify {
-        mnemonic, checks, current, options, correct_idx: correct_pos, selected: 0,
+        mnemonic,
+        checks,
+        current,
+        options,
+        correct_idx: correct_pos,
+        selected: 0,
     }
 }
