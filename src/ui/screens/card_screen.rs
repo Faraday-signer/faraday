@@ -33,10 +33,7 @@ impl<'a> CardScreen<'a> {
         display: &mut D,
         theme: &Theme,
     ) -> Result<(), D::Error> {
-        let screen = Rectangle::new(
-            Point::zero(),
-            Size::new(theme.width, theme.height),
-        );
+        let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
         display.fill_solid(&screen, theme.bg)?;
 
         // Header spans the full screen width; gutter only narrows the body.
@@ -55,8 +52,12 @@ impl<'a> CardScreen<'a> {
             HeaderKind::Title(t) => HeaderKind::Title(t),
             HeaderKind::Brand => HeaderKind::Brand,
         };
-        Header { kind, counter: self.counter, right_label: self.right_label }
-            .draw(display, theme, header_rect)?;
+        Header {
+            kind,
+            counter: self.counter,
+            right_label: self.right_label,
+        }
+        .draw(display, theme, header_rect)?;
 
         Card {
             title: self.title,
@@ -69,7 +70,10 @@ impl<'a> CardScreen<'a> {
 
         if !self.edge_hints.is_empty() {
             let gutter = Rectangle::new(
-                Point::new(rest.top_left.x + rest.size.width as i32 - GUTTER_W as i32, rest.top_left.y),
+                Point::new(
+                    rest.top_left.x + rest.size.width as i32 - GUTTER_W as i32,
+                    rest.top_left.y,
+                ),
                 Size::new(GUTTER_W, rest.size.height),
             );
             self.edge_hints.draw(display, theme, gutter)?;

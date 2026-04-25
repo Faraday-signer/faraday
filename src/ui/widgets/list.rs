@@ -27,15 +27,27 @@ pub struct ListRow<'a> {
 
 impl<'a> ListRow<'a> {
     pub const fn new(label: &'a str) -> Self {
-        Self { label, subtitle: None, prefix: None }
+        Self {
+            label,
+            subtitle: None,
+            prefix: None,
+        }
     }
 
     pub const fn with_subtitle(label: &'a str, subtitle: &'a str) -> Self {
-        Self { label, subtitle: Some(subtitle), prefix: None }
+        Self {
+            label,
+            subtitle: Some(subtitle),
+            prefix: None,
+        }
     }
 
     pub const fn with_prefix(prefix: &'a str, label: &'a str) -> Self {
-        Self { label, subtitle: None, prefix: Some(prefix) }
+        Self {
+            label,
+            subtitle: None,
+            prefix: Some(prefix),
+        }
     }
 }
 
@@ -103,7 +115,15 @@ impl<'a> List<'a> {
                 Size::new(rect.size.width, row_h as u32),
             );
             let is_selected = self.selectable && idx == selected;
-            self.draw_row(display, theme, row_rect, row, is_selected, has_subtitle, has_prefix)?;
+            self.draw_row(
+                display,
+                theme,
+                row_rect,
+                row,
+                is_selected,
+                has_subtitle,
+                has_prefix,
+            )?;
         }
 
         // Scrollbar on the right edge when there's overflow. Wide enough to
@@ -124,8 +144,7 @@ impl<'a> List<'a> {
             .draw(display)?;
 
             // Thumb.
-            let thumb_h =
-                ((visible as i32 * track_h) / self.items.len() as i32).max(12);
+            let thumb_h = ((visible as i32 * track_h) / self.items.len() as i32).max(12);
             let thumb_y = track_top
                 + (start as i32 * (track_h - thumb_h))
                     / (self.items.len() as i32 - visible as i32).max(1);

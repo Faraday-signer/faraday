@@ -3,7 +3,7 @@
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 
-use crate::gui::app::{App, CharGrid, InputEvent, Screen, build_review_lines};
+use crate::gui::app::{build_review_lines, App, CharGrid, InputEvent, Screen};
 use crate::qr::decode_qr;
 
 pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
@@ -69,17 +69,40 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         };
                     }
                 }
-                InputEvent::Secondary => return Screen::SignMessageInput { grid: CharGrid::new() },
+                InputEvent::Secondary => {
+                    return Screen::SignMessageInput {
+                        grid: CharGrid::new(),
+                    }
+                }
                 InputEvent::Back => return Screen::MainMenu { selected: 2 },
                 _ => {}
             }
             Screen::SignScanTx
         }
 
-        Screen::SignReview { tx_bytes, tx_base64, info_lines, mut scroll, mut selected, can_sign } => {
+        Screen::SignReview {
+            tx_bytes,
+            tx_base64,
+            info_lines,
+            mut scroll,
+            mut selected,
+            can_sign,
+        } => {
             match event {
-                InputEvent::Up => { if scroll > 0 { scroll -= 1; } }
-                InputEvent::Down => { if scroll + 8 < info_lines.len() { scroll += 1; } }
+                // Jump one "chunk" per key press instead of one line.
+                // Chunks are delimited by blank rows in `info_lines` (the
+                // parser inserts `String::new()` between sections), so we
+                // advance past the next blank (Down) or retreat past the
+                // previous blank (Up) and land at the start of that chunk.
+                // Falls back to single-line stepping when no blank is
+                // found before the end / beginning.
+                InputEvent::Up => {
+                    scroll = prev_chunk(&info_lines, scroll);
+                }
+                InputEvent::Down => {
+                    let max_scroll = info_lines.len().saturating_sub(8);
+                    scroll = next_chunk(&info_lines, scroll).min(max_scroll);
+                }
                 InputEvent::Left | InputEvent::Right => {
                     if can_sign {
                         selected = 1 - selected;
@@ -98,7 +121,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                                 #[cfg(feature = "_desktop_sim")]
                                 {
                                     println!("Signed by: {}", signed.signer_pubkey);
-                                    println!("Signature: {}...", hex::encode(&signed.signature[..16]));
+                                    println!(
+                                        "Signature: {}...",
+                                        hex::encode(&signed.signature[..16])
+                                    );
                                     println!("TX size: {} bytes", signed.signed_bytes.len());
                                 }
                                 // Display the compact `faraday:sig:` envelope
@@ -108,18 +134,34 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                                 // sig into the right slot. ~144-char payload
                                 // renders as a V8 QR (49×49), readable by any
                                 // webcam off the Pi's 240 px screen.
-                                return Screen::SignShowQr { data: signed.signature_envelope };
+                                return Screen::SignShowQr {
+                                    data: signed.signature_envelope,
+                                };
                             }
                         }
                     } else if selected == 0 && !can_sign {
-                        return Screen::SignReview { tx_bytes, tx_base64, info_lines, scroll, selected: 1, can_sign };
+                        return Screen::SignReview {
+                            tx_bytes,
+                            tx_base64,
+                            info_lines,
+                            scroll,
+                            selected: 1,
+                            can_sign,
+                        };
                     }
                     return Screen::MainMenu { selected: 2 };
                 }
                 InputEvent::Back => return Screen::MainMenu { selected: 2 },
                 _ => {}
             }
-            Screen::SignReview { tx_bytes, tx_base64, info_lines, scroll, selected, can_sign }
+            Screen::SignReview {
+                tx_bytes,
+                tx_base64,
+                info_lines,
+                scroll,
+                selected,
+                can_sign,
+            }
         }
 
         Screen::SignShowQr { data } => {
@@ -131,10 +173,19 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             Screen::SignShowQr { data }
         }
 
-        Screen::SignMessageReview { message_bytes, mut scroll } => {
+        Screen::SignMessageReview {
+            message_bytes,
+            mut scroll,
+        } => {
             match event {
-                InputEvent::Up => { if scroll > 0 { scroll -= 1; } }
-                InputEvent::Down => { scroll += 1; }
+                InputEvent::Up => {
+                    if scroll > 0 {
+                        scroll -= 1;
+                    }
+                }
+                InputEvent::Down => {
+                    scroll += 1;
+                }
                 InputEvent::Confirm => {
                     if let Some(wallet) = &app.wallet {
                         let sig = crate::signer::sign_message(
@@ -149,7 +200,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 InputEvent::Back => return Screen::MainMenu { selected: 2 },
                 _ => {}
             }
-            Screen::SignMessageReview { message_bytes, scroll }
+            Screen::SignMessageReview {
+                message_bytes,
+                scroll,
+            }
         }
 
         Screen::SignMessageInput { mut grid } => {
@@ -200,6 +254,47 @@ fn looks_like_solana_tx(data: &[u8]) -> bool {
     };
     let min_len = 1 + sigs * 64 + 3;
     data.len() >= min_len
+}
+
+/// Find the scroll index at the start of the next chunk, where "chunk"
+/// means "the line after the next blank line." Returns `current + 1` as a
+/// fallback when no blank line appears ahead — so single-line progress
+/// still works near the end of the list. Caller is expected to clamp
+/// against the end-of-list bound.
+fn next_chunk(lines: &[String], current: usize) -> usize {
+    let mut i = current;
+    // Step past the current chunk's body until we hit a blank row.
+    while i < lines.len() && !lines[i].is_empty() {
+        i += 1;
+    }
+    // Step past any run of consecutive blanks.
+    while i < lines.len() && lines[i].is_empty() {
+        i += 1;
+    }
+    if i == current {
+        current + 1
+    } else {
+        i
+    }
+}
+
+/// Mirror of `next_chunk` going backwards. Lands on the start of the
+/// previous chunk (the line after the blank that separates it from the
+/// current one). Returns 0 when there's no earlier chunk.
+fn prev_chunk(lines: &[String], current: usize) -> usize {
+    if current == 0 {
+        return 0;
+    }
+    let mut i = current.saturating_sub(1);
+    // Step past any blanks immediately above the current position.
+    while i > 0 && lines[i].is_empty() {
+        i -= 1;
+    }
+    // Rewind through the previous chunk's body.
+    while i > 0 && !lines[i - 1].is_empty() {
+        i -= 1;
+    }
+    i
 }
 
 #[cfg(test)]

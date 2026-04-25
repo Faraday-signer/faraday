@@ -19,11 +19,21 @@ pub struct Insets {
 
 impl Insets {
     pub const fn all(v: i32) -> Self {
-        Self { top: v, right: v, bottom: v, left: v }
+        Self {
+            top: v,
+            right: v,
+            bottom: v,
+            left: v,
+        }
     }
 
     pub const fn symmetric(v: i32, h: i32) -> Self {
-        Self { top: v, right: h, bottom: v, left: h }
+        Self {
+            top: v,
+            right: h,
+            bottom: v,
+            left: h,
+        }
     }
 }
 
@@ -56,10 +66,7 @@ pub fn split_bottom(rect: Rectangle, bottom_h: i32) -> (Rectangle, Rectangle) {
     let body_h = (rect.size.height as i32 - bottom_h).max(0) as u32;
     let rest = Rectangle::new(rect.top_left, Size::new(rect.size.width, body_h));
     let bottom = Rectangle::new(
-        Point::new(
-            rect.top_left.x,
-            rect.top_left.y + body_h as i32,
-        ),
+        Point::new(rect.top_left.x, rect.top_left.y + body_h as i32),
         Size::new(rect.size.width, bottom_h as u32),
     );
     (rest, bottom)
@@ -86,7 +93,12 @@ mod tests {
         let r = rect(0, 0, 100, 100);
         let out = inset(
             r,
-            Insets { top: 2, right: 4, bottom: 6, left: 8 },
+            Insets {
+                top: 2,
+                right: 4,
+                bottom: 6,
+                left: 8,
+            },
         );
         assert_eq!(out.top_left, Point::new(8, 2));
         assert_eq!(out.size, Size::new(100 - 8 - 4, 100 - 2 - 6));
