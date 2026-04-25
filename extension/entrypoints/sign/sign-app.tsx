@@ -314,7 +314,7 @@ function DisplayScreen({
         {qrPayload && qrPayload.kind === "animated" ? (
           <AnimatedQr
             frames={qrPayload.frames}
-            size={320}
+            size={480}
             intervalMs={qrPayload.intervalMs}
             level="M"
             bgColor={colors.qrSurface}

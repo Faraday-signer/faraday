@@ -52,7 +52,7 @@ export function AnimatedQr({
   }, [safeFrames.length, intervalMs]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
       <QRCodeSVG
         value={safeFrames[index] ?? safeFrames[0]}
         size={size}
