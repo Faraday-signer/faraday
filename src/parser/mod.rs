@@ -418,11 +418,16 @@ fn add_hero_action_lines(
         return;
     }
 
+    let tag = if ix.program.starts_with("Unknown") {
+        "@H1 UNKNOWN"
+    } else {
+        "@H1 ACTION"
+    };
     if let Some(header) = first_header(ix) {
-        lines.push("@H1 ACTION".to_string());
+        lines.push(tag.to_string());
         lines.push(format!("@H2 {}", header));
     } else {
-        lines.push("@H1 ACTION".to_string());
+        lines.push(tag.to_string());
         lines.push(format!("@H2 {}", ix.program));
     }
 }
@@ -430,7 +435,15 @@ fn add_hero_action_lines(
 fn is_swap_program_name(program: &str) -> bool {
     matches!(
         program,
-        "Jupiter" | "Raydium AMM" | "Raydium CLMM" | "Raydium CPMM"
+        "Jupiter"
+            | "Raydium AMM"
+            | "Raydium CLMM"
+            | "Raydium CPMM"
+            | "DFlow"
+            | "Orca Whirlpools"
+            | "Meteora DLMM"
+            | "Phoenix"
+            | "Pump.fun"
     )
 }
 
