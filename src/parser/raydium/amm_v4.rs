@@ -4,8 +4,8 @@
 //! Program ID: 675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8
 
 use crate::parser::bytes::read_u64_le;
-use crate::parser::token_registry::AtaMap;
 use crate::parser::raydium::{self, SwapInfo};
+use crate::parser::token_registry::AtaMap;
 use crate::parser::{ParsedInstruction, ReviewItem};
 
 const SWAP_BASE_IN: u8 = 9;
@@ -54,10 +54,11 @@ fn parse_swap(
         _ => return raydium::error("Raydium AMM", "Swap data too short"),
     };
 
-    let source_mint =
+    let mut source_mint =
         raydium::resolve_mint_via_ata(account_indices, USER_SOURCE_IDX, all_accounts, ata_map);
-    let dest_mint =
+    let mut dest_mint =
         raydium::resolve_mint_via_ata(account_indices, USER_DEST_IDX, all_accounts, ata_map);
+    raydium::fill_missing_mints_from_accounts(&mut source_mint, &mut dest_mint, all_accounts);
 
     let (in_label, out_label) = if is_base_in {
         ("You spend", "You receive (min)")
@@ -94,10 +95,7 @@ mod tests {
 
     fn field_value<'a>(items: &'a [ReviewItem], label: &str) -> Option<&'a str> {
         items.iter().find_map(|item| match item {
-            ReviewItem::Field {
-                label: l,
-                value: v,
-            } if l == label => Some(v.as_str()),
+            ReviewItem::Field { label: l, value: v } if l == label => Some(v.as_str()),
             _ => None,
         })
     }

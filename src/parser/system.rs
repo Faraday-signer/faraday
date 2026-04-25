@@ -13,7 +13,10 @@ pub fn parse(data: &[u8], accounts: &[[u8; 32]]) -> ParsedInstruction {
             ReviewItem::Warning(format!("Parse error: {}", e)),
         ],
     };
-    ParsedInstruction { program: "System".into(), items }
+    ParsedInstruction {
+        program: "System".into(),
+        items,
+    }
 }
 
 fn decode(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
@@ -27,7 +30,10 @@ fn decode(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'stati
         11 => parse_transfer_with_seed(&data[4..], accounts),
         _ => Ok(vec![
             ReviewItem::Header("System".into()),
-            ReviewItem::Field { label: "Action".into(), value: format!("Type {}", ix_type) },
+            ReviewItem::Field {
+                label: "Action".into(),
+                value: format!("Type {}", ix_type),
+            },
         ]),
     }
 }
@@ -35,40 +41,87 @@ fn decode(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'stati
 fn parse_transfer(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
     let lamports = read_u64_le(data, 0)?;
 
-    let from = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
-    let to = accounts.get(1).map(pubkey_short).unwrap_or_else(|| "?".into());
+    let from = accounts
+        .first()
+        .map(pubkey_short)
+        .unwrap_or_else(|| "?".into());
+    let to = accounts
+        .get(1)
+        .map(pubkey_short)
+        .unwrap_or_else(|| "?".into());
 
     Ok(vec![
         ReviewItem::Header("SOL Transfer".into()),
-        ReviewItem::Field { label: "From".into(), value: from },
-        ReviewItem::Field { label: "To".into(), value: to },
-        ReviewItem::Field { label: "Amount".into(), value: lamports_to_sol(lamports) },
+        ReviewItem::Field {
+            label: "From".into(),
+            value: from,
+        },
+        ReviewItem::Field {
+            label: "To".into(),
+            value: to,
+        },
+        ReviewItem::Field {
+            label: "Amount".into(),
+            value: lamports_to_sol(lamports),
+        },
     ])
 }
 
-fn parse_create_account(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
+fn parse_create_account(
+    data: &[u8],
+    accounts: &[[u8; 32]],
+) -> Result<Vec<ReviewItem>, &'static str> {
     let lamports = read_u64_le(data, 0)?;
     let space = read_u64_le(data, 8)?;
 
-    let funder = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
-    let new_account = accounts.get(1).map(pubkey_short).unwrap_or_else(|| "?".into());
+    let funder = accounts
+        .first()
+        .map(pubkey_short)
+        .unwrap_or_else(|| "?".into());
+    let new_account = accounts
+        .get(1)
+        .map(pubkey_short)
+        .unwrap_or_else(|| "?".into());
 
     Ok(vec![
         ReviewItem::Header("Create Account".into()),
-        ReviewItem::Field { label: "Funder".into(), value: funder },
-        ReviewItem::Field { label: "New account".into(), value: new_account },
-        ReviewItem::Field { label: "Rent".into(), value: lamports_to_sol(lamports) },
-        ReviewItem::Field { label: "Space".into(), value: format!("{} bytes", space) },
+        ReviewItem::Field {
+            label: "Funder".into(),
+            value: funder,
+        },
+        ReviewItem::Field {
+            label: "New account".into(),
+            value: new_account,
+        },
+        ReviewItem::Field {
+            label: "Rent".into(),
+            value: lamports_to_sol(lamports),
+        },
+        ReviewItem::Field {
+            label: "Space".into(),
+            value: format!("{} bytes", space),
+        },
     ])
 }
 
-fn parse_create_account_with_seed(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    let funder = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
-    let new_account = accounts.get(1).map(pubkey_short).unwrap_or_else(|| "?".into());
+fn parse_create_account_with_seed(
+    data: &[u8],
+    accounts: &[[u8; 32]],
+) -> Result<Vec<ReviewItem>, &'static str> {
+    let funder = accounts
+        .first()
+        .map(pubkey_short)
+        .unwrap_or_else(|| "?".into());
+    let new_account = accounts
+        .get(1)
+        .map(pubkey_short)
+        .unwrap_or_else(|| "?".into());
 
     // base: 32 bytes, seed_len: u64, seed: variable
     let seed_len = read_u64_le(data, 32)? as usize;
-    let seed_end = 40usize.checked_add(seed_len).ok_or("CreateAccountWithSeed seed too long")?;
+    let seed_end = 40usize
+        .checked_add(seed_len)
+        .ok_or("CreateAccountWithSeed seed too long")?;
     let seed = data
         .get(40..seed_end)
         .and_then(|s| std::str::from_utf8(s).ok())
@@ -77,34 +130,73 @@ fn parse_create_account_with_seed(data: &[u8], accounts: &[[u8; 32]]) -> Result<
 
     Ok(vec![
         ReviewItem::Header("Create Account (seed)".into()),
-        ReviewItem::Field { label: "Funder".into(), value: funder },
-        ReviewItem::Field { label: "New account".into(), value: new_account },
-        ReviewItem::Field { label: "Seed".into(), value: seed.to_string() },
-        ReviewItem::Field { label: "Rent".into(), value: lamports_to_sol(lamports) },
+        ReviewItem::Field {
+            label: "Funder".into(),
+            value: funder,
+        },
+        ReviewItem::Field {
+            label: "New account".into(),
+            value: new_account,
+        },
+        ReviewItem::Field {
+            label: "Seed".into(),
+            value: seed.to_string(),
+        },
+        ReviewItem::Field {
+            label: "Rent".into(),
+            value: lamports_to_sol(lamports),
+        },
     ])
 }
 
 fn parse_allocate(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
     let space = read_u64_le(data, 0)?;
-    let account = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
+    let account = accounts
+        .first()
+        .map(pubkey_short)
+        .unwrap_or_else(|| "?".into());
 
     Ok(vec![
         ReviewItem::Header("Allocate".into()),
-        ReviewItem::Field { label: "Account".into(), value: account },
-        ReviewItem::Field { label: "Space".into(), value: format!("{} bytes", space) },
+        ReviewItem::Field {
+            label: "Account".into(),
+            value: account,
+        },
+        ReviewItem::Field {
+            label: "Space".into(),
+            value: format!("{} bytes", space),
+        },
     ])
 }
 
-fn parse_transfer_with_seed(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
+fn parse_transfer_with_seed(
+    data: &[u8],
+    accounts: &[[u8; 32]],
+) -> Result<Vec<ReviewItem>, &'static str> {
     let lamports = read_u64_le(data, 0)?;
-    let from = accounts.first().map(pubkey_short).unwrap_or_else(|| "?".into());
-    let to = accounts.get(1).map(pubkey_short).unwrap_or_else(|| "?".into());
+    let from = accounts
+        .first()
+        .map(pubkey_short)
+        .unwrap_or_else(|| "?".into());
+    let to = accounts
+        .get(1)
+        .map(pubkey_short)
+        .unwrap_or_else(|| "?".into());
 
     Ok(vec![
         ReviewItem::Header("SOL Transfer (seed)".into()),
-        ReviewItem::Field { label: "From".into(), value: from },
-        ReviewItem::Field { label: "To".into(), value: to },
-        ReviewItem::Field { label: "Amount".into(), value: lamports_to_sol(lamports) },
+        ReviewItem::Field {
+            label: "From".into(),
+            value: from,
+        },
+        ReviewItem::Field {
+            label: "To".into(),
+            value: to,
+        },
+        ReviewItem::Field {
+            label: "Amount".into(),
+            value: lamports_to_sol(lamports),
+        },
     ])
 }
 
@@ -128,7 +220,9 @@ fn pubkey_short(key: &[u8; 32]) -> String {
 mod tests {
     use super::*;
 
-    fn key(byte: u8) -> [u8; 32] { [byte; 32] }
+    fn key(byte: u8) -> [u8; 32] {
+        [byte; 32]
+    }
 
     fn transfer_data(lamports: u64) -> Vec<u8> {
         let mut d = vec![2u8, 0, 0, 0]; // Transfer discriminant
@@ -173,9 +267,11 @@ mod tests {
         let accounts = [key(0x01), key(0x02)];
         let ix = parse(&data, &accounts);
         assert_eq!(ix.program, "System");
-        let has_amount = ix.items.iter().any(|item| matches!(
-            item, ReviewItem::Field { label, value } if label == "Amount" && value == "1 SOL"
-        ));
+        let has_amount = ix.items.iter().any(|item| {
+            matches!(
+                item, ReviewItem::Field { label, value } if label == "Amount" && value == "1 SOL"
+            )
+        });
         assert!(has_amount, "Expected Amount: 1 SOL");
     }
 
@@ -184,10 +280,14 @@ mod tests {
         let data = transfer_data(1_000_000_000);
         let accounts = [key(0x01), key(0x02)];
         let ix = parse(&data, &accounts);
-        let labels: Vec<&str> = ix.items.iter().filter_map(|item| match item {
-            ReviewItem::Field { label, .. } => Some(label.as_str()),
-            _ => None,
-        }).collect();
+        let labels: Vec<&str> = ix
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                ReviewItem::Field { label, .. } => Some(label.as_str()),
+                _ => None,
+            })
+            .collect();
         assert!(labels.contains(&"From"));
         assert!(labels.contains(&"To"));
     }
@@ -196,13 +296,15 @@ mod tests {
     fn test_create_account() {
         let mut data = vec![0u8, 0, 0, 0]; // CreateAccount discriminant
         data.extend_from_slice(&2_039_280u64.to_le_bytes()); // lamports (rent)
-        data.extend_from_slice(&165u64.to_le_bytes());       // space
-        data.extend_from_slice(&[0u8; 32]);                  // owner
+        data.extend_from_slice(&165u64.to_le_bytes()); // space
+        data.extend_from_slice(&[0u8; 32]); // owner
         let accounts = [key(0x01), key(0x02)];
         let ix = parse(&data, &accounts);
-        let has_space = ix.items.iter().any(|item| matches!(
-            item, ReviewItem::Field { label, .. } if label == "Space"
-        ));
+        let has_space = ix.items.iter().any(|item| {
+            matches!(
+                item, ReviewItem::Field { label, .. } if label == "Space"
+            )
+        });
         assert!(has_space);
     }
 
@@ -217,14 +319,20 @@ mod tests {
     fn test_transfer_data_too_short_returns_warning() {
         let data = vec![2u8, 0, 0, 0, 0]; // only 5 bytes, need 12
         let ix = parse(&data, &[]);
-        let has_warning = ix.items.iter().any(|item| matches!(item, ReviewItem::Warning(_)));
+        let has_warning = ix
+            .items
+            .iter()
+            .any(|item| matches!(item, ReviewItem::Warning(_)));
         assert!(has_warning);
     }
 
     #[test]
     fn test_empty_data_returns_warning() {
         let ix = parse(&[], &[]);
-        let has_warning = ix.items.iter().any(|item| matches!(item, ReviewItem::Warning(_)));
+        let has_warning = ix
+            .items
+            .iter()
+            .any(|item| matches!(item, ReviewItem::Warning(_)));
         assert!(has_warning);
     }
 }
