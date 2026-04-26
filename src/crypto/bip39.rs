@@ -6,7 +6,7 @@
 use hmac::Hmac;
 use pbkdf2::pbkdf2;
 use sha2::{Digest, Sha256, Sha512};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 /// BIP39 English wordlist, fetched from bitcoin/bips at build time and SHA256-verified.
 /// Source: https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt
@@ -45,7 +45,7 @@ pub fn words_with_prefix(prefix: &str) -> Vec<(usize, &'static str)> {
 ///
 /// Entropy is SHA256-hashed, then truncated to 16 bytes (12 words) or 32 bytes (24 words).
 pub fn mnemonic_from_entropy(entropy: &[u8], word_count: usize) -> Result<String, &'static str> {
-    let hashed = Sha256::digest(entropy);
+    let mut hashed = Sha256::digest(entropy);
 
     let ent_bytes: &[u8] = match word_count {
         12 => &hashed[..16], // 128 bits
@@ -53,7 +53,9 @@ pub fn mnemonic_from_entropy(entropy: &[u8], word_count: usize) -> Result<String
         _ => return Err("word_count must be 12 or 24"),
     };
 
-    Ok(entropy_to_mnemonic(ent_bytes))
+    let mnemonic = entropy_to_mnemonic(ent_bytes);
+    hashed.as_mut_slice().zeroize();
+    Ok(mnemonic)
 }
 
 /// Generate a BIP39 mnemonic from exact raw entropy (16 bytes = 12 words, 32 bytes = 24 words).
@@ -73,7 +75,7 @@ fn entropy_to_mnemonic(ent_bytes: &[u8]) -> String {
     let cs_bits = ent_bits / 32;
 
     // Checksum = first (ent_bits/32) bits of SHA256(entropy)
-    let checksum = Sha256::digest(ent_bytes);
+    let mut checksum = Sha256::digest(ent_bytes);
 
     // Build bitstring: entropy + checksum
     let mut bits = Vec::with_capacity(ent_bits + cs_bits);
@@ -88,6 +90,8 @@ fn entropy_to_mnemonic(ent_bytes: &[u8]) -> String {
         bits.push((checksum[byte_idx] >> bit_idx) & 1);
     }
 
+    checksum.as_mut_slice().zeroize();
+
     // Split into 11-bit groups -> word indices
     let wl = wordlist();
     let mut words = Vec::new();
@@ -98,6 +102,8 @@ fn entropy_to_mnemonic(ent_bytes: &[u8]) -> String {
         }
         words.push(wl[idx]);
     }
+
+    bits.zeroize();
 
     words.join(" ")
 }
@@ -156,6 +162,8 @@ pub fn validate_mnemonic(mnemonic: &str) -> bool {
 /// BIP39 seed generation: PBKDF2-HMAC-SHA512, 2048 rounds.
 ///
 /// Returns a 64-byte seed. The seed is zeroized on drop.
+/// Callers must borrow (`&seed`), not clone — copying the inner Vec
+/// produces a plain buffer that won't be zeroized.
 pub fn mnemonic_to_seed(mnemonic: &str, passphrase: &str) -> Zeroizing<Vec<u8>> {
     let salt = format!("mnemonic{}", passphrase);
     let mut seed = Zeroizing::new(vec![0u8; 64]);

@@ -235,13 +235,12 @@ pub fn draw_char_grid<D: DrawTarget<Color = Rgb565>>(
     draw_icon_colored(display, &icons::keyboard(), 5, 3, colors::TEXT_MUTED)?;
 
     // Show entered text (masked except last char)
-    let display_text = if grid.text.is_empty() {
-        String::from("_")
-    } else {
+    let display_text = if let Some(last) = grid.text.chars().last() {
         let char_count = grid.text.chars().count();
         let masked: String = (0..char_count - 1).map(|_| '*').collect();
-        let last = grid.text.chars().last().unwrap();
         format!("{}{}", masked, last)
+    } else {
+        String::from("_")
     };
     // Truncate display if too long (char-safe)
     let char_count = display_text.chars().count();
