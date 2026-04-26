@@ -28,7 +28,10 @@ mod tests {
 
     #[test]
     fn test_different_names_differ() {
-        assert_ne!(discriminator("route"), discriminator("shared_accounts_route"));
+        assert_ne!(
+            discriminator("route"),
+            discriminator("shared_accounts_route")
+        );
     }
 
     #[test]

@@ -21,14 +21,18 @@ impl FileCamera {
             .pick_file()
             .ok_or_else(|| "No file selected".to_string())?;
 
-        let img = image::open(&path)
-            .map_err(|e| format!("Failed to load image: {e}"))?;
+        let img = image::open(&path).map_err(|e| format!("Failed to load image: {e}"))?;
         let rgb_img = img.to_rgb8();
         let (w, h) = rgb_img.dimensions();
         let rgb = rgb_img.into_raw();
 
         let luma = crate::camera::rgb_to_gray(&rgb, w, h);
-        let frame = Frame { width: w, height: h, rgb, luma };
+        let frame = Frame {
+            width: w,
+            height: h,
+            rgb,
+            luma,
+        };
         let qr_data = crate::camera::try_decode_qr(&frame, crate::camera::ScanMode::Full);
 
         Ok(FileCamera {

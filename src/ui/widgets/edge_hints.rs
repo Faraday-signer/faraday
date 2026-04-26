@@ -52,7 +52,11 @@ pub struct EdgeHints {
 
 impl EdgeHints {
     pub const fn new() -> Self {
-        Self { k1: EdgeIcon::None, k2: EdgeIcon::None, k3: EdgeIcon::None }
+        Self {
+            k1: EdgeIcon::None,
+            k2: EdgeIcon::None,
+            k3: EdgeIcon::None,
+        }
     }
 
     pub const fn k1(mut self, icon: EdgeIcon) -> Self {
@@ -122,9 +126,27 @@ impl EdgeHints {
         let cy_k2 = y_top + h / 2;
         let cy_k3 = y_top + (5 * h) / 6;
 
-        draw_cell(display, self.k1, Point::new(cx, cy_k1), theme.accent, theme.dim)?;
-        draw_cell(display, self.k2, Point::new(cx, cy_k2), theme.muted, theme.dim)?;
-        draw_cell(display, self.k3, Point::new(cx, cy_k3), theme.muted, theme.dim)?;
+        draw_cell(
+            display,
+            self.k1,
+            Point::new(cx, cy_k1),
+            theme.accent,
+            theme.dim,
+        )?;
+        draw_cell(
+            display,
+            self.k2,
+            Point::new(cx, cy_k2),
+            theme.muted,
+            theme.dim,
+        )?;
+        draw_cell(
+            display,
+            self.k3,
+            Point::new(cx, cy_k3),
+            theme.muted,
+            theme.dim,
+        )?;
 
         Ok(())
     }
@@ -139,12 +161,9 @@ fn draw_cell<D: DrawTarget<Color = Rgb565>>(
 ) -> Result<(), D::Error> {
     if matches!(icon, EdgeIcon::None) {
         // 3×3 filled square — "key exists but does nothing on this screen".
-        Rectangle::new(
-            Point::new(center.x - 1, center.y - 1),
-            Size::new(3, 3),
-        )
-        .into_styled(PrimitiveStyle::with_fill(placeholder))
-        .draw(display)?;
+        Rectangle::new(Point::new(center.x - 1, center.y - 1), Size::new(3, 3))
+            .into_styled(PrimitiveStyle::with_fill(placeholder))
+            .draw(display)?;
         return Ok(());
     }
 

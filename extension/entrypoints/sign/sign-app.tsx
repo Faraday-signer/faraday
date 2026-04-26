@@ -4,10 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BrowserQRCodeReader } from "@zxing/browser";
 import { QRCodeSVG } from "qrcode.react";
 
+import { AnimatedQr } from "../../src/components/animated-qr";
 import { FaradayLogo } from "../../src/lib/brand";
 import { sendRuntimeMessage } from "../../src/lib/runtime";
+import { FARADAY_SIG_PREFIX, spliceFaradaySignature } from "../../src/lib/solana";
 import { colors, fontFamily, font, radius, space } from "../../src/lib/theme";
 import type { GetSignSessionResult } from "../../src/lib/types";
+import { encodeTxForQr } from "../../src/lib/ur-encode";
 
 type Step = "display" | "scan";
 type ScanState = "starting" | "scanning" | "success" | "error";
@@ -259,6 +262,30 @@ function DisplayScreen({
 }) {
   const isMessage = session.kind === "message";
   const qrValue = isMessage ? session.messageQrBase64 : session.txBase64;
+  const qrPayload = useMemo(() => {
+    if (!qrValue) {
+      return null;
+    }
+    if (isMessage) {
+      return { kind: "static" as const, value: qrValue };
+    }
+    return encodeTxForQr(qrValue);
+  }, [isMessage, qrValue]);
+  const [animatedIndex, setAnimatedIndex] = useState(0);
+
+  useEffect(() => {
+    setAnimatedIndex(0);
+    if (!qrPayload || qrPayload.kind !== "animated") {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setAnimatedIndex((prev) => (prev + 1) % qrPayload.frames.length);
+    }, qrPayload.intervalMs);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [qrPayload]);
+
   if (!qrValue) {
     return (
       <>
@@ -284,16 +311,35 @@ function DisplayScreen({
       </div>
 
       <div style={qrCardStyle}>
-        <QRCodeSVG
-          value={qrValue}
-          size={320}
-          level="M"
-          includeMargin={false}
-          bgColor={colors.qrSurface}
-          fgColor={colors.qrModule}
-          style={qrSvgStyle}
-        />
+        {qrPayload && qrPayload.kind === "animated" ? (
+          <AnimatedQr
+            frames={qrPayload.frames}
+            size={480}
+            intervalMs={qrPayload.intervalMs}
+            level="M"
+            bgColor={colors.qrSurface}
+            fgColor={colors.qrModule}
+            svgStyle={qrSvgStyle}
+            showCounter={false}
+          />
+        ) : (
+          <QRCodeSVG
+            value={qrValue}
+            size={320}
+            level="M"
+            includeMargin={false}
+            bgColor={colors.qrSurface}
+            fgColor={colors.qrModule}
+            style={qrSvgStyle}
+          />
+        )}
       </div>
+
+      {qrPayload && qrPayload.kind === "animated" ? (
+        <p style={{ ...subtitleStyle, fontFamily: fontFamily.mono, fontSize: font.sm }}>
+          Animated UR frame {animatedIndex + 1}/{qrPayload.frames.length}
+        </p>
+      ) : null}
 
       <p style={{ ...subtitleStyle, textAlign: "center" }}>
         Scan this QR with your Faraday device.
@@ -569,6 +615,33 @@ export function SignApp() {
     if (!sessionId || !session) {
       return false;
     }
+
+    // Tx path may arrive as a `faraday:sig:` envelope (Pi ships only
+    // version + pubkey + 64-byte sig). Splice it into the unsigned tx
+    // the extension already holds, ed25519-verify against the message,
+    // then fall through to the existing signed-tx validation path.
+    const trimmedPayload = signedPayload.trim();
+    let txPayload = trimmedPayload;
+    if (
+      session.kind === "tx" &&
+      trimmedPayload.startsWith(FARADAY_SIG_PREFIX) &&
+      session.txBase64
+    ) {
+      try {
+        txPayload = spliceFaradaySignature(
+          session.txBase64,
+          trimmedPayload,
+          session.expectedPubkey
+        );
+      } catch (err) {
+        warn("Failed to splice signature envelope", {
+          sessionId,
+          error: err instanceof Error ? err.message : String(err)
+        });
+        return false;
+      }
+    }
+
     const response =
       session.kind === "message"
         ? await sendRuntimeMessage({
@@ -579,7 +652,7 @@ export function SignApp() {
         : await sendRuntimeMessage({
             type: "faraday:complete-sign-session",
             sessionId,
-            signedTxBase64: signedPayload
+            signedTxBase64: txPayload
           });
     if (!response.ok) {
       warn("Failed to complete sign session", { sessionId, error: response.error });

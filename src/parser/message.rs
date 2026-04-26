@@ -60,7 +60,13 @@ pub fn deserialize(tx_bytes: &[u8]) -> Result<ParsedMessage, &'static str> {
         cur.skip(1)?; // consume the version prefix byte
         match version_byte & 0x7f {
             0 => MessageVersion::V0,
-            v => return Err(if v > 0 { "Unsupported transaction version" } else { unreachable!() }),
+            v => {
+                return Err(if v > 0 {
+                    "Unsupported transaction version"
+                } else {
+                    unreachable!()
+                })
+            }
         }
     } else {
         MessageVersion::Legacy
@@ -96,7 +102,11 @@ pub fn deserialize(tx_bytes: &[u8]) -> Result<ParsedMessage, &'static str> {
         let data_len = cur.read_compact_u16()?;
         let data = cur.read_bytes(data_len)?.to_vec();
 
-        instructions.push(RawInstruction { program_id_index, account_indices, data });
+        instructions.push(RawInstruction {
+            program_id_index,
+            account_indices,
+            data,
+        });
     }
 
     // Address lookup tables (v0 only)
@@ -149,17 +159,26 @@ impl<'a> Cursor<'a> {
     }
 
     fn peek(&self) -> Result<u8, &'static str> {
-        self.data.get(self.pos).copied().ok_or("Unexpected end of data")
+        self.data
+            .get(self.pos)
+            .copied()
+            .ok_or("Unexpected end of data")
     }
 
     fn read_u8(&mut self) -> Result<u8, &'static str> {
-        let b = self.data.get(self.pos).copied().ok_or("Unexpected end of data")?;
+        let b = self
+            .data
+            .get(self.pos)
+            .copied()
+            .ok_or("Unexpected end of data")?;
         self.pos += 1;
         Ok(b)
     }
 
     fn read_bytes(&mut self, n: usize) -> Result<&'a [u8], &'static str> {
-        if self.pos + n > self.data.len() { return Err("Unexpected end of data"); }
+        if self.pos + n > self.data.len() {
+            return Err("Unexpected end of data");
+        }
         let slice = &self.data[self.pos..self.pos + n];
         self.pos += n;
         Ok(slice)
@@ -173,16 +192,22 @@ impl<'a> Cursor<'a> {
     }
 
     fn skip(&mut self, n: usize) -> Result<(), &'static str> {
-        if self.pos + n > self.data.len() { return Err("Unexpected end of data"); }
+        if self.pos + n > self.data.len() {
+            return Err("Unexpected end of data");
+        }
         self.pos += n;
         Ok(())
     }
 
     fn read_compact_u16(&mut self) -> Result<usize, &'static str> {
         let first = self.read_u8()? as usize;
-        if first < 0x80 { return Ok(first); }
+        if first < 0x80 {
+            return Ok(first);
+        }
         let second = self.read_u8()? as usize;
-        if second < 0x80 { return Ok((first & 0x7f) | (second << 7)); }
+        if second < 0x80 {
+            return Ok((first & 0x7f) | (second << 7));
+        }
         let third = self.read_u8()? as usize;
         Ok((first & 0x7f) | ((second & 0x7f) << 7) | (third << 14))
     }
@@ -195,8 +220,8 @@ mod tests {
     /// Builds a minimal legacy transaction: 1 sig, 2 accounts, 1 System Transfer instruction.
     fn legacy_transfer_tx(lamports: u64) -> Vec<u8> {
         let mut tx = Vec::new();
-        tx.push(1u8);                          // num_signatures
-        tx.extend_from_slice(&[0u8; 64]);      // signature placeholder
+        tx.push(1u8); // num_signatures
+        tx.extend_from_slice(&[0u8; 64]); // signature placeholder
 
         // message header
         tx.push(1); // num_required_signers
@@ -205,16 +230,16 @@ mod tests {
 
         // accounts (compact-u16 = 2)
         tx.push(2);
-        tx.extend_from_slice(&[0x01u8; 32]);   // signer
-        tx.extend_from_slice(&[0x00u8; 32]);   // system program
+        tx.extend_from_slice(&[0x01u8; 32]); // signer
+        tx.extend_from_slice(&[0x00u8; 32]); // system program
 
-        tx.extend_from_slice(&[0xABu8; 32]);   // recent blockhash
+        tx.extend_from_slice(&[0xABu8; 32]); // recent blockhash
 
         // 1 instruction
         tx.push(1);
-        tx.push(1);  // program_id_index = 1
-        tx.push(1);  // 1 account index
-        tx.push(0);  // account_indices[0] = 0
+        tx.push(1); // program_id_index = 1
+        tx.push(1); // 1 account index
+        tx.push(0); // account_indices[0] = 0
         tx.push(12); // data_len = 12 (compact-u16)
         tx.extend_from_slice(&[2u8, 0, 0, 0]); // Transfer type
         tx.extend_from_slice(&lamports.to_le_bytes());
@@ -304,9 +329,12 @@ mod tests {
         // Build a tx where num_accounts = 128 (would be too short to fully parse,
         // but we can verify the compact-u16 reading fails gracefully)
         let mut tx = Vec::new();
-        tx.push(0u8);            // 0 signatures
-        tx.push(1); tx.push(0); tx.push(0); // header
-        tx.push(0x80); tx.push(0x01); // compact-u16: 128 accounts — truncated intentionally
+        tx.push(0u8); // 0 signatures
+        tx.push(1);
+        tx.push(0);
+        tx.push(0); // header
+        tx.push(0x80);
+        tx.push(0x01); // compact-u16: 128 accounts — truncated intentionally
         assert!(deserialize(&tx).is_err());
     }
 }

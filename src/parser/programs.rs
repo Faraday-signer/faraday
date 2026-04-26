@@ -10,10 +10,9 @@ pub fn identify(program_id: &[u8; 32]) -> Option<KnownProgram> {
         "11111111111111111111111111111111" => "System",
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" => "Token",
         "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" => "Token-2022",
-        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bVU" => "AssocToken",
         "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" => "AssocToken",
-        "Stake11111111111111111111111111111111111112" => "Stake",
-        "Vote111111111111111111111111111111111111111p8HGB" => "Vote",
+        "Stake11111111111111111111111111111111111111" => "Stake",
+        "Vote111111111111111111111111111111111111111" => "Vote",
         "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr" => "Memo",
         "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo" => "Memo",
         "ComputeBudget111111111111111111111111111111" => "ComputeBudget",
@@ -21,6 +20,11 @@ pub fn identify(program_id: &[u8; 32]) -> Option<KnownProgram> {
         "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8" => "Raydium AMM",
         "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK" => "Raydium CLMM",
         "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C" => "Raydium CPMM",
+        "DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH" => "DFlow",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc" => "Orca Whirlpools",
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo" => "Meteora DLMM",
+        "PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY" => "Phoenix",
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P" => "Pump.fun",
         _ => return None,
     };
     Some(KnownProgram { name })
@@ -57,8 +61,50 @@ mod tests {
 
     #[test]
     fn test_stake_program() {
-        let id = pubkey_from_b58("Stake11111111111111111111111111111111111112");
+        let id = pubkey_from_b58("Stake11111111111111111111111111111111111111");
         assert_eq!(identify(&id).unwrap().name, "Stake");
+    }
+
+    #[test]
+    fn test_vote_program() {
+        let id = pubkey_from_b58("Vote111111111111111111111111111111111111111");
+        assert_eq!(identify(&id).unwrap().name, "Vote");
+    }
+
+    #[test]
+    fn test_assoc_token() {
+        let id = pubkey_from_b58("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+        assert_eq!(identify(&id).unwrap().name, "AssocToken");
+    }
+
+    #[test]
+    fn test_dflow() {
+        let id = pubkey_from_b58("DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH");
+        assert_eq!(identify(&id).unwrap().name, "DFlow");
+    }
+
+    #[test]
+    fn test_orca_whirlpools() {
+        let id = pubkey_from_b58("whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc");
+        assert_eq!(identify(&id).unwrap().name, "Orca Whirlpools");
+    }
+
+    #[test]
+    fn test_meteora_dlmm() {
+        let id = pubkey_from_b58("LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo");
+        assert_eq!(identify(&id).unwrap().name, "Meteora DLMM");
+    }
+
+    #[test]
+    fn test_phoenix() {
+        let id = pubkey_from_b58("PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY");
+        assert_eq!(identify(&id).unwrap().name, "Phoenix");
+    }
+
+    #[test]
+    fn test_pumpfun() {
+        let id = pubkey_from_b58("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P");
+        assert_eq!(identify(&id).unwrap().name, "Pump.fun");
     }
 
     #[test]

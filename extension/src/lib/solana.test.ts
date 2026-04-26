@@ -9,7 +9,9 @@ import {
   encodeBase64,
   formatSiwsMessage,
   isValidSolanaAddress,
+  parseFaradaySigEnvelope,
   pubkeyToBytes,
+  spliceFaradaySignature,
   validateSignedMessage,
   validateSignedTransactionMatch,
   validateUnsignedTransactionPayload
@@ -347,6 +349,140 @@ describe("validateSignedTransactionMatch", () => {
     expect(() =>
       validateSignedTransactionMatch(b64(unsigned), "@@@not-base64", signer.bs58)
     ).toThrow(/base64/i);
+  });
+});
+
+/* --------------------------------------------------------------------- *
+ * parseFaradaySigEnvelope / spliceFaradaySignature
+ *
+ * The Pi emits a compact `faraday:sig:<base64(version||pubkey||sig)>`
+ * payload on the return leg. The extension already holds the unsigned tx
+ * in session state, so we only need to splice the 64-byte sig into the
+ * correct signer slot and verify it against the message bytes.
+ * --------------------------------------------------------------------- */
+
+function keypairAccount(seed: number): { bs58: string; bytes: Uint8Array; secretKey: Uint8Array } {
+  const seedBytes = new Uint8Array(32).fill(seed);
+  const kp = nacl.sign.keyPair.fromSeed(seedBytes);
+  return { bs58: bs58.encode(kp.publicKey), bytes: kp.publicKey, secretKey: kp.secretKey };
+}
+
+function buildEnvelope(pubkey: Uint8Array, signature: Uint8Array, version = 1): string {
+  const payload = new Uint8Array(1 + 32 + 64);
+  payload[0] = version;
+  payload.set(pubkey, 1);
+  payload.set(signature, 33);
+  return `faraday:sig:${encodeBase64(payload)}`;
+}
+
+describe("parseFaradaySigEnvelope", () => {
+  const kp = keypairAccount(77);
+  const sig = new Uint8Array(64).fill(0xab);
+
+  it("parses a well-formed envelope", () => {
+    const parsed = parseFaradaySigEnvelope(buildEnvelope(kp.bytes, sig));
+    expect(parsed.pubkey).toEqual(kp.bytes);
+    expect(parsed.signature).toEqual(sig);
+  });
+
+  it("rejects missing prefix", () => {
+    const body = buildEnvelope(kp.bytes, sig).slice("faraday:sig:".length);
+    expect(() => parseFaradaySigEnvelope(body)).toThrow(/prefix/i);
+  });
+
+  it("rejects unsupported version byte", () => {
+    expect(() => parseFaradaySigEnvelope(buildEnvelope(kp.bytes, sig, 9))).toThrow(
+      /version/i
+    );
+  });
+
+  it("rejects wrong payload length", () => {
+    const short = new Uint8Array(50);
+    const text = `faraday:sig:${encodeBase64(short)}`;
+    expect(() => parseFaradaySigEnvelope(text)).toThrow(/length/i);
+  });
+
+  it("rejects invalid base64", () => {
+    expect(() => parseFaradaySigEnvelope("faraday:sig:@@@not-base64")).toThrow(
+      /base64/i
+    );
+  });
+});
+
+describe("spliceFaradaySignature", () => {
+  const signer = keypairAccount(33);
+  const other = keypairAccount(44);
+
+  function signTx(signerBytes: Uint8Array, secretKey: Uint8Array): {
+    unsignedBase64: string;
+    envelope: string;
+    signature: Uint8Array;
+  } {
+    const unsigned = buildTxBytes({
+      signers: [{ bs58: bs58.encode(signerBytes), bytes: signerBytes }]
+    });
+    // Mirror parseEnvelope: sig count is one byte here (small tx), so
+    // signatures start at offset 1, message starts at 1 + sigCount*64.
+    const sigCount = unsigned[0];
+    const messageBytes = unsigned.slice(1 + sigCount * 64);
+    const signature = nacl.sign.detached(messageBytes, secretKey);
+    const envelope = buildEnvelope(signerBytes, signature);
+    return { unsignedBase64: b64(unsigned), envelope, signature };
+  }
+
+  it("reconstructs a signed tx with the signature in the signer slot", () => {
+    const { unsignedBase64, envelope, signature } = signTx(signer.bytes, signer.secretKey);
+    const signedBase64 = spliceFaradaySignature(unsignedBase64, envelope, signer.bs58);
+    const signedBytes = decodeBase64(signedBase64);
+    expect(signedBytes.slice(1, 65)).toEqual(signature);
+    // Downstream validation accepts the result without modification.
+    expect(() =>
+      validateSignedTransactionMatch(unsignedBase64, signedBase64, signer.bs58)
+    ).not.toThrow();
+  });
+
+  it("rejects envelopes whose pubkey does not match the expected signer", () => {
+    const { unsignedBase64 } = signTx(signer.bytes, signer.secretKey);
+    const badEnvelope = buildEnvelope(other.bytes, new Uint8Array(64).fill(1));
+    expect(() =>
+      spliceFaradaySignature(unsignedBase64, badEnvelope, signer.bs58)
+    ).toThrow(/signer/i);
+  });
+
+  it("rejects when the signature does not verify against the message", () => {
+    const { unsignedBase64 } = signTx(signer.bytes, signer.secretKey);
+    const forgedEnvelope = buildEnvelope(signer.bytes, new Uint8Array(64).fill(0xaa));
+    expect(() =>
+      spliceFaradaySignature(unsignedBase64, forgedEnvelope, signer.bs58)
+    ).toThrow(/verify/i);
+  });
+
+  it("rejects when the expected signer is not listed in the tx accounts", () => {
+    const { envelope } = signTx(signer.bytes, signer.secretKey);
+    const unsignedOther = buildTxBytes({ signers: [{ bs58: other.bs58, bytes: other.bytes }] });
+    expect(() =>
+      spliceFaradaySignature(b64(unsignedOther), envelope, signer.bs58)
+    ).toThrow(/paired signer/i);
+  });
+
+  it("splices into the correct slot for a multi-signer tx", () => {
+    // Tx with [other, signer] — splice must target index 1.
+    const unsigned = buildTxBytes({
+      signers: [
+        { bs58: other.bs58, bytes: other.bytes },
+        { bs58: signer.bs58, bytes: signer.bytes }
+      ]
+    });
+    const sigCount = unsigned[0];
+    const messageBytes = unsigned.slice(1 + sigCount * 64);
+    const signature = nacl.sign.detached(messageBytes, signer.secretKey);
+    const envelope = buildEnvelope(signer.bytes, signature);
+
+    const signedBase64 = spliceFaradaySignature(b64(unsigned), envelope, signer.bs58);
+    const signedBytes = decodeBase64(signedBase64);
+    // Slot 0 (other) still zeros; slot 1 (signer) holds our signature.
+    expect(signedBytes.slice(1, 65)).toEqual(new Uint8Array(64));
+    expect(signedBytes.slice(65, 129)).toEqual(signature);
   });
 });
 

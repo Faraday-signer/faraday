@@ -19,6 +19,11 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 pub struct SignedTransaction {
     pub signed_bytes: Vec<u8>,
     pub signed_base64: String,
+    /// `faraday:sig:<base64(v || pubkey || sig)>` — the compact return
+    /// payload shown on the Pi's `SignShowQr` screen so the reader can
+    /// read a tiny QR instead of a dense one. See
+    /// `crate::qr::encode_qr::encode_signature_envelope`.
+    pub signature_envelope: String,
     pub signature: [u8; 64],
     pub signer_pubkey: String,
 }
@@ -89,10 +94,13 @@ pub fn sign_transaction_bytes(
 
     let signer_pubkey = bs58::encode(public_key).into_string();
     let signed_base64 = crate::qr::encode_qr::encode_signed_tx(&signed);
+    let signature_envelope =
+        crate::qr::encode_qr::encode_signature_envelope(&sig_bytes, public_key);
 
     Ok(SignedTransaction {
         signed_bytes: signed,
         signed_base64,
+        signature_envelope,
         signature: sig_bytes,
         signer_pubkey,
     })
@@ -299,6 +307,37 @@ mod tests {
         let sigs_end = 1 + 1 * 64;
         let message = &signed.signed_bytes[sigs_end..];
         assert!(verify_signature(message, &signed.signature, &kp.public_key).is_ok());
+    }
+
+    #[test]
+    fn signature_envelope_payload_shape() {
+        use base64::engine::general_purpose::STANDARD as BASE64;
+        use base64::Engine;
+
+        let kp = test_keypair(0);
+        let tx = build_unsigned_tx(&kp.public_key);
+        let signed = sign_transaction_bytes(&tx, &kp.private_key, &kp.public_key).unwrap();
+
+        // Envelope shape: `faraday:sig:<base64(v || pubkey_32 || sig_64)>`.
+        assert!(signed.signature_envelope.starts_with("faraday:sig:"));
+        let b64 = signed.signature_envelope.trim_start_matches("faraday:sig:");
+        let payload = BASE64.decode(b64).expect("envelope must be valid base64");
+        assert_eq!(payload.len(), 1 + 32 + 64);
+        assert_eq!(
+            payload[0],
+            crate::qr::encode_qr::SIG_ENVELOPE_VERSION,
+            "version byte must match current envelope version"
+        );
+        assert_eq!(&payload[1..33], &kp.public_key, "pubkey slot must carry signer pubkey");
+        assert_eq!(&payload[33..97], &signed.signature, "sig slot must carry the produced signature");
+
+        // The signature inside the envelope must verify against the full
+        // message bytes (prefix included) — what the extension will do.
+        let sigs_end = 1 + 1 * 64;
+        let message = &signed.signed_bytes[sigs_end..];
+        let mut sig_arr = [0u8; 64];
+        sig_arr.copy_from_slice(&payload[33..97]);
+        assert!(verify_signature(message, &sig_arr, &kp.public_key).is_ok());
     }
 
     /// Live V0 payload captured off the device. Used to reproduce signing

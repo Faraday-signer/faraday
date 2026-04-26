@@ -139,7 +139,8 @@ fn run_simulator() {
             // Idle timeout reached — show the Faraday logo (splash) instead
             // of a black screen, so the device is visibly "on + idle" rather
             // than indistinguishable from powered-off.
-            let _ = gui::screens::draw_splash(&mut fb);
+            let elapsed_ms = app.splash_anim_start.elapsed().as_millis() as u64;
+            let _ = gui::screens::draw_splash(&mut fb, elapsed_ms);
         } else {
             // On camera screens, blit the latest webcam frame as background so
             // overlay drawing in app.draw() paints on top of live preview. When
@@ -224,7 +225,8 @@ fn run_pi() {
         app.tick();
 
         if app.is_blanked() {
-            let _ = crate::gui::screens::draw_splash(&mut display);
+            let elapsed_ms = app.splash_anim_start.elapsed().as_millis() as u64;
+            let _ = crate::gui::screens::draw_splash(&mut display, elapsed_ms);
         } else {
             // On camera screens, blit preview first, then let the screen
             // overlay draw on top. Fill dark when no frame is ready yet.

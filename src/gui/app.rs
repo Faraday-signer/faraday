@@ -34,14 +34,33 @@ pub enum InputEvent {
 /// Current screen with its mutable state.
 pub enum Screen {
     Splash,
-    MainMenu { selected: usize },
+    MainMenu {
+        selected: usize,
+    },
 
     // Create wallet flow
-    CreateWordCount { selected: usize },
-    CreateMethod { word_count: usize, selected: usize },
-    CreateCameraEntropy { word_count: usize, frames_collected: usize, entropy: Vec<u8> },
-    CreateCoinFlips { word_count: usize, bits: Vec<bool>, selected: usize },
-    CreateDiceRolls { word_count: usize, rolls: Vec<u8>, selected: usize },
+    CreateWordCount {
+        selected: usize,
+    },
+    CreateMethod {
+        word_count: usize,
+        selected: usize,
+    },
+    CreateCameraEntropy {
+        word_count: usize,
+        frames_collected: usize,
+        entropy: Vec<u8>,
+    },
+    CreateCoinFlips {
+        word_count: usize,
+        bits: Vec<bool>,
+        selected: usize,
+    },
+    CreateDiceRolls {
+        word_count: usize,
+        rolls: Vec<u8>,
+        selected: usize,
+    },
     CreateShowWords {
         mnemonic: String,
         page: usize,
@@ -55,10 +74,22 @@ pub enum Screen {
         correct_idx: usize,
         selected: usize,
     },
-    CreatePassphrasePrompt { mnemonic: String, selected: usize },
-    CreatePassphraseInput { mnemonic: String, grid: CharGrid },
-    CreatePassphraseConfirm { mnemonic: String, passphrase: String, grid: CharGrid },
-    CreatePassphraseMismatch { mnemonic: String },
+    CreatePassphrasePrompt {
+        mnemonic: String,
+        selected: usize,
+    },
+    CreatePassphraseInput {
+        mnemonic: String,
+        grid: CharGrid,
+    },
+    CreatePassphraseConfirm {
+        mnemonic: String,
+        passphrase: String,
+        grid: CharGrid,
+    },
+    CreatePassphraseMismatch {
+        mnemonic: String,
+    },
     CreateConfirm {
         mnemonic: String,
         passphrase: String,
@@ -67,7 +98,10 @@ pub enum Screen {
     },
     /// Pre-export warning. Forces the user to read the consequence before any
     /// seed-backup action (menu entry, show-words, block view, etc.).
-    ExportSeedWarning { selected: usize, from_settings: bool },
+    ExportSeedWarning {
+        selected: usize,
+        from_settings: bool,
+    },
     /// Specific warning before SHOW WORDS — the plaintext seed is the most
     /// dangerous surface, so it gates that action even on the happy post-create
     /// path (where the entry-level warning is skipped).
@@ -112,33 +146,63 @@ pub enum Screen {
     // and check the derived address matches.
     VerifyBackupScan,
     VerifyBackupSeedMismatch,
-    VerifyBackupPassphrase { grid: CharGrid },
+    VerifyBackupPassphrase {
+        grid: CharGrid,
+    },
     VerifyBackupPassphraseMismatch,
     VerifyBackupSuccess,
 
     // Load wallet flow
-    LoadMethod { selected: usize },
+    LoadMethod {
+        selected: usize,
+    },
     LoadScanQr,
     /// Shown when the 12 or 24 typed words fail the BIP39 checksum.
-    LoadInvalidMnemonic { word_count: usize },
-    LoadWordCount { selected: usize },
+    LoadInvalidMnemonic {
+        word_count: usize,
+    },
+    LoadWordCount {
+        selected: usize,
+    },
     LoadEnterWords {
         words: Vec<String>,
         word_count: usize,
         picker: WordPicker,
     },
-    /// After a successful scan or word-entry load, show the preview address
-    /// (no-passphrase derivation) and ask Done / Add passphrase. Replaces the
-    /// old "Skip vs Add" prompt which read as a negative choice.
+    /// Transient "seed loaded" splash shown right after a successful
+    /// scan / word entry. Auto-dismisses after ~1.2s in `tick()` and
+    /// advances to the passphrase decision. The `shown_at` timestamp
+    /// is the wall-clock when the splash was entered; the render
+    /// ignores it (only tick reads it) so drop order doesn't matter.
+    LoadSeedLoaded {
+        mnemonic: String,
+        preview_address: String,
+        shown_at: std::time::Instant,
+    },
+    /// Passphrase decision: Done (no passphrase) / Add passphrase. Short
+    /// address shown in the header chip so users keep visual continuity
+    /// with the preceding confirmation.
     LoadFinalize {
         mnemonic: String,
         preview_address: String,
         selected: usize,
     },
-    LoadPassphrasePrompt { mnemonic: String, selected: usize },
-    LoadPassphraseInput { mnemonic: String, grid: CharGrid },
-    LoadPassphraseConfirm { mnemonic: String, passphrase: String, grid: CharGrid },
-    LoadPassphraseMismatch { mnemonic: String },
+    LoadPassphrasePrompt {
+        mnemonic: String,
+        selected: usize,
+    },
+    LoadPassphraseInput {
+        mnemonic: String,
+        grid: CharGrid,
+    },
+    LoadPassphraseConfirm {
+        mnemonic: String,
+        passphrase: String,
+        grid: CharGrid,
+    },
+    LoadPassphraseMismatch {
+        mnemonic: String,
+    },
     LoadConfirm {
         mnemonic: String,
         passphrase: String,
@@ -162,22 +226,38 @@ pub enum Screen {
         /// signer set — Sign is disabled in that case.
         can_sign: bool,
     },
-    SignShowQr { data: String },
-    SignMessageInput { grid: CharGrid },
-    SignMessageReview { message_bytes: Vec<u8>, scroll: usize },
-    SignMessageResult { signature_hex: String },
+    SignShowQr {
+        data: String,
+    },
+    SignMessageInput {
+        grid: CharGrid,
+    },
+    SignMessageReview {
+        message_bytes: Vec<u8>,
+        scroll: usize,
+    },
+    SignMessageResult {
+        signature_hex: String,
+    },
 
     // Settings
-    SettingsMenu { selected: usize },
+    SettingsMenu {
+        selected: usize,
+    },
     SettingsShowAddress,
-    SettingsAccounts { accounts: Vec<(String, String)>, selected: usize },
+    SettingsAccounts {
+        accounts: Vec<(String, String)>,
+        selected: usize,
+    },
     SettingsVerifyAddressScan,
     SettingsVerifyAddressResult {
         address: String,
         result: crate::crypto::derivation::AddressMatch,
     },
     SettingsAbout,
-    SettingsPowerOff { selected: usize },
+    SettingsPowerOff {
+        selected: usize,
+    },
 }
 
 /// Character grid for passphrase entry.
@@ -209,7 +289,12 @@ pub enum GridAction {
 
 impl CharGrid {
     pub fn new() -> Self {
-        CharGrid { text: String::new(), row: 0, col: 0, caps: false }
+        CharGrid {
+            text: String::new(),
+            row: 0,
+            col: 0,
+            caps: false,
+        }
     }
 
     pub fn current_cell(&self) -> Result<char, GridAction> {
@@ -290,25 +375,27 @@ impl CharGrid {
                     self.col += 1;
                 }
             }
-            InputEvent::Confirm => {
-                match self.current_cell() {
-                    Ok(ch) => {
-                        if self.text.len() < 64 { self.text.push(ch); }
-                    }
-                    Err(GridAction::Space) => {
-                        if self.text.len() < 64 { self.text.push(' '); }
-                    }
-                    Err(GridAction::Caps) => {
-                        self.caps = !self.caps;
-                    }
-                    Err(GridAction::Delete) => {
-                        self.text.pop();
-                    }
-                    Err(GridAction::Done) => {
-                        return true;
+            InputEvent::Confirm => match self.current_cell() {
+                Ok(ch) => {
+                    if self.text.len() < 64 {
+                        self.text.push(ch);
                     }
                 }
-            }
+                Err(GridAction::Space) => {
+                    if self.text.len() < 64 {
+                        self.text.push(' ');
+                    }
+                }
+                Err(GridAction::Caps) => {
+                    self.caps = !self.caps;
+                }
+                Err(GridAction::Delete) => {
+                    self.text.pop();
+                }
+                Err(GridAction::Done) => {
+                    return true;
+                }
+            },
             InputEvent::Back => {
                 // K3 = always return to the previous screen. Deleting
                 // last character is K2's job now.
@@ -371,11 +458,15 @@ impl WordPicker {
                 }
             }
             InputEvent::Up => {
-                if self.list_selected > 0 { self.list_selected -= 1; }
+                if self.list_selected > 0 {
+                    self.list_selected -= 1;
+                }
             }
             InputEvent::Down => {
                 let filtered = self.filtered_words();
-                if self.list_selected + 1 < filtered.len() { self.list_selected += 1; }
+                if self.list_selected + 1 < filtered.len() {
+                    self.list_selected += 1;
+                }
             }
             InputEvent::Confirm => {
                 let filtered = self.filtered_words();
@@ -441,6 +532,11 @@ pub struct App {
     pub wallet: Option<LoadedWallet>,
     pub last_activity: std::time::Instant,
     pub blank_timeout_ms: u64,
+    /// Wall-clock anchor for the splash-screen DVD-style bounce. Set once
+    /// at construction and never reset — the bounce position is a pure
+    /// deterministic function of `elapsed()`, so transitions in and out of
+    /// the splash don't cause it to jump.
+    pub splash_anim_start: std::time::Instant,
     #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
     pub camera: Option<Camera>,
     #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
@@ -463,6 +559,7 @@ impl App {
             wallet: None,
             last_activity: std::time::Instant::now(),
             blank_timeout_ms: DEFAULT_BLANK_TIMEOUT_MS,
+            splash_anim_start: std::time::Instant::now(),
             #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
             camera: None,
             #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
@@ -484,8 +581,15 @@ impl App {
     /// when a passphrase is set, so the user is continuously reminded the
     /// QR alone isn't enough to restore the wallet.
     pub fn seedqr_title(&self) -> &'static str {
-        let has_passphrase = self.wallet.as_ref().map_or(false, |w| !w.passphrase.is_empty());
-        if has_passphrase { "SeedQR +P" } else { "SeedQR" }
+        let has_passphrase = self
+            .wallet
+            .as_ref()
+            .map_or(false, |w| !w.passphrase.is_empty());
+        if has_passphrase {
+            "SeedQR +P"
+        } else {
+            "SeedQR"
+        }
     }
 
     pub fn enter_main_menu(&mut self) {
@@ -513,12 +617,20 @@ impl App {
 
     /// True when the screen should render as blank right now.
     pub fn is_blanked(&self) -> bool {
-        let idle_ms = self.last_activity.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        let idle_ms = self
+            .last_activity
+            .elapsed()
+            .as_millis()
+            .min(u64::MAX as u128) as u64;
         let on_camera = {
             #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
-            { self.wants_camera() }
+            {
+                self.wants_camera()
+            }
             #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
-            { false }
+            {
+                false
+            }
         };
         should_blank(idle_ms, self.blank_timeout_ms, on_camera)
     }
@@ -564,6 +676,27 @@ impl App {
     /// Shared between simulator (macOS nokhwa) and Pi (V4L2) via the `Camera` type alias.
     #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
     pub fn tick(&mut self) {
+        // Auto-dismiss the "seed loaded" splash after a short beat — the user
+        // shouldn't have to press anything; the screen just flashes and moves
+        // on to the passphrase decision.
+        if let Screen::LoadSeedLoaded { shown_at, .. } = &self.screen {
+            if shown_at.elapsed() >= std::time::Duration::from_millis(1800) {
+                let taken = std::mem::replace(&mut self.screen, Screen::Splash);
+                if let Screen::LoadSeedLoaded {
+                    mnemonic,
+                    preview_address,
+                    ..
+                } = taken
+                {
+                    self.screen = Screen::LoadFinalize {
+                        mnemonic,
+                        preview_address,
+                        selected: 0,
+                    };
+                }
+            }
+        }
+
         let wants = self.wants_camera();
         if wants && self.camera.is_none() && self.camera_error.is_none() {
             match Camera::open() {
@@ -650,7 +783,9 @@ impl App {
                         selected = selected.saturating_sub(1);
                     }
                     InputEvent::Down | InputEvent::Right => {
-                        if selected + 1 < MAIN_MENU_LEN { selected += 1; }
+                        if selected + 1 < MAIN_MENU_LEN {
+                            selected += 1;
+                        }
                     }
                     InputEvent::Confirm => return self.menu_select(selected),
                     _ => {}
@@ -659,29 +794,30 @@ impl App {
             }
 
             s @ (Screen::CreateWordCount { .. }
-                | Screen::CreateMethod { .. }
-                | Screen::CreateCameraEntropy { .. }
-                | Screen::CreateCoinFlips { .. }
-                | Screen::CreateDiceRolls { .. }
-                | Screen::CreateShowWords { .. }
-                | Screen::CreateVerify { .. }
-                | Screen::CreatePassphrasePrompt { .. }
-                | Screen::CreatePassphraseInput { .. }
-                | Screen::CreatePassphraseConfirm { .. }
-                | Screen::CreatePassphraseMismatch { .. }
-                | Screen::CreateConfirm { .. }
-                | Screen::ExportSeedWarning { .. }
-                | Screen::ShowWordsWarning { .. }
-                | Screen::ExportSeedQrMenu { .. }
-                | Screen::ExportShowWords { .. }
-                | Screen::ExportSeedQr { .. }
-                | Screen::ExportSeedQrBlock { .. }) => flows::create::handle(self, s, event),
+            | Screen::CreateMethod { .. }
+            | Screen::CreateCameraEntropy { .. }
+            | Screen::CreateCoinFlips { .. }
+            | Screen::CreateDiceRolls { .. }
+            | Screen::CreateShowWords { .. }
+            | Screen::CreateVerify { .. }
+            | Screen::CreatePassphrasePrompt { .. }
+            | Screen::CreatePassphraseInput { .. }
+            | Screen::CreatePassphraseConfirm { .. }
+            | Screen::CreatePassphraseMismatch { .. }
+            | Screen::CreateConfirm { .. }
+            | Screen::ExportSeedWarning { .. }
+            | Screen::ShowWordsWarning { .. }
+            | Screen::ExportSeedQrMenu { .. }
+            | Screen::ExportShowWords { .. }
+            | Screen::ExportSeedQr { .. }
+            | Screen::ExportSeedQrBlock { .. }) => flows::create::handle(self, s, event),
 
             s @ (Screen::LoadMethod { .. }
                 | Screen::LoadScanQr
                 | Screen::LoadInvalidMnemonic { .. }
                 | Screen::LoadWordCount { .. }
                 | Screen::LoadEnterWords { .. }
+                | Screen::LoadSeedLoaded { .. }
                 | Screen::LoadFinalize { .. }
                 | Screen::LoadPassphrasePrompt { .. }
                 | Screen::LoadPassphraseInput { .. }
@@ -692,26 +828,26 @@ impl App {
             Screen::DerivationError => Screen::MainMenu { selected: 0 },
 
             s @ (Screen::SignNoWallet
-                | Screen::SignScanTx
-                | Screen::SignReview { .. }
-                | Screen::SignShowQr { .. }
-                | Screen::SignMessageInput { .. }
-                | Screen::SignMessageReview { .. }
-                | Screen::SignMessageResult { .. }) => flows::sign::handle(self, s, event),
+            | Screen::SignScanTx
+            | Screen::SignReview { .. }
+            | Screen::SignShowQr { .. }
+            | Screen::SignMessageInput { .. }
+            | Screen::SignMessageReview { .. }
+            | Screen::SignMessageResult { .. }) => flows::sign::handle(self, s, event),
 
             s @ (Screen::SettingsMenu { .. }
-                | Screen::SettingsShowAddress
-                | Screen::SettingsAccounts { .. }
-                | Screen::SettingsVerifyAddressScan
-                | Screen::SettingsVerifyAddressResult { .. }
-                | Screen::SettingsAbout
-                | Screen::SettingsPowerOff { .. }) => flows::settings::handle(self, s, event),
+            | Screen::SettingsShowAddress
+            | Screen::SettingsAccounts { .. }
+            | Screen::SettingsVerifyAddressScan
+            | Screen::SettingsVerifyAddressResult { .. }
+            | Screen::SettingsAbout
+            | Screen::SettingsPowerOff { .. }) => flows::settings::handle(self, s, event),
 
             s @ (Screen::VerifyBackupScan
-                | Screen::VerifyBackupSeedMismatch
-                | Screen::VerifyBackupPassphrase { .. }
-                | Screen::VerifyBackupPassphraseMismatch
-                | Screen::VerifyBackupSuccess) => flows::verify::handle(self, s, event),
+            | Screen::VerifyBackupSeedMismatch
+            | Screen::VerifyBackupPassphrase { .. }
+            | Screen::VerifyBackupPassphraseMismatch
+            | Screen::VerifyBackupSuccess) => flows::verify::handle(self, s, event),
         }
     }
 
@@ -720,7 +856,11 @@ impl App {
             0 => Screen::CreateWordCount { selected: 0 },
             1 => Screen::LoadMethod { selected: 0 },
             2 => {
-                if self.wallet.is_some() { Screen::SignScanTx } else { Screen::SignNoWallet }
+                if self.wallet.is_some() {
+                    Screen::SignScanTx
+                } else {
+                    Screen::SignNoWallet
+                }
             }
             3 => Screen::SettingsMenu { selected: 0 },
             _ => Screen::MainMenu { selected },
@@ -878,7 +1018,10 @@ mod review_lines_tests {
         let tx = B64.decode(tx_b64).unwrap();
         let kp = loaded_keypair();
         let (lines, can_sign) = build_review_lines(&tx, &kp.public_key);
-        assert!(!can_sign, "abandon-abandon wallet should not match EfZr signer");
+        assert!(
+            !can_sign,
+            "abandon-abandon wallet should not match EfZr signer"
+        );
         assert!(lines.iter().any(|l| l.contains("0.01 SOL")));
         assert!(lines.iter().any(|l| l.contains("SOL Transfer")));
     }

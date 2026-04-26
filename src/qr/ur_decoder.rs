@@ -303,4 +303,32 @@ mod tests {
             assert_eq!(acc.message().unwrap(), original);
         }
     }
+
+    #[test]
+    fn accepts_bc_ur_js_fixture_frames() {
+        // Compatibility fixture generated from @ngraveio/bc-ur:
+        // - payload: bytes[i] = (i*29 + 11) & 0xff for i in 0..500
+        // - fragment size: 100
+        // - emitted with encodeWhole() (pure parts 1..=5)
+        // - IMPORTANT: UR constructed as `new UR(rawBytes, "bytes")`
+        //   (not UR.fromBuffer, which wraps payload in CBOR bytes)
+        let frames = [
+            "ur:bytes/1-5/lpadahcfadwkcylulowplphdiebddefeidlbnsrhtbwfbedpgeiolroyrnuyyabzeygwjzldolsrvtzccyemghjsmnpyspvwaoctfnhkkomupfsnwdatdkfphykgmkretdwsbndtfgialantrdtswkbydmgrislpoersuoytcmeogdjnleosssvyzecwetgojpmypssovaaxcxfshtktmwpatowmaydafwwyotfskt",
+            "ur:bytes/2-5/lpaoahcfadwkcylulowplphdiehekenlrptewtbtdrflielynnrktpykbgdlgsinlnotrtutzscheegyjtlupdskvozmceeshfjkmhpmsgvdaaclfmhpksmdprtkwpasdsfxhnkinyrltywnbadnfdihlfnerftaynbwdygtimltoxseuezocsecgmjllkptswvlaecafthgjymeplsbvsahcpfhhhkkmtcsfgbnyn",
+            "ur:bytes/3-5/lpaxahcfadwkcylulowplphdieqdtiwebkdifyhskbndrotlwzbsdwgaiylsnbrytnylbbehgljeloonsaurztcfengujolgpkstveadckfrhdkpmopesfwlamcnfzhlknmsqzttwybddefeidlbnsrhtbwfbedpgeiolroyrnuyyabzeygwjzldolsrvtzccyemghjsmnpyspvwaoctfnhkkomupfsnwdtktyoynl",
+            "ur:bytes/4-5/lpaaahcfadwkcylulowplphdieatdkfphykgmkretdwsbndtfgialantrdtswkbydmgrislpoersuoytcmeogdjnleosssvyzecwetgojpmypssovaaxcxfshtktmwpatowmaydafwhekenlrptewtbtdrflielynnrktpykbgdlgsinlnotrtutzscheegyjtlupdskvozmceeshfjkmhpmsgvdaaclfmcfgmztga",
+            "ur:bytes/5-5/lpahahcfadwkcylulowplphdiehpksmdprtkwpasdsfxhnkinyrltywnbadnfdihlfnerftaynbwdygtimltoxseuezocsecgmjllkptswvlaecafthgjymeplsbvsahcpfhhhkkmtqdtiwebkdifyhskbndrotlwzbsdwgaiylsnbrytnylbbehgljeloonsaurztcfengujolgpkstveadckfrhdkpmofxkkosjs",
+        ];
+
+        let expected: Vec<u8> = (0..500)
+            .map(|i| ((i * 29 + 11) & 0xff) as u8)
+            .collect();
+
+        let mut acc = UrAccumulator::new();
+        for frame in frames {
+            acc.receive(frame).expect("valid fixture frame");
+        }
+        assert!(acc.complete());
+        assert_eq!(acc.message().unwrap(), expected);
+    }
 }

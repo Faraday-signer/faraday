@@ -52,11 +52,20 @@ impl<'a> Header<'a> {
                 .draw(display)?;
             }
             HeaderKind::Brand => {
-                // Full pixel-art logo (mark + wordmark) from the small SVG.
-                let x = rect.top_left.x + theme.space_sm;
+                // Full pixel-art logo (mark + wordmark). Scale 2 makes the
+                // chunky pixels legible inside the 29 px band; small left
+                // padding keeps it close to the edge without hugging it.
+                const BRAND_SCALE: u32 = 2;
+                const BRAND_LEFT_PAD: i32 = 6;
+                let logo_h = (logo::LOGO_HEIGHT * BRAND_SCALE) as i32;
+                let x = rect.top_left.x + BRAND_LEFT_PAD;
+                // +1 to the centered y so there's a hair more air above the
+                // logo than below it — looks more balanced against the
+                // menu's hard horizontal divider underneath.
                 let y = rect.top_left.y
-                    + (rect.size.height as i32 - logo::LOGO_HEIGHT as i32) / 2;
-                logo::draw_logo(display, x, y, 1, theme.accent)?;
+                    + (rect.size.height as i32 - logo_h) / 2
+                    + 1;
+                logo::draw_logo(display, x, y, BRAND_SCALE, theme.accent)?;
             }
         }
 
@@ -64,12 +73,9 @@ impl<'a> Header<'a> {
         // For Brand headers we align the right text to the logo's vertical
         // center so the pubkey chip sits on the same visual line as the
         // logo instead of hugging the bottom edge of the (taller) band.
-        let x_right =
-            rect.top_left.x + rect.size.width as i32 - theme.space_md;
+        let x_right = rect.top_left.x + rect.size.width as i32 - theme.space_md;
         let right_baseline = match self.kind {
-            HeaderKind::Brand => {
-                rect.top_left.y + rect.size.height as i32 / 2 + 5
-            }
+            HeaderKind::Brand => rect.top_left.y + rect.size.height as i32 / 2 + 5,
             HeaderKind::Title(_) => baseline,
         };
         if let Some((now, total)) = self.counter {

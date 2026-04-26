@@ -62,7 +62,7 @@ fn parse_swap(
         None => return raydium::error("Raydium CLMM", "Swap data too short"),
     };
 
-    let (source_mint, dest_mint) = if is_v2 {
+    let (mut source_mint, mut dest_mint) = if is_v2 {
         (
             raydium::get_account(account_indices, SWAP_V2_INPUT_MINT_IDX, all_accounts),
             raydium::get_account(account_indices, SWAP_V2_OUTPUT_MINT_IDX, all_accounts),
@@ -83,6 +83,7 @@ fn parse_swap(
             ),
         )
     };
+    raydium::fill_missing_mints_from_accounts(&mut source_mint, &mut dest_mint, all_accounts);
 
     let (in_amount, out_amount, in_label, out_label) = if is_base_input {
         (amount, threshold, "You spend", "You receive (min)")
@@ -118,10 +119,7 @@ mod tests {
 
     fn field_value<'a>(items: &'a [ReviewItem], label: &str) -> Option<&'a str> {
         items.iter().find_map(|item| match item {
-            ReviewItem::Field {
-                label: l,
-                value: v,
-            } if l == label => Some(v.as_str()),
+            ReviewItem::Field { label: l, value: v } if l == label => Some(v.as_str()),
             _ => None,
         })
     }

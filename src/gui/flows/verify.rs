@@ -38,7 +38,9 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     if wallet.passphrase.is_empty() {
                         Screen::VerifyBackupSuccess
                     } else {
-                        Screen::VerifyBackupPassphrase { grid: CharGrid::new() }
+                        Screen::VerifyBackupPassphrase {
+                            grid: CharGrid::new(),
+                        }
                     }
                 }
                 InputEvent::Back => {
@@ -68,9 +70,8 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 let Some(wallet) = app.wallet.as_ref() else {
                     return Screen::MainMenu { selected: 0 };
                 };
-                let compact_data =
-                    crate::qr::encode_qr::encode_compact_seed_qr(&wallet.mnemonic)
-                        .unwrap_or_default();
+                let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(&wallet.mnemonic)
+                    .unwrap_or_default();
                 Screen::ExportSeedQrBlock {
                     compact_data,
                     block_index: 0,
@@ -109,7 +110,9 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
 
         Screen::VerifyBackupPassphraseMismatch => match event {
             // K1 = retry passphrase entry (fresh grid).
-            InputEvent::Confirm => Screen::VerifyBackupPassphrase { grid: CharGrid::new() },
+            InputEvent::Confirm => Screen::VerifyBackupPassphrase {
+                grid: CharGrid::new(),
+            },
             // K3 = back to scan — user may want to re-scan the paper
             // before blaming the passphrase.
             InputEvent::Back => Screen::VerifyBackupScan,

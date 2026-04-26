@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { BrandedQR } from "../../../src/components/branded-qr";
 import { LinkButton, PanelShell, PrimaryButton } from "../../../src/components/panel-shell";
@@ -7,6 +7,7 @@ import { useNavigation, useRouteOf } from "../../../src/lib/router";
 import { broadcastSignedTx, explorerTxUrl } from "../../../src/lib/sol-transfer";
 import { colors, fontFamily, font, letterSpacing, space } from "../../../src/lib/theme";
 import type { GetSignResult } from "../../../src/lib/types";
+import { encodeTxForQr } from "../../../src/lib/ur-encode";
 
 const wrapStyle: CSSProperties = {
   display: "flex",
@@ -62,6 +63,7 @@ export function SendSignScreen() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [signature, setSignature] = useState<string | null>(null);
+  const [qrFrameIndex, setQrFrameIndex] = useState(0);
   const pollTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -75,6 +77,35 @@ export function SendSignScreen() {
 
   if (!route) return null;
   const { draft, txBase64, sessionId } = route;
+  const qrPayload = useMemo(() => encodeTxForQr(txBase64), [txBase64]);
+
+  useEffect(() => {
+    setQrFrameIndex(0);
+    if (qrPayload.kind !== "animated") {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setQrFrameIndex((prev) => (prev + 1) % qrPayload.frames.length);
+    }, qrPayload.intervalMs);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [qrPayload]);
+
+  const qrValue =
+    qrPayload.kind === "animated"
+      ? qrPayload.frames[qrFrameIndex] ?? qrPayload.frames[0]
+      : qrPayload.value;
+  const urSeq = (() => {
+    const match = qrValue.match(/^ur:[^/]+\/(\d+)-(\d+)\//i);
+    if (!match) {
+      return null;
+    }
+    return {
+      current: Number.parseInt(match[1], 10),
+      total: Number.parseInt(match[2], 10)
+    };
+  })();
 
   async function openSignWindowAndPoll() {
     setError(null);
@@ -156,7 +187,7 @@ export function SendSignScreen() {
       <div style={wrapStyle}>
         <BrandedQR
           flow="sign"
-          value={txBase64}
+          value={qrValue}
           size={320}
           caption={
             <span>
@@ -164,6 +195,12 @@ export function SendSignScreen() {
             </span>
           }
         />
+
+        {qrPayload.kind === "animated" ? (
+          <p style={metaStyle}>
+            {urSeq ? `Animated UR part ${urSeq.current}/${urSeq.total}` : `Animated QR frame ${qrFrameIndex + 1}/${qrPayload.frames.length}`}
+          </p>
+        ) : null}
 
         <p style={helpStyle}>
           Hold your Faraday up to this QR, review the details on the device, and approve.

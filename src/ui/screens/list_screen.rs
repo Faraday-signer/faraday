@@ -45,10 +45,7 @@ impl<'a> ListScreen<'a> {
         display: &mut D,
         theme: &Theme,
     ) -> Result<(), D::Error> {
-        let screen = Rectangle::new(
-            Point::zero(),
-            Size::new(theme.width, theme.height),
-        );
+        let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
         display.fill_solid(&screen, theme.bg)?;
 
         // Header spans the full screen width (edge to edge). Same height
@@ -89,28 +86,20 @@ impl<'a> ListScreen<'a> {
             display.fill_solid(&band_rect, theme.danger)?;
 
             // Big "!" sigil on the left, in the bg color (inverted).
-            let sigil_baseline = band_rect.top_left.y
-                + band_rect.size.height as i32 / 2 + 10;
+            let sigil_baseline = band_rect.top_left.y + band_rect.size.height as i32 / 2 + 10;
             Text::with_alignment(
                 "!",
-                Point::new(
-                    band_rect.top_left.x + theme.space_md + 4,
-                    sigil_baseline,
-                ),
+                Point::new(band_rect.top_left.x + theme.space_md + 4, sigil_baseline),
                 theme.style_lg(theme.bg),
                 Alignment::Left,
             )
             .draw(display)?;
 
             // Message next to the sigil, inverted (bg on danger).
-            let msg_baseline = band_rect.top_left.y
-                + band_rect.size.height as i32 / 2 + 6;
+            let msg_baseline = band_rect.top_left.y + band_rect.size.height as i32 / 2 + 6;
             Text::with_alignment(
                 desc,
-                Point::new(
-                    band_rect.top_left.x + theme.space_md + 32,
-                    msg_baseline,
-                ),
+                Point::new(band_rect.top_left.x + theme.space_md + 32, msg_baseline),
                 theme.style_sm(theme.bg),
                 Alignment::Left,
             )
@@ -135,7 +124,10 @@ impl<'a> ListScreen<'a> {
         // below the header hairline, and extends to the bottom of the screen.
         if !self.edge_hints.is_empty() {
             let gutter = Rectangle::new(
-                Point::new(rest.top_left.x + rest.size.width as i32 - GUTTER_W as i32, rest.top_left.y),
+                Point::new(
+                    rest.top_left.x + rest.size.width as i32 - GUTTER_W as i32,
+                    rest.top_left.y,
+                ),
                 Size::new(GUTTER_W, rest.size.height),
             );
             self.edge_hints.draw(display, theme, gutter)?;

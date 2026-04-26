@@ -7,12 +7,19 @@ use crate::parser::{ParsedInstruction, ReviewItem};
 
 pub fn parse(program_id: &[u8; 32], data: &[u8], accounts: &[[u8; 32]]) -> ParsedInstruction {
     let program_b58 = bs58::encode(program_id).into_string();
-    let program_short = format!("{}..{}", &program_b58[..4], &program_b58[program_b58.len() - 4..]);
+    let program_short = format!(
+        "{}..{}",
+        &program_b58[..4],
+        &program_b58[program_b58.len() - 4..]
+    );
 
     let mut items = vec![
-        ReviewItem::Header("Unknown Program".into()),
+        ReviewItem::Header(format!("Unknown {}", program_short)),
         ReviewItem::Warning("Unrecognized program — review carefully".into()),
-        ReviewItem::Field { label: "Program".into(), value: program_b58 },
+        ReviewItem::Field {
+            label: "Program".into(),
+            value: program_b58,
+        },
         ReviewItem::Field {
             label: "Accounts".into(),
             value: format!("{}", accounts.len()),
@@ -22,8 +29,15 @@ pub fn parse(program_id: &[u8; 32], data: &[u8], accounts: &[[u8; 32]]) -> Parse
     // Show first 16 bytes of instruction data as hex
     if !data.is_empty() {
         let preview_len = data.len().min(16);
-        let hex: String = data[..preview_len].iter().map(|b| format!("{:02x}", b)).collect();
-        let suffix = if data.len() > 16 { format!("... ({} bytes)", data.len()) } else { String::new() };
+        let hex: String = data[..preview_len]
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect();
+        let suffix = if data.len() > 16 {
+            format!("... ({} bytes)", data.len())
+        } else {
+            String::new()
+        };
         items.push(ReviewItem::Field {
             label: "Data".into(),
             value: format!("{}{}", hex, suffix),
@@ -45,7 +59,10 @@ pub fn parse(program_id: &[u8; 32], data: &[u8], accounts: &[[u8; 32]]) -> Parse
         });
     }
 
-    ParsedInstruction { program: format!("Unknown ({})", program_short), items }
+    ParsedInstruction {
+        program: format!("Unknown ({})", program_short),
+        items,
+    }
 }
 
 #[cfg(test)]
@@ -65,9 +82,11 @@ mod tests {
         let ix = parse(&program_id, &[], &[]);
         let b58 = bs58::encode(&program_id).into_string();
         // Full program ID should appear in a Field item
-        let has_full_id = ix.items.iter().any(|i| matches!(
-            i, ReviewItem::Field { value, .. } if value == &b58
-        ));
+        let has_full_id = ix.items.iter().any(|i| {
+            matches!(
+                i, ReviewItem::Field { value, .. } if value == &b58
+            )
+        });
         assert!(has_full_id);
     }
 
@@ -96,23 +115,33 @@ mod tests {
     fn test_shows_up_to_three_accounts() {
         let accounts = [[0x01u8; 32], [0x02u8; 32], [0x03u8; 32], [0x04u8; 32]];
         let ix = parse(&[0u8; 32], &[], &accounts);
-        let acct_fields = ix.items.iter().filter(|i| matches!(
-            i, ReviewItem::Field { label, .. } if label.starts_with("Acct")
-        )).count();
+        let acct_fields = ix
+            .items
+            .iter()
+            .filter(|i| {
+                matches!(
+                    i, ReviewItem::Field { label, .. } if label.starts_with("Acct")
+                )
+            })
+            .count();
         assert_eq!(acct_fields, 3);
         // Should indicate there's one more
-        let has_more = ix.items.iter().any(|i| matches!(
-            i, ReviewItem::Field { value, .. } if value.contains("1 more")
-        ));
+        let has_more = ix.items.iter().any(|i| {
+            matches!(
+                i, ReviewItem::Field { value, .. } if value.contains("1 more")
+            )
+        });
         assert!(has_more);
     }
 
     #[test]
     fn test_empty_data_no_data_field() {
         let ix = parse(&[0u8; 32], &[], &[]);
-        let has_data_field = ix.items.iter().any(|i| matches!(
-            i, ReviewItem::Field { label, .. } if label == "Data"
-        ));
+        let has_data_field = ix.items.iter().any(|i| {
+            matches!(
+                i, ReviewItem::Field { label, .. } if label == "Data"
+            )
+        });
         assert!(!has_data_field);
     }
 }

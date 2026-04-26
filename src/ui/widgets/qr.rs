@@ -36,11 +36,10 @@ impl<'a> Qr<'a> {
         _theme: &Theme,
         rect: Rectangle,
     ) -> Result<(), D::Error> {
-        let (matrix, size) =
-            match crate::qr::encode_qr::generate_qr_matrix(self.data, self.ec) {
-                Ok(m) => m,
-                Err(_) => return Ok(()),
-            };
+        let (matrix, size) = match crate::qr::encode_qr::generate_qr_matrix(self.data, self.ec) {
+            Ok(m) => m,
+            Err(_) => return Ok(()),
+        };
 
         // Largest integer module size that fits in the rect.
         let max_side = rect.size.width.min(rect.size.height) as i32;
@@ -49,10 +48,8 @@ impl<'a> Qr<'a> {
         let module = (max_side / matrix_side).max(1);
         let qr_side = module * matrix_side;
 
-        let origin_x =
-            rect.top_left.x + (rect.size.width as i32 - qr_side) / 2;
-        let origin_y =
-            rect.top_left.y + (rect.size.height as i32 - qr_side) / 2;
+        let origin_x = rect.top_left.x + (rect.size.width as i32 - qr_side) / 2;
+        let origin_y = rect.top_left.y + (rect.size.height as i32 - qr_side) / 2;
 
         // White background (including quiet zone).
         Rectangle::new(

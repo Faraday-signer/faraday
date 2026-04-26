@@ -47,9 +47,8 @@ impl SimCamera {
 
         let handle = thread::spawn(move || {
             let index = CameraIndex::Index(0);
-            let requested = RequestedFormat::new::<RgbFormat>(
-                RequestedFormatType::AbsoluteHighestFrameRate,
-            );
+            let requested =
+                RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestFrameRate);
             let mut camera = match Camera::new(index, requested) {
                 Ok(c) => c,
                 Err(e) => {
@@ -77,13 +76,18 @@ impl SimCamera {
                 let rgb = img.into_raw();
 
                 let luma = crate::camera::rgb_to_gray(&rgb, w, h);
-                let frame = Frame { width: w, height: h, rgb, luma };
+                let frame = Frame {
+                    width: w,
+                    height: h,
+                    rgb,
+                    luma,
+                };
 
                 // QR decode only on scan screens (enabled by the main thread) and
                 // only when the main thread hasn't yet consumed the previous hit.
                 let decode_on = decode_w.load(Ordering::Relaxed);
-                let should_decode = decode_on
-                    && qr_w.lock().ok().map(|g| g.is_none()).unwrap_or(false);
+                let should_decode =
+                    decode_on && qr_w.lock().ok().map(|g| g.is_none()).unwrap_or(false);
                 if should_decode {
                     let mode = if mode_w.load(Ordering::Relaxed) {
                         crate::camera::ScanMode::SmallQr
