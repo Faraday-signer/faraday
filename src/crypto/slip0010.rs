@@ -16,8 +16,8 @@ const HARDENED: u32 = 0x80000000;
 
 /// Derive master key and chain code from BIP39 seed.
 fn derive_master(seed: &[u8]) -> ([u8; 32], [u8; 32]) {
-    // Safe: HMAC-SHA512 accepts any key length, new_from_slice never fails.
-    let mut mac = HmacSha512::new_from_slice(b"ed25519 seed").unwrap();
+    let mut mac = HmacSha512::new_from_slice(b"ed25519 seed")
+        .expect("HMAC accepts any key length (RFC 2104)");
     mac.update(seed);
     let result = mac.finalize().into_bytes();
 
@@ -45,8 +45,8 @@ fn derive_child(
     data.extend_from_slice(parent_key);
     data.extend_from_slice(&index.to_be_bytes());
 
-    // Safe: HMAC-SHA512 accepts any key length, new_from_slice never fails.
-    let mut mac = HmacSha512::new_from_slice(parent_chain).unwrap();
+    let mut mac = HmacSha512::new_from_slice(parent_chain)
+        .expect("HMAC accepts any key length (RFC 2104)");
     mac.update(&data);
     let result = mac.finalize().into_bytes();
 

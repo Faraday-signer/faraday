@@ -248,9 +248,18 @@ fn run_headless() {
     println!("No display available. Run with --features simulator for desktop UI.");
     println!("Running crypto sanity check...");
 
-    let mnemonic = crypto::bip39::mnemonic_from_entropy(b"faraday rust test", 12).unwrap();
+    let mnemonic = match crypto::bip39::mnemonic_from_entropy(b"faraday rust test", 12) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("Mnemonic generation failed: {e}");
+            return;
+        }
+    };
     println!("Mnemonic: {}", mnemonic);
-    assert!(crypto::bip39::validate_mnemonic(&mnemonic));
+    if !crypto::bip39::validate_mnemonic(&mnemonic) {
+        eprintln!("Mnemonic validation failed");
+        return;
+    }
 
     let seed = crypto::bip39::mnemonic_to_seed(&mnemonic, "");
     let keypair = crypto::slip0010::derive_solana_keypair(&seed, 0);
