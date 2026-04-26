@@ -93,7 +93,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     Some(w) => w,
                     None => return Screen::MainMenu { selected: 0 },
                 };
-                let derived = app.derive_address(&wallet.mnemonic, &grid.text);
+                let derived = app.derive_address(&wallet.mnemonic, &grid.text).unwrap_or_default();
                 if derived == wallet.address {
                     Screen::VerifyBackupSuccess
                 } else {

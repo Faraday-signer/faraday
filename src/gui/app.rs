@@ -722,15 +722,16 @@ impl App {
         }
     }
 
-    pub(crate) fn derive_address(&self, mnemonic: &str, passphrase: &str) -> String {
-        let keypair = derivation::derive_keypair(mnemonic, passphrase, 0);
-        derivation::address(&keypair)
+    pub(crate) fn derive_address(&self, mnemonic: &str, passphrase: &str) -> Option<String> {
+        let keypair = derivation::derive_keypair(mnemonic, passphrase, 0)?;
+        Some(derivation::address(&keypair))
     }
 
     pub(crate) fn load_wallet(&mut self, mnemonic: String, passphrase: String) {
-        let keypair = derivation::derive_keypair(&mnemonic, &passphrase, 0);
-        let address = crate::qr::encode_qr::encode_address(&keypair.public_key);
-        self.wallet = Some(LoadedWallet { mnemonic, passphrase, keypair, address });
+        if let Some(keypair) = derivation::derive_keypair(&mnemonic, &passphrase, 0) {
+            let address = crate::qr::encode_qr::encode_address(&keypair.public_key);
+            self.wallet = Some(LoadedWallet { mnemonic, passphrase, keypair, address });
+        }
     }
 }
 
@@ -796,7 +797,7 @@ mod review_lines_tests {
     fn loaded_keypair() -> slip0010::SolanaKeypair {
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let seed = bip39::mnemonic_to_seed(mnemonic, "");
-        slip0010::derive_solana_keypair(&seed, 0)
+        slip0010::derive_solana_keypair(&seed, 0).unwrap()
     }
 
     /// Minimal valid SOL-transfer tx to a given signer. Same shape as

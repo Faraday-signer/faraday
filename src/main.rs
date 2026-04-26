@@ -262,7 +262,13 @@ fn run_headless() {
     }
 
     let seed = crypto::bip39::mnemonic_to_seed(&mnemonic, "");
-    let keypair = crypto::slip0010::derive_solana_keypair(&seed, 0);
+    let keypair = match crypto::slip0010::derive_solana_keypair(&seed, 0) {
+        Some(kp) => kp,
+        None => {
+            eprintln!("Key derivation failed");
+            return;
+        }
+    };
     println!("Address: {}", crypto::derivation::address(&keypair));
     println!("All OK.");
 }
