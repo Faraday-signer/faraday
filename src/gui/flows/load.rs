@@ -40,7 +40,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     println!("QR decoded: {:?} ({} bytes raw)", decoded.qr_type, decoded.raw_data.len());
 
                     if let Some(mnemonic) = decoded.mnemonic {
-                        let preview_address = app.derive_address(&mnemonic, "").unwrap_or_default();
+                        let preview_address = match app.derive_address(&mnemonic, "") {
+                            Some(a) => a,
+                            None => return Screen::DerivationError,
+                        };
                         return Screen::LoadFinalize {
                             mnemonic,
                             preview_address,
@@ -90,7 +93,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 if entered.len() == word_count {
                     let mnemonic = entered.join(" ");
                     if bip39::validate_mnemonic(&mnemonic) {
-                        let preview_address = app.derive_address(&mnemonic, "").unwrap_or_default();
+                        let preview_address = match app.derive_address(&mnemonic, "") {
+                            Some(a) => a,
+                            None => return Screen::DerivationError,
+                        };
                         return Screen::LoadFinalize {
                             mnemonic,
                             preview_address,
@@ -149,7 +155,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 InputEvent::Confirm => {
                     if selected == 0 {
                         let passphrase = String::new();
-                        let address = app.derive_address(&mnemonic, &passphrase).unwrap_or_default();
+                        let address = match app.derive_address(&mnemonic, &passphrase) {
+                            Some(a) => a,
+                            None => return Screen::DerivationError,
+                        };
                         return Screen::LoadConfirm { mnemonic, passphrase, address, selected: 0 };
                     } else {
                         return Screen::LoadPassphraseInput { mnemonic, grid: CharGrid::new() };
@@ -182,7 +191,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     return Screen::LoadPassphraseInput { mnemonic, grid: first_grid };
                 }
                 if grid.text == passphrase {
-                    let address = app.derive_address(&mnemonic, &passphrase).unwrap_or_default();
+                    let address = match app.derive_address(&mnemonic, &passphrase) {
+                        Some(a) => a,
+                        None => return Screen::DerivationError,
+                    };
                     return Screen::LoadConfirm { mnemonic, passphrase, address, selected: 0 };
                 } else {
                     return Screen::LoadPassphraseMismatch { mnemonic };

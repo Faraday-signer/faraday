@@ -194,7 +194,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 InputEvent::Confirm => {
                     if selected == 0 {
                         let passphrase = String::new();
-                        let address = app.derive_address(&mnemonic, &passphrase).unwrap_or_default();
+                        let address = match app.derive_address(&mnemonic, &passphrase) {
+                            Some(a) => a,
+                            None => return Screen::DerivationError,
+                        };
                         return Screen::CreateConfirm { mnemonic, passphrase, address, selected: 0 };
                     } else {
                         return Screen::CreatePassphraseInput { mnemonic, grid: CharGrid::new() };
@@ -230,7 +233,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     return Screen::CreatePassphraseInput { mnemonic, grid: first_grid };
                 }
                 if grid.text == passphrase {
-                    let address = app.derive_address(&mnemonic, &passphrase).unwrap_or_default();
+                    let address = match app.derive_address(&mnemonic, &passphrase) {
+                        Some(a) => a,
+                        None => return Screen::DerivationError,
+                    };
                     return Screen::CreateConfirm { mnemonic, passphrase, address, selected: 0 };
                 } else {
                     return Screen::CreatePassphraseMismatch { mnemonic };

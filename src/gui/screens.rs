@@ -156,6 +156,8 @@ impl App {
                 draw_wallet_confirm(display, "LOAD WALLET", address, !passphrase.is_empty(), wc)
             }
 
+            Screen::DerivationError => draw_derivation_error(display),
+
             // Sign TX flow
             Screen::SignNoWallet => draw_sign_no_wallet(display),
             Screen::SignScanTx => {
@@ -337,6 +339,36 @@ fn draw_invalid_mnemonic<D: DrawTarget<Color = Rgb565>>(
         rows: &rows,
         title_danger: true,
         edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::Cross),
+    }
+    .draw(display, &theme)
+}
+
+fn draw_derivation_error<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, CardRow, HeaderKind};
+    use crate::ui::{screens::CardScreen, Theme};
+
+    let theme = Theme::faraday_240();
+    let rows: [CardRow; 1] = [
+        CardRow::new("CAUSE", "HMAC / crypto lib"),
+    ];
+    let body = [
+        "Key derivation failed.",
+        "This should never happen.",
+        "Please report this error.",
+    ];
+
+    CardScreen {
+        header: HeaderKind::Title("ERROR"),
+        counter: None,
+        right_label: None,
+        title: Some("DERIVATION"),
+        subtitle: Some("Key derivation failed"),
+        body_lines: &body,
+        rows: &rows,
+        title_danger: true,
+        edge_hints: EdgeHints::new().k1(EdgeIcon::Check),
     }
     .draw(display, &theme)
 }

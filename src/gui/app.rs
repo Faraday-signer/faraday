@@ -146,6 +146,9 @@ pub enum Screen {
         selected: usize,
     },
 
+    // Fatal: key derivation failed (HMAC or crypto library error).
+    DerivationError,
+
     // Sign TX flow
     SignNoWallet,
     SignScanTx,
@@ -685,6 +688,8 @@ impl App {
                 | Screen::LoadPassphraseConfirm { .. }
                 | Screen::LoadPassphraseMismatch { .. }
                 | Screen::LoadConfirm { .. }) => flows::load::handle(self, s, event),
+
+            Screen::DerivationError => Screen::MainMenu { selected: 0 },
 
             s @ (Screen::SignNoWallet
                 | Screen::SignScanTx
