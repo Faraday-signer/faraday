@@ -47,11 +47,9 @@ impl FileCamera {
 
     pub fn set_decode_enabled(&self, _on: bool) {}
 
+    /// No live diagnostics for a single-image source — always returns defaults.
     pub fn diagnostics(&self) -> crate::camera::ScanDiagnostics {
-        crate::camera::ScanDiagnostics {
-            last_qr_at: None,
-            ur_progress: None,
-        }
+        Default::default()
     }
 
     pub fn take_fatal_err(&self) -> Option<String> {
