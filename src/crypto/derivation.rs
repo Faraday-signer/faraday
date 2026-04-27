@@ -8,7 +8,7 @@ use crate::crypto::slip0010::{self, SolanaKeypair};
 /// Derive a Solana keypair from a BIP39 mnemonic.
 ///
 /// Uses the standard wallet path: m/44'/501'/{account}'/0'
-pub fn derive_keypair(mnemonic: &str, passphrase: &str, account: u32) -> SolanaKeypair {
+pub fn derive_keypair(mnemonic: &str, passphrase: &str, account: u32) -> Option<SolanaKeypair> {
     let seed = bip39::mnemonic_to_seed(mnemonic, passphrase);
     slip0010::derive_solana_keypair(&seed, account)
 }
@@ -17,7 +17,7 @@ pub fn derive_keypair(mnemonic: &str, passphrase: &str, account: u32) -> SolanaK
 pub fn derive_multiple_accounts(mnemonic: &str, passphrase: &str, count: u32) -> Vec<SolanaKeypair> {
     let seed = bip39::mnemonic_to_seed(mnemonic, passphrase);
     (0..count)
-        .map(|i| slip0010::derive_solana_keypair(&seed, i))
+        .filter_map(|i| slip0010::derive_solana_keypair(&seed, i))
         .collect()
 }
 
@@ -95,9 +95,10 @@ pub fn verify_address(
     }
     let seed = bip39::mnemonic_to_seed(mnemonic, passphrase);
     for i in 0..max_accounts {
-        let kp = slip0010::derive_solana_keypair(&seed, i);
-        if address_eq(&kp, address) {
-            return AddressMatch::Standard { account: i };
+        if let Some(kp) = slip0010::derive_solana_keypair(&seed, i) {
+            if address_eq(&kp, address) {
+                return AddressMatch::Standard { account: i };
+            }
         }
     }
     AddressMatch::NotFound
@@ -116,7 +117,7 @@ mod tests {
         "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
     fn addr_at_account(account: u32) -> String {
-        address(&derive_keypair(TEST_MNEMONIC, "", account))
+        address(&derive_keypair(TEST_MNEMONIC, "", account).unwrap())
     }
 
     #[test]
@@ -147,7 +148,7 @@ mod tests {
     fn rejects_address_from_different_seed() {
         // An address derived from a different mnemonic should not match.
         let other = "legal winner thank year wave sausage worth useful legal winner thank yellow";
-        let foreign = address(&derive_keypair(other, "", 0));
+        let foreign = address(&derive_keypair(other, "", 0).unwrap());
         let m = verify_address(TEST_MNEMONIC, "", &foreign, 10);
         assert_eq!(m, AddressMatch::NotFound);
     }
@@ -239,8 +240,8 @@ mod tests {
     fn passphrase_changes_derivation() {
         // Same mnemonic with vs without a passphrase should produce different
         // addresses — so verifying across the wrong passphrase must not match.
-        let no_pass = address(&derive_keypair(TEST_MNEMONIC, "", 0));
-        let with_pass = address(&derive_keypair(TEST_MNEMONIC, "correct", 0));
+        let no_pass = address(&derive_keypair(TEST_MNEMONIC, "", 0).unwrap());
+        let with_pass = address(&derive_keypair(TEST_MNEMONIC, "correct", 0).unwrap());
         assert_ne!(no_pass, with_pass);
 
         let m = verify_address(TEST_MNEMONIC, "wrong", &no_pass, 3);

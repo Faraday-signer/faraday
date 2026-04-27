@@ -194,7 +194,7 @@ mod tests {
     fn test_keypair(account: u32) -> crate::crypto::slip0010::SolanaKeypair {
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let seed = bip39::mnemonic_to_seed(mnemonic, "");
-        slip0010::derive_solana_keypair(&seed, account)
+        slip0010::derive_solana_keypair(&seed, account).unwrap()
     }
 
     /// Minimal valid legacy tx with one signer. Mirrors the shape App::build_test_transaction
@@ -353,7 +353,7 @@ mod tests {
         let mnemonic =
             "warm stage brain flag busy bless situate fox push crouch caution direct";
         let seed = bip39::mnemonic_to_seed(mnemonic, "");
-        let kp = slip0010::derive_solana_keypair(&seed, 0);
+        let kp = slip0010::derive_solana_keypair(&seed, 0).unwrap();
 
         let b64 = DEVICE_V0_TX_B64.trim();
         let signed = sign_transaction_base64(&b64, &kp.private_key, &kp.public_key)

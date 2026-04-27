@@ -92,8 +92,7 @@ fn try_decode_seed_qr(data: &str) -> Option<DecodedQr> {
     let mut words = Vec::new();
     for i in (0..data.len()).step_by(4) {
         let idx: usize = data[i..i + 4].parse().ok()?;
-        if idx >= 2048 { return None; }
-        words.push(bip39::get_word(idx).to_string());
+        words.push(bip39::get_word(idx)?.to_string());
     }
     let mnemonic = words.join(" ");
     if !bip39::validate_mnemonic(&mnemonic) { return None; }

@@ -31,7 +31,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         mnemonic
     };
 
-    let keypair = crypto::derivation::derive_keypair(&mnemonic, "", 0);
+    let keypair = crypto::derivation::derive_keypair(&mnemonic, "", 0)
+        .ok_or("key derivation failed")?;
     let address = crypto::derivation::address(&keypair);
 
     // Unsigned legacy Solana transaction with a single System::Transfer

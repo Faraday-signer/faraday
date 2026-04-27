@@ -264,22 +264,23 @@ pub fn draw_char_grid<D: DrawTarget<Color = Rgb565>>(
     draw_icon_colored(display, &icons::keyboard(), 5, 3, colors::TEXT_MUTED)?;
 
     // Show entered text (masked except last char)
-    let display_text = if grid.text.is_empty() {
-        String::from("_")
-    } else {
-        let len = grid.text.len();
-        let masked: String = (0..len - 1).map(|_| '*').collect();
-        let last = grid.text.chars().last().unwrap();
+    let display_text = if let Some(last) = grid.text.chars().last() {
+        let char_count = grid.text.chars().count();
+        let masked: String = (0..char_count - 1).map(|_| '*').collect();
         format!("{}{}", masked, last)
-    };
-    // Truncate display if too long
-    let show: &str = if display_text.len() > 22 {
-        &display_text[display_text.len() - 22..]
     } else {
-        &display_text
+        String::from("_")
+    };
+    // Truncate display if too long (char-safe)
+    let char_count = display_text.chars().count();
+    let show: String = if char_count > 22 {
+        display_text.chars().skip(char_count - 22).collect()
+    } else {
+        display_text
     };
     let text_style = MonoTextStyle::new(&FONT_9X15_BOLD, colors::TEXT_PRIMARY);
-    Text::with_alignment(show, Point::new(120, 40), text_style, Alignment::Center).draw(display)?;
+    Text::with_alignment(&show, Point::new(120, 40), text_style, Alignment::Center)
+        .draw(display)?;
 
     // Separator
     Rectangle::new(Point::new(10, 48), Size::new(220, 1))

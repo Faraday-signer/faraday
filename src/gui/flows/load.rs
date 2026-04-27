@@ -46,11 +46,14 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     );
 
                     if let Some(mnemonic) = decoded.mnemonic {
-                        let preview_address = app.derive_address(&mnemonic, "");
-                        return Screen::LoadSeedLoaded {
+                        let preview_address = match app.derive_address(&mnemonic, "") {
+                            Some(a) => a,
+                            None => return Screen::DerivationError,
+                        };
+                        return Screen::LoadFinalize {
                             mnemonic,
                             preview_address,
-                            shown_at: std::time::Instant::now(),
+                            selected: 0,
                         };
                     }
                     if let Some(_addr) = &decoded.address {
@@ -106,11 +109,14 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 if entered.len() == word_count {
                     let mnemonic = entered.join(" ");
                     if bip39::validate_mnemonic(&mnemonic) {
-                        let preview_address = app.derive_address(&mnemonic, "");
-                        return Screen::LoadSeedLoaded {
+                        let preview_address = match app.derive_address(&mnemonic, "") {
+                            Some(a) => a,
+                            None => return Screen::DerivationError,
+                        };
+                        return Screen::LoadFinalize {
                             mnemonic,
                             preview_address,
-                            shown_at: std::time::Instant::now(),
+                            selected: 0,
                         };
                     }
                     // Invalid checksum — surface an error screen so the user
@@ -194,13 +200,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 InputEvent::Confirm => {
                     if selected == 0 {
                         let passphrase = String::new();
-                        let address = app.derive_address(&mnemonic, &passphrase);
-                        return Screen::LoadConfirm {
-                            mnemonic,
-                            passphrase,
-                            address,
-                            selected: 0,
+                        let address = match app.derive_address(&mnemonic, &passphrase) {
+                            Some(a) => a,
+                            None => return Screen::DerivationError,
                         };
+                        return Screen::LoadConfirm { mnemonic, passphrase, address, selected: 0 };
                     } else {
                         return Screen::LoadPassphraseInput {
                             mnemonic,
@@ -249,13 +253,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     };
                 }
                 if grid.text == passphrase {
-                    let address = app.derive_address(&mnemonic, &passphrase);
-                    return Screen::LoadConfirm {
-                        mnemonic,
-                        passphrase,
-                        address,
-                        selected: 0,
+                    let address = match app.derive_address(&mnemonic, &passphrase) {
+                        Some(a) => a,
+                        None => return Screen::DerivationError,
                     };
+                    return Screen::LoadConfirm { mnemonic, passphrase, address, selected: 0 };
                 } else {
                     return Screen::LoadPassphraseMismatch { mnemonic };
                 }

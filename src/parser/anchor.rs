@@ -12,7 +12,9 @@ use sha2::{Digest, Sha256};
 pub fn discriminator(name: &str) -> [u8; 8] {
     let preimage = format!("global:{name}");
     let hash = Sha256::digest(preimage.as_bytes());
-    hash[..8].try_into().unwrap()
+    let mut disc = [0u8; 8];
+    disc.copy_from_slice(&hash[..8]);
+    disc
 }
 
 #[cfg(test)]

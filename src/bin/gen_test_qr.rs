@@ -46,7 +46,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out = "/tmp/faraday_test_qr.png";
     img.save(out)?;
 
-    let keypair = crypto::derivation::derive_keypair(&mnemonic, "", 0);
+    let keypair = crypto::derivation::derive_keypair(&mnemonic, "", 0)
+        .ok_or("key derivation failed")?;
     let address = crypto::derivation::address(&keypair);
 
     println!("wrote {out} ({px} px square, CompactSeedQR {size}x{size})");

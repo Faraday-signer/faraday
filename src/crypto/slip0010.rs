@@ -15,8 +15,8 @@ type HmacSha512 = Hmac<Sha512>;
 const HARDENED: u32 = 0x80000000;
 
 /// Derive master key and chain code from BIP39 seed.
-fn derive_master(seed: &[u8]) -> ([u8; 32], [u8; 32]) {
-    let mut mac = HmacSha512::new_from_slice(b"ed25519 seed").unwrap();
+fn derive_master(seed: &[u8]) -> Option<([u8; 32], [u8; 32])> {
+    let mut mac = HmacSha512::new_from_slice(b"ed25519 seed").ok()?;
     mac.update(seed);
     let result = mac.finalize().into_bytes();
 
@@ -25,7 +25,7 @@ fn derive_master(seed: &[u8]) -> ([u8; 32], [u8; 32]) {
     key.copy_from_slice(&result[..32]);
     chain.copy_from_slice(&result[32..]);
 
-    (key, chain)
+    Some((key, chain))
 }
 
 /// Derive a hardened child key.
@@ -33,18 +33,17 @@ fn derive_child(
     parent_key: &[u8; 32],
     parent_chain: &[u8; 32],
     index: u32,
-) -> ([u8; 32], [u8; 32]) {
-    assert!(
-        index & HARDENED != 0,
-        "Ed25519 only supports hardened derivation"
-    );
+) -> Option<([u8; 32], [u8; 32])> {
+    if index & HARDENED == 0 {
+        return None;
+    }
 
     let mut data = Vec::with_capacity(37);
     data.push(0x00);
     data.extend_from_slice(parent_key);
     data.extend_from_slice(&index.to_be_bytes());
 
-    let mut mac = HmacSha512::new_from_slice(parent_chain).unwrap();
+    let mut mac = HmacSha512::new_from_slice(parent_chain).ok()?;
     mac.update(&data);
     let result = mac.finalize().into_bytes();
 
@@ -55,7 +54,7 @@ fn derive_child(
 
     data.zeroize();
 
-    (key, chain)
+    Some((key, chain))
 }
 
 /// Derived Solana keypair.
@@ -74,14 +73,14 @@ impl Drop for SolanaKeypair {
 /// Derive Solana Ed25519 keypair from BIP39 seed.
 ///
 /// Path: m/44'/501'/account'/0'
-pub fn derive_solana_keypair(seed: &[u8], account: u32) -> SolanaKeypair {
+pub fn derive_solana_keypair(seed: &[u8], account: u32) -> Option<SolanaKeypair> {
     let path = format!("m/44'/501'/{}'/0'", account);
 
-    let (mut key, mut chain) = derive_master(seed);
+    let (mut key, mut chain) = derive_master(seed)?;
 
     // Derive: 44' -> 501' -> account' -> 0'
     for idx in &[44, 501, account, 0] {
-        let (new_key, new_chain) = derive_child(&key, &chain, HARDENED + idx);
+        let (new_key, new_chain) = derive_child(&key, &chain, HARDENED + idx)?;
         key.zeroize();
         chain.zeroize();
         key = new_key;
@@ -94,20 +93,20 @@ pub fn derive_solana_keypair(seed: &[u8], account: u32) -> SolanaKeypair {
 
     chain.zeroize();
 
-    SolanaKeypair {
+    Some(SolanaKeypair {
         private_key: key,
         public_key,
         derivation_path: path,
-    }
+    })
 }
 
 /// Derive using Solana CLI default path: m/44'/501'
-pub fn derive_cli_keypair(seed: &[u8]) -> SolanaKeypair {
-    let (mut key, mut chain) = derive_master(seed);
+pub fn derive_cli_keypair(seed: &[u8]) -> Option<SolanaKeypair> {
+    let (mut key, mut chain) = derive_master(seed)?;
 
     // Derive: 44' -> 501'
     for idx in &[44, 501] {
-        let (new_key, new_chain) = derive_child(&key, &chain, HARDENED + idx);
+        let (new_key, new_chain) = derive_child(&key, &chain, HARDENED + idx)?;
         key.zeroize();
         chain.zeroize();
         key = new_key;
@@ -119,11 +118,11 @@ pub fn derive_cli_keypair(seed: &[u8]) -> SolanaKeypair {
 
     chain.zeroize();
 
-    SolanaKeypair {
+    Some(SolanaKeypair {
         private_key: key,
         public_key,
         derivation_path: "m/44'/501'".to_string(),
-    }
+    })
 }
 
 #[cfg(test)]
@@ -136,7 +135,7 @@ mod tests {
         // "abandon" x11 + "about" — well-known BIP39 test vector
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let seed = bip39::mnemonic_to_seed(mnemonic, "");
-        let keypair = derive_solana_keypair(&seed, 0);
+        let keypair = derive_solana_keypair(&seed, 0).unwrap();
 
         // The address should be deterministic
         let address = bs58::encode(&keypair.public_key).into_string();
@@ -153,8 +152,8 @@ mod tests {
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let seed = bip39::mnemonic_to_seed(mnemonic, "");
 
-        let kp0 = derive_solana_keypair(&seed, 0);
-        let kp1 = derive_solana_keypair(&seed, 1);
+        let kp0 = derive_solana_keypair(&seed, 0).unwrap();
+        let kp1 = derive_solana_keypair(&seed, 1).unwrap();
 
         assert_ne!(kp0.public_key, kp1.public_key);
         assert_ne!(kp0.private_key, kp1.private_key);
@@ -165,8 +164,8 @@ mod tests {
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let seed = bip39::mnemonic_to_seed(mnemonic, "");
 
-        let standard = derive_solana_keypair(&seed, 0);
-        let cli = derive_cli_keypair(&seed);
+        let standard = derive_solana_keypair(&seed, 0).unwrap();
+        let cli = derive_cli_keypair(&seed).unwrap();
 
         assert_ne!(standard.public_key, cli.public_key);
         assert_eq!(cli.derivation_path, "m/44'/501'");
@@ -176,7 +175,7 @@ mod tests {
     fn test_zeroize_on_drop() {
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let seed = bip39::mnemonic_to_seed(mnemonic, "");
-        let keypair = derive_solana_keypair(&seed, 0);
+        let keypair = derive_solana_keypair(&seed, 0).unwrap();
         let _addr = bs58::encode(&keypair.public_key).into_string();
         // keypair drops here — private key should be zeroized
         // (can't easily test this from safe Rust, but the Drop impl ensures it)

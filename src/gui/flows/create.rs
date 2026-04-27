@@ -347,13 +347,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 InputEvent::Confirm => {
                     if selected == 0 {
                         let passphrase = String::new();
-                        let address = app.derive_address(&mnemonic, &passphrase);
-                        return Screen::CreateConfirm {
-                            mnemonic,
-                            passphrase,
-                            address,
-                            selected: 0,
+                        let address = match app.derive_address(&mnemonic, &passphrase) {
+                            Some(a) => a,
+                            None => return Screen::DerivationError,
                         };
+                        return Screen::CreateConfirm { mnemonic, passphrase, address, selected: 0 };
                     } else {
                         return Screen::CreatePassphraseInput {
                             mnemonic,
@@ -405,13 +403,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     };
                 }
                 if grid.text == passphrase {
-                    let address = app.derive_address(&mnemonic, &passphrase);
-                    return Screen::CreateConfirm {
-                        mnemonic,
-                        passphrase,
-                        address,
-                        selected: 0,
+                    let address = match app.derive_address(&mnemonic, &passphrase) {
+                        Some(a) => a,
+                        None => return Screen::DerivationError,
                     };
+                    return Screen::CreateConfirm { mnemonic, passphrase, address, selected: 0 };
                 } else {
                     return Screen::CreatePassphraseMismatch { mnemonic };
                 }
@@ -824,9 +820,8 @@ fn build_verify_screen(mnemonic: String, checks: Vec<usize>, current: usize) -> 
     let mut ri = 0;
     while options.len() < 4 && ri < 30 {
         let word_idx = ((rng[ri] as usize) << 3 | (rng[ri + 1] as usize >> 5)) % 2048;
-        let word = bip39::get_word(word_idx);
-        if !options.contains(&word.to_string()) {
-            options.push(word.to_string());
+        if let Some(word) = bip39::get_word(word_idx) {
+            if !options.contains(&word.to_string()) { options.push(word.to_string()); }
         }
         ri += 2;
     }

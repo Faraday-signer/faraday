@@ -121,6 +121,10 @@ impl Buttons {
 
     /// Wait indefinitely for any button press.
     pub fn wait_for_any(&mut self) -> ButtonEvent {
-        self.wait_for_press(Duration::ZERO).unwrap()
+        loop {
+            if let Some(event) = self.wait_for_press(Duration::from_secs(3600)) {
+                return event;
+            }
+        }
     }
 }

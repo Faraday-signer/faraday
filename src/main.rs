@@ -61,11 +61,15 @@ fn run_simulator() {
     // Splash. Keep pumping the window for 2 seconds rather than sleeping —
     // a bare sleep lets key presses queue up, and the first one gets consumed
     // without action on the first iteration of the main loop.
-    app.draw(&mut fb).unwrap();
+    if let Err(e) = app.draw(&mut fb) {
+        eprintln!("draw: {e:?}");
+    }
     let buf = fb.to_rgb888();
     let splash_start = std::time::Instant::now();
     while window.is_open() && splash_start.elapsed() < Duration::from_secs(2) {
-        window.update_with_buffer(&buf, 240, 240).unwrap();
+        if let Err(e) = window.update_with_buffer(&buf, 240, 240) {
+            eprintln!("update_with_buffer: {e:?}");
+        }
     }
     app.enter_main_menu();
     // Reset idle timer so the splash duration doesn't count toward blanking.
@@ -151,10 +155,14 @@ fn run_simulator() {
                     }
                 }
             }
-            app.draw(&mut fb).unwrap();
+            if let Err(e) = app.draw(&mut fb) {
+                eprintln!("draw: {e:?}");
+            }
         }
         let buf = fb.to_rgb888();
-        window.update_with_buffer(&buf, 240, 240).unwrap();
+        if let Err(e) = window.update_with_buffer(&buf, 240, 240) {
+            eprintln!("update_with_buffer: {e:?}");
+        }
     }
 }
 
@@ -183,8 +191,8 @@ fn run_pi() {
 
     let mut app = App::new();
 
-    // Splash
-    app.draw(&mut display).unwrap();
+    // Splash — draw errors intentionally ignored to avoid crashing the device.
+    let _ = app.draw(&mut display);
     display.flush();
     std::thread::sleep(Duration::from_secs(2));
     app.enter_main_menu();
@@ -230,7 +238,7 @@ fn run_pi() {
                     }
                 }
             }
-            app.draw(&mut display).unwrap();
+            let _ = app.draw(&mut display);
         }
         display.flush();
     }
@@ -242,12 +250,27 @@ fn run_headless() {
     println!("No display available. Run with --features simulator for desktop UI.");
     println!("Running crypto sanity check...");
 
-    let mnemonic = crypto::bip39::mnemonic_from_entropy(b"faraday rust test", 12).unwrap();
+    let mnemonic = match crypto::bip39::mnemonic_from_entropy(b"faraday rust test", 12) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("Mnemonic generation failed: {e}");
+            return;
+        }
+    };
     println!("Mnemonic: {}", mnemonic);
-    assert!(crypto::bip39::validate_mnemonic(&mnemonic));
+    if !crypto::bip39::validate_mnemonic(&mnemonic) {
+        eprintln!("Mnemonic validation failed");
+        return;
+    }
 
     let seed = crypto::bip39::mnemonic_to_seed(&mnemonic, "");
-    let keypair = crypto::slip0010::derive_solana_keypair(&seed, 0);
+    let keypair = match crypto::slip0010::derive_solana_keypair(&seed, 0) {
+        Some(kp) => kp,
+        None => {
+            eprintln!("Key derivation failed");
+            return;
+        }
+    };
     println!("Address: {}", crypto::derivation::address(&keypair));
     println!("All OK.");
 }
