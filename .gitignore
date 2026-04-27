@@ -13,6 +13,8 @@
 
 # Secrets - NEVER commit these
 .env
+.env.local
+.env.*.local
 *.key
 *.pem
 *.p12
@@ -41,17 +43,20 @@ testdata/test_txs_ur/
 
 # Logs
 *.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
 
-# Extension (WXT/Node)
-extension/node_modules/
-extension/.output/
-extension/.wxt/
-extension/.vite/
-
-# Playground (Vite/Node)
-playground/node_modules/
-playground/dist/
-playground/.vite/
+# Node / pnpm / web build artifacts (any depth)
+node_modules/
+.next/
+.output/
+.vite/
+.wxt/
+.turbo/
+.pnpm-store/
+dist/
+coverage/
 
 # Local design-system reference bundle (not checked in)
 .faraday-design-bundle/
