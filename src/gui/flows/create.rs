@@ -114,10 +114,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     if frames_collected >= total_frames {
                         let mnemonic = bip39::mnemonic_from_entropy(&entropy, word_count)
                             .expect("Valid word count");
-                        return Screen::CreateShowWords {
+                        return Screen::CreateBackupWarning {
                             mnemonic,
-                            page: 0,
                             word_count,
+                            selected: 0,
                         };
                     }
                 }
@@ -157,10 +157,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         }
                         let mnemonic = bip39::mnemonic_from_raw_entropy(&entropy)
                             .expect("Valid entropy length");
-                        return Screen::CreateShowWords {
+                        return Screen::CreateBackupWarning {
                             mnemonic,
-                            page: 0,
                             word_count,
+                            selected: 0,
                         };
                     }
                 }
@@ -216,10 +216,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         let mnemonic =
                             bip39::mnemonic_from_entropy(rolls_str.as_bytes(), word_count)
                                 .expect("Valid word count");
-                        return Screen::CreateShowWords {
+                        return Screen::CreateBackupWarning {
                             mnemonic,
-                            page: 0,
                             word_count,
+                            selected: 0,
                         };
                     }
                 }
@@ -237,6 +237,55 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             Screen::CreateDiceRolls {
                 word_count,
                 rolls,
+                selected,
+            }
+        }
+
+        // CANCEL (row 0, default) and K3 both drop the freshly-generated
+        // mnemonic and return to the method picker so the user can retry or
+        // back out further. I UNDERSTAND (row 1) advances to the plaintext
+        // word display. The seed never leaves screen state, so discarding
+        // on cancel is non-destructive.
+        Screen::CreateBackupWarning {
+            mnemonic,
+            word_count,
+            mut selected,
+        } => {
+            match event {
+                InputEvent::Up => {
+                    if selected > 0 {
+                        selected -= 1;
+                    }
+                }
+                InputEvent::Down => {
+                    if selected < 1 {
+                        selected += 1;
+                    }
+                }
+                InputEvent::Confirm => {
+                    if selected == 1 {
+                        return Screen::CreateShowWords {
+                            mnemonic,
+                            page: 0,
+                            word_count,
+                        };
+                    }
+                    return Screen::CreateMethod {
+                        word_count,
+                        selected: 0,
+                    };
+                }
+                InputEvent::Back => {
+                    return Screen::CreateMethod {
+                        word_count,
+                        selected: 0,
+                    };
+                }
+                _ => {}
+            }
+            Screen::CreateBackupWarning {
+                mnemonic,
+                word_count,
                 selected,
             }
         }
@@ -477,7 +526,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             mut selected,
             from_settings,
         } => {
-            const ITEMS: usize = 4; // Show words / Paper backup / Verify / Back
+            const ITEMS: usize = 3; // Paper backup / Show words / Back
             match event {
                 InputEvent::Up => {
                     if selected > 0 {
@@ -491,6 +540,13 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 }
                 InputEvent::Confirm => match selected {
                     0 => {
+                        return Screen::ExportSeedQrBlock {
+                            compact_data,
+                            block_index: 0,
+                            from_settings,
+                        }
+                    }
+                    1 => {
                         // Gate SHOW WORDS behind a warning — plaintext seed is
                         // the single most dangerous surface, worth forcing the
                         // user through a confirm even on the post-create path.
@@ -508,14 +564,6 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             from_settings,
                         };
                     }
-                    1 => {
-                        return Screen::ExportSeedQrBlock {
-                            compact_data,
-                            block_index: 0,
-                            from_settings,
-                        }
-                    }
-                    2 => return Screen::VerifyBackupScan,
                     _ => {
                         return if from_settings {
                             Screen::SettingsMenu { selected: 0 }
@@ -783,10 +831,10 @@ fn generate_wallet(word_count: usize) -> Screen {
     let mnemonic =
         bip39::mnemonic_from_entropy(&entropy, word_count).expect("Failed to generate mnemonic");
     entropy.zeroize();
-    Screen::CreateShowWords {
+    Screen::CreateBackupWarning {
         mnemonic,
-        page: 0,
         word_count,
+        selected: 0,
     }
 }
 

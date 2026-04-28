@@ -61,6 +61,15 @@ pub enum Screen {
         rolls: Vec<u8>,
         selected: usize,
     },
+    /// Mandatory acknowledgment before plaintext words are revealed for the
+    /// first time on the create flow. Forces the user to read the
+    /// "pen and paper" instruction and explicitly choose I UNDERSTAND
+    /// (advance to show words) or CANCEL (back to method picker).
+    CreateBackupWarning {
+        mnemonic: String,
+        word_count: usize,
+        selected: usize,
+    },
     CreateShowWords {
         mnemonic: String,
         page: usize,
@@ -798,6 +807,7 @@ impl App {
             | Screen::CreateCameraEntropy { .. }
             | Screen::CreateCoinFlips { .. }
             | Screen::CreateDiceRolls { .. }
+            | Screen::CreateBackupWarning { .. }
             | Screen::CreateShowWords { .. }
             | Screen::CreateVerify { .. }
             | Screen::CreatePassphrasePrompt { .. }
