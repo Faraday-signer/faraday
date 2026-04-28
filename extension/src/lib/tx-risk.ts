@@ -80,6 +80,43 @@ const SET_COMPUTE_UNIT_PRICE_DISCRIMINATOR = 3;
 const SIMULATION_TIMEOUT_MS = 15_000;
 const TOKEN_SYMBOL_TIMEOUT_MS = 5_000;
 
+// --- Impersonator detection constants ---
+
+/**
+ * Official mints for high-value tokens most commonly spoofed by drainers.
+ * Key is the normalized (uppercase) ticker; value is the set of official mints.
+ * Only tokens where we are certain of the canonical mint are included to
+ * avoid false positives.
+ */
+const CANONICAL_MINTS: Record<string, string[]> = {
+  USDC:  ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"],
+  USDT:  ["Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"],
+  SOL:   ["So11111111111111111111111111111111111111112"],
+  JUP:   ["JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"],
+  BONK:  ["DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"],
+  RAY:   ["4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R"],
+};
+
+/**
+ * Cyrillic and Greek characters that are visually indistinguishable from
+ * their Latin equivalents. NFKD normalization handles fullwidth Latin
+ * (e.g. ＵＳＤＣ) automatically; this map covers the script-confusables.
+ */
+const CONFUSABLE_MAP: Record<string, string> = {
+  // Cyrillic uppercase
+  А: "A", В: "B", С: "C", Е: "E", Н: "H", І: "I",
+  К: "K", М: "M", О: "O", Р: "P", Т: "T", Х: "X",
+  // Cyrillic lowercase
+  а: "a", е: "e", о: "o", р: "p", с: "c", х: "x",
+  // Greek uppercase
+  Α: "A", Β: "B", Ε: "E", Ζ: "Z", Η: "H", Ι: "I",
+  Κ: "K", Μ: "M", Ν: "N", Ο: "O", Ρ: "P", Τ: "T", Υ: "Y", Χ: "X",
+  // Greek lowercase
+  ο: "o", ν: "v",
+};
+
+const ZERO_WIDTH_RE = /[​-‍⁠﻿­]/g;
+
 // --- Transaction parser (binary format, handles legacy and v0) ---
 
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -437,6 +474,46 @@ function detectHighValueSol(sim: SimulationResult, userPubkey: string, accountKe
   return [];
 }
 
+/**
+ * Applies NFKD decomposition (handles fullwidth Latin like ＵＳＤＣ),
+ * strips zero-width characters, and maps Cyrillic/Greek confusables to their
+ * Latin equivalents. Returns the result in uppercase for case-insensitive
+ * comparison against the canonical ticker list.
+ */
+function normalizeSymbol(symbol: string): string {
+  let s = symbol.normalize("NFKD");
+  s = s.replace(ZERO_WIDTH_RE, "");
+  s = [...s].map((ch) => CONFUSABLE_MAP[ch] ?? ch).join("");
+  return s.toUpperCase();
+}
+
+/**
+ * Detects incoming tokens whose symbol (after homoglyph normalization)
+ * matches a canonical ticker but whose mint address is not the official one.
+ * Catches spoofed symbols like "USDС" (Cyrillic С) or fullwidth "ＵＳＤＣ".
+ * Only checks incoming tokens (amount > 0) — outgoing tokens are controlled
+ * by the user and can't be spoofed this way.
+ */
+function detectImpersonatorToken(tokenChanges: TokenChange[]): TxRiskWarning[] {
+  for (const change of tokenChanges) {
+    if (change.amount <= 0) continue;
+    const normalized = normalizeSymbol(change.symbol);
+    const officialMints = CANONICAL_MINTS[normalized];
+    if (!officialMints) continue;
+    if (!officialMints.includes(change.mint)) {
+      return [{
+        severity: "critical",
+        title: "Impersonator Token",
+        description:
+          `This transaction sends you a token with the symbol "${change.symbol}" but its mint address ` +
+          `does not match the official ${normalized}. This is a common phishing tactic — ` +
+          `the token is worthless and designed to look legitimate.`,
+      }];
+    }
+  }
+  return [];
+}
+
 function detectMultiAssetDrain(sim: SimulationResult, userPubkey: string): TxRiskWarning[] {
   const drainingMints = new Set<string>();
   for (const pre of sim.preTokenBalances) {
@@ -521,6 +598,7 @@ export async function analyzeTxRisk(
   }
 
   warnings.push(
+    ...detectImpersonatorToken(tokenChanges),
     ...detectDrainHeuristic(sim, userPubkey, accountKeys, symbolMap),
     ...detectHighValueSol(sim, userPubkey, accountKeys),
     ...detectMultiAssetDrain(sim, userPubkey),
