@@ -298,6 +298,38 @@ function WarningItem({ warning }: { warning: TxRiskWarning }) {
   );
 }
 
+function formatAmount(amount: number): string {
+  const abs = Math.abs(amount);
+  const sign = amount >= 0 ? "+" : "-";
+  if (abs < 0.000001) return `${sign}0`;
+  if (abs >= 1000) return `${sign}${abs.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+  return `${sign}${abs.toFixed(abs < 0.01 ? 6 : abs < 1 ? 4 : 2)}`;
+}
+
+function BalanceChanges({ report }: { report: TxRiskReport }) {
+  const allChanges = report.tokenChanges.slice();
+  const hasSolInChanges = allChanges.some((c) => c.symbol === "SOL");
+  if (!hasSolInChanges && report.solChangeSol !== null && !report.simulationFailed) {
+    allChanges.push({ mint: "SOL", symbol: "SOL", amount: report.solChangeSol });
+  }
+  if (allChanges.length === 0) return null;
+  return (
+    <div style={{ padding: space.sm, borderRadius: radius.md, background: colors.panel, border: `1px solid ${colors.borderStrong}`, display: "flex", flexDirection: "column", gap: 6 }}>
+      <span style={{ fontFamily: fontFamily.mono, fontSize: font.xs, color: colors.textDim, letterSpacing: 0.8, textTransform: "uppercase" }}>
+        Balance changes
+      </span>
+      {allChanges.map((c) => (
+        <div key={c.mint} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <span style={{ fontFamily: fontFamily.mono, fontSize: font.xs, color: colors.textMuted }}>{c.symbol}</span>
+          <span style={{ fontFamily: fontFamily.mono, fontSize: font.sm, color: c.amount >= 0 ? colors.success : colors.error }}>
+            {formatAmount(c.amount)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function RiskScreen({
   session,
   report,
@@ -343,12 +375,9 @@ function RiskScreen({
         }}>
           {report.level} — {levelLabel}
         </span>
-        {report.solChangeSol !== null && !report.simulationFailed && (
-          <span style={{ fontFamily: fontFamily.mono, fontSize: font.xs, color: colors.textMuted }}>
-            Simulation: {report.solChangeSol >= 0 ? "+" : ""}{report.solChangeSol.toFixed(6)} SOL
-          </span>
-        )}
       </div>
+
+      <BalanceChanges report={report} />
 
       {report.warnings.map((w, i) => (
         <WarningItem key={i} warning={w} />

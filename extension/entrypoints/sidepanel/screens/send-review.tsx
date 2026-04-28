@@ -67,9 +67,54 @@ function proceedLabel(report: TxRiskReport): string {
   return "Sign anyway — I accept the risk";
 }
 
+function formatAmount(amount: number): string {
+  const abs = Math.abs(amount);
+  const sign = amount >= 0 ? "+" : "-";
+  if (abs < 0.000001) return `${sign}0`;
+  if (abs >= 1000) return `${sign}${abs.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+  return `${sign}${abs.toFixed(abs < 0.01 ? 6 : abs < 1 ? 4 : 2)}`;
+}
+
+function BalanceChanges({ report }: { report: TxRiskReport }) {
+  const allChanges = report.tokenChanges.slice();
+
+  if (allChanges.length === 0 && report.solChangeSol === null) return null;
+
+  // Show SOL if not already in tokenChanges and simulation succeeded
+  const hasSolInChanges = allChanges.some((c) => c.symbol === "SOL");
+  if (!hasSolInChanges && report.solChangeSol !== null && !report.simulationFailed) {
+    allChanges.push({ mint: "SOL", symbol: "SOL", amount: report.solChangeSol });
+  }
+
+  if (allChanges.length === 0) return null;
+
+  return (
+    <div style={{
+      padding: space.sm,
+      borderRadius: radius.md,
+      background: colors.panel,
+      border: `1px solid ${colors.border}`,
+      display: "flex",
+      flexDirection: "column",
+      gap: space.xxs,
+    }}>
+      <span style={{ fontFamily: fontFamily.display, fontSize: font.xs, letterSpacing: letterSpacing.eyebrow, textTransform: "uppercase", color: colors.textMuted }}>
+        Balance changes
+      </span>
+      {allChanges.map((c) => (
+        <div key={c.mint} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <span style={{ fontFamily: fontFamily.mono, fontSize: font.xs, color: colors.textMuted }}>{c.symbol}</span>
+          <span style={{ fontFamily: fontFamily.mono, fontSize: font.sm, color: c.amount >= 0 ? colors.success : colors.error }}>
+            {formatAmount(c.amount)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function RiskBanner({ report }: { report: TxRiskReport }) {
   const color = riskLevelColor(report);
-  const bg = `${color}14`;
 
   const levelLabel =
     report.level === "SAFE" ? "Transaction looks safe" :
@@ -81,11 +126,8 @@ function RiskBanner({ report }: { report: TxRiskReport }) {
       <div style={{
         padding: space.sm,
         borderRadius: radius.md,
-        background: bg,
+        background: `${color}14`,
         border: `1px solid ${color}`,
-        display: "flex",
-        flexDirection: "column",
-        gap: space.xs,
       }}>
         <span style={{
           fontFamily: fontFamily.display,
@@ -96,13 +138,9 @@ function RiskBanner({ report }: { report: TxRiskReport }) {
         }}>
           {report.level} — {levelLabel}
         </span>
-
-        {report.solChangeSol !== null && !report.simulationFailed && (
-          <span style={{ fontFamily: fontFamily.mono, fontSize: font.xs, color: colors.textMuted }}>
-            Simulation: {report.solChangeSol >= 0 ? "+" : ""}{report.solChangeSol.toFixed(6)} SOL
-          </span>
-        )}
       </div>
+
+      <BalanceChanges report={report} />
 
       {report.warnings.map((w, i) => (
         <WarningRow key={i} warning={w} />

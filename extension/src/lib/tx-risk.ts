@@ -6,9 +6,18 @@ export interface TxRiskWarning {
   description: string;
 }
 
+/** Net balance change for a token in the user's wallet (negative = outgoing). */
+export interface TokenChange {
+  mint: string;
+  symbol: string;
+  amount: number;
+}
+
 export interface TxRiskReport {
   level: TxRiskLevel;
   warnings: TxRiskWarning[];
+  /** Token balance changes (including SOL) derived from simulation. */
+  tokenChanges: TokenChange[];
   /** Net SOL change for the user (negative = outgoing). Null when simulation failed. */
   solChangeSol: number | null;
   simulationFailed: boolean;
@@ -69,6 +78,7 @@ const OVERSIZED_PRIORITY_FEE_SOL = 0.05;
 const MULTI_ASSET_DRAIN_THRESHOLD = 3;
 const SET_COMPUTE_UNIT_PRICE_DISCRIMINATOR = 3;
 const SIMULATION_TIMEOUT_MS = 15_000;
+const TOKEN_SYMBOL_TIMEOUT_MS = 5_000;
 
 // --- Transaction parser (binary format, handles legacy and v0) ---
 
@@ -206,6 +216,81 @@ async function simulate(txBase64: string, rpcUrl: string): Promise<SimulationRes
   }
 }
 
+// --- Token symbol resolution ---
+
+function shortMint(mint: string): string {
+  return `${mint.slice(0, 4)}…${mint.slice(-4)}`;
+}
+
+async function fetchTokenSymbol(mint: string): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TOKEN_SYMBOL_TIMEOUT_MS);
+  try {
+    const res = await fetch(`https://tokens.jup.ag/token/${mint}`, { signal: controller.signal });
+    if (!res.ok) return shortMint(mint);
+    const data = await res.json() as { symbol?: string };
+    return typeof data.symbol === "string" && data.symbol.length > 0 ? data.symbol : shortMint(mint);
+  } catch {
+    return shortMint(mint);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Diffs pre/post token balances to get the user's net changes, then
+ * resolves each mint to a human-readable symbol via the Jupiter token API.
+ * Fetches all symbols in parallel; falls back to truncated mint on failure.
+ */
+async function computeTokenChanges(
+  sim: SimulationResult,
+  userPubkey: string,
+): Promise<TokenChange[]> {
+  // Pre-balance map keyed by "accountIndex-mint"
+  const preMap = new Map<string, number>();
+  for (const bal of sim.preTokenBalances) {
+    if (bal.owner === userPubkey) {
+      preMap.set(`${bal.accountIndex}-${bal.mint}`, bal.uiTokenAmount.uiAmount ?? 0);
+    }
+  }
+
+  // Compute diffs: tokens present in post
+  const seen = new Set<string>();
+  const rawChanges: Array<{ mint: string; amount: number }> = [];
+
+  for (const bal of sim.postTokenBalances) {
+    if (bal.owner !== userPubkey) continue;
+    const key = `${bal.accountIndex}-${bal.mint}`;
+    const pre = preMap.get(key) ?? 0;
+    const post = bal.uiTokenAmount.uiAmount ?? 0;
+    const diff = post - pre;
+    if (Math.abs(diff) > 0.000001) rawChanges.push({ mint: bal.mint, amount: diff });
+    seen.add(key);
+  }
+
+  // Tokens that existed in pre but vanished entirely in post
+  for (const [key, preAmount] of preMap) {
+    if (seen.has(key) || preAmount <= 0) continue;
+    const mint = key.slice(key.indexOf("-") + 1);
+    rawChanges.push({ mint, amount: -preAmount });
+  }
+
+  if (rawChanges.length === 0) return [];
+
+  // Fetch all symbols in parallel
+  const uniqueMints = [...new Set(rawChanges.map((c) => c.mint))];
+  const symbolMap = new Map<string, string>();
+  await Promise.all(
+    uniqueMints.map(async (mint) => symbolMap.set(mint, await fetchTokenSymbol(mint))),
+  );
+
+  return rawChanges.map((c) => ({
+    mint: c.mint,
+    symbol: symbolMap.get(c.mint) ?? shortMint(c.mint),
+    amount: c.amount,
+  }));
+}
+
 // --- Helpers ---
 
 function isTokenProgram(programId: string): boolean {
@@ -300,6 +385,7 @@ function detectDrainHeuristic(
   sim: SimulationResult,
   userPubkey: string,
   accountKeys: string[],
+  symbolMap: Map<string, string>,
 ): TxRiskWarning[] {
   // Token drains
   for (const pre of sim.preTokenBalances) {
@@ -312,7 +398,7 @@ function detectDrainHeuristic(
     const postAmount = post?.uiTokenAmount.uiAmount ?? 0;
     const lost = (preAmount - postAmount) / preAmount;
     if (lost >= DRAIN_WIPE_RATIO) {
-      const sym = `${pre.mint.slice(0, 4)}…${pre.mint.slice(-4)}`;
+      const sym = symbolMap.get(pre.mint) ?? shortMint(pre.mint);
       return [{ severity: "critical", title: "Possible Token Drain", description: `This transaction would remove ${(lost * 100).toFixed(0)}% of your ${sym} balance.` }];
     }
   }
@@ -394,6 +480,7 @@ export async function analyzeTxRisk(
     return {
       level: "WARNING",
       warnings: [{ severity: "warning", title: "Could Not Analyze Transaction", description: "Transaction simulation failed (network error or timeout). Verify the transaction carefully before signing." }],
+      tokenChanges: [],
       solChangeSol: null,
       simulationFailed: true,
     };
@@ -403,6 +490,7 @@ export async function analyzeTxRisk(
     return {
       level: "DANGER",
       warnings: [{ severity: "critical", title: "Transaction Would Fail", description: "This transaction would fail if submitted to the network now. Do not sign it." }],
+      tokenChanges: [],
       solChangeSol: null,
       simulationFailed: true,
     };
@@ -412,6 +500,13 @@ export async function analyzeTxRisk(
   const accountKeys = parsed?.accountKeys ?? [];
   const solChangeSol = computeSolChange(sim, userPubkey, accountKeys);
   const unitsConsumed = sim.unitsConsumed ?? 0;
+
+  // Resolve token symbols and compute balance changes in parallel with risk detection.
+  // Symbol fetch is the only async step; detectors are synchronous.
+  const tokenChanges = await computeTokenChanges(sim, userPubkey);
+
+  // Build symbol map from resolved token changes for use in drain heuristic
+  const symbolMap = new Map<string, string>(tokenChanges.map((c) => [c.mint, c.symbol]));
 
   const warnings: TxRiskWarning[] = [];
 
@@ -426,7 +521,7 @@ export async function analyzeTxRisk(
   }
 
   warnings.push(
-    ...detectDrainHeuristic(sim, userPubkey, accountKeys),
+    ...detectDrainHeuristic(sim, userPubkey, accountKeys, symbolMap),
     ...detectHighValueSol(sim, userPubkey, accountKeys),
     ...detectMultiAssetDrain(sim, userPubkey),
   );
@@ -434,5 +529,5 @@ export async function analyzeTxRisk(
   const hasCritical = warnings.some((w) => w.severity === "critical");
   const level: TxRiskLevel = warnings.length === 0 ? "SAFE" : hasCritical ? "DANGER" : "WARNING";
 
-  return { level, warnings, solChangeSol, simulationFailed: false };
+  return { level, warnings, tokenChanges, solChangeSol, simulationFailed: false };
 }
