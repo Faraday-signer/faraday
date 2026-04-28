@@ -8,9 +8,8 @@ import { AnimatedQr } from "../../src/components/animated-qr";
 import { FaradayLogo } from "../../src/lib/brand";
 import { sendRuntimeMessage } from "../../src/lib/runtime";
 import { FARADAY_SIG_PREFIX, spliceFaradaySignature } from "../../src/lib/solana";
-import { RPC_URL } from "../../src/lib/sol-client";
 import { colors, fontFamily, font, radius, space } from "../../src/lib/theme";
-import { analyzeTxRisk, type TxRiskReport, type TxRiskWarning } from "../../src/lib/tx-risk";
+import { type TxRiskReport, type TxRiskWarning } from "../../src/lib/tx-risk";
 import type { GetSignSessionResult } from "../../src/lib/types";
 import { encodeTxForQr } from "../../src/lib/ur-encode";
 
@@ -728,8 +727,6 @@ export function SignApp() {
   const [session, setSession] = useState<GetSignSessionResult | null>(null);
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("risk");
-  const [riskReport, setRiskReport] = useState<TxRiskReport | null>(null);
-  const [riskLoading, setRiskLoading] = useState(false);
 
   useEffect(() => {
     if (!sessionId) {
@@ -743,9 +740,7 @@ export function SignApp() {
         type: "faraday:get-sign-session",
         sessionId
       });
-      if (cancelled) {
-        return;
-      }
+      if (cancelled) return;
       if (!response.ok) {
         warn("Failed to load sign session", { sessionId, error: response.error });
         setFatalError(response.error);
@@ -766,22 +761,9 @@ export function SignApp() {
         origin: response.data.origin
       });
       setSession(response.data);
-
-      if (response.data.kind === "tx" && response.data.txBase64) {
-        if (!cancelled) setRiskLoading(true);
-        const report = await analyzeTxRisk(
-          response.data.txBase64,
-          RPC_URL,
-          response.data.expectedPubkey,
-        );
-        if (!cancelled) {
-          setRiskReport(report);
-          setRiskLoading(false);
-        }
-      } else {
-        // Sign-message flow: skip risk check, go straight to QR display
-        if (!cancelled) setStep("display");
-      }
+      // Risk report comes pre-computed from background. For sign-message or
+      // sessions without a report, go straight to the QR display screen.
+      setStep(response.data.kind === "tx" && response.data.riskReport ? "risk" : "display");
     })();
 
     return () => {
@@ -870,14 +852,14 @@ export function SignApp() {
     );
   }
 
-  if (!session || riskLoading) {
+  if (!session) {
     return (
       <main style={shellStyle}>
         <header style={headerStyle}>
           <FaradayLogo height={22} title="Faraday" />
         </header>
         <div style={contentStyle}>
-          <p style={subtitleStyle}>{!session ? "Loading signing session…" : "Checking transaction…"}</p>
+          <p style={subtitleStyle}>Loading signing session…</p>
         </div>
       </main>
     );
@@ -885,10 +867,10 @@ export function SignApp() {
 
   return (
     <Shell onCancel={() => void cancelSession()}>
-      {step === "risk" && riskReport ? (
+      {step === "risk" && session.riskReport ? (
         <RiskScreen
           session={session}
-          report={riskReport}
+          report={session.riskReport}
           onProceed={() => setStep("display")}
           onCancel={() => void cancelSession()}
         />
