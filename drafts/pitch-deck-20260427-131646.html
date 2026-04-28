@@ -1,0 +1,1130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Faraday · Pitch Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0a0e14;
+    --surface: #11161d;
+    --elevated: #161c25;
+    --border: #21262d;
+    --border-strong: #2d343d;
+    --fg: #e6edf3;
+    --muted: #8b949e;
+    --dim: #6e7681;
+    --accent: #1af8ff;
+    --accent-soft: rgba(26, 248, 255, 0.10);
+    --accent-strong: rgba(26, 248, 255, 0.30);
+    --success: #3fb950;
+    --warning: #d29922;
+    --danger: #f85149;
+    --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); }
+  body {
+    color: var(--fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  .deck {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: none;
+    padding: 64px 96px;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .slide.active { display: flex; }
+
+  /* Slide number */
+  .slide-num {
+    position: absolute;
+    top: 32px;
+    right: 40px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--dim);
+    letter-spacing: 0.05em;
+  }
+
+  /* Brand mark — top-left of every slide */
+  .slide-mark {
+    position: absolute;
+    top: 32px;
+    left: 40px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--fg);
+    letter-spacing: -0.01em;
+  }
+  .slide-mark .mark-dot {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid var(--accent);
+    border-radius: 1px;
+    position: relative;
+  }
+  .slide-mark .mark-dot::after {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    background: var(--accent);
+    border-radius: 1px;
+  }
+
+  /* Footer hint */
+  .slide-foot {
+    position: absolute;
+    bottom: 28px;
+    left: 40px;
+    font-size: 11px;
+    color: var(--dim);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  /* Typography */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--accent);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+  }
+  h1 {
+    font-size: clamp(56px, 8vw, 120px);
+    line-height: 0.96;
+    font-weight: 800;
+    letter-spacing: -0.035em;
+  }
+  h2 {
+    font-size: clamp(48px, 6vw, 80px);
+    line-height: 1.0;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    margin-bottom: 32px;
+  }
+  h3 {
+    font-size: clamp(28px, 3vw, 38px);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+  }
+  p {
+    font-size: clamp(18px, 1.6vw, 24px);
+    line-height: 1.5;
+    color: var(--muted);
+    max-width: 1100px;
+  }
+  p.lead {
+    font-size: clamp(22px, 2vw, 30px);
+    color: var(--fg);
+    line-height: 1.4;
+  }
+  .accent { color: var(--accent); }
+  .strong-fg { color: var(--fg); }
+  .mono { font-family: var(--font-mono); }
+
+  /* Title slide */
+  .title-slide { justify-content: center; }
+  .title-mark {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    margin-bottom: 56px;
+  }
+  .title-mark-shape {
+    width: 64px;
+    height: 64px;
+    border: 4px solid var(--accent);
+    border-radius: 4px;
+    position: relative;
+    box-shadow: 0 0 60px rgba(26, 248, 255, 0.25);
+  }
+  .title-mark-shape::after {
+    content: "";
+    position: absolute;
+    inset: 16px;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+  .title-mark-name {
+    font-family: var(--font-mono);
+    font-size: 64px;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+  }
+  .title-tagline {
+    font-size: clamp(64px, 8vw, 112px);
+    line-height: 1.0;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    margin-bottom: 32px;
+  }
+  .title-tagline .accent { color: var(--accent); }
+  .title-sub {
+    font-family: var(--font-mono);
+    font-size: 20px;
+    color: var(--muted);
+    letter-spacing: 0.01em;
+    max-width: 800px;
+  }
+  .title-meta {
+    margin-top: 80px;
+    display: flex;
+    gap: 48px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--dim);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+  .title-meta b { color: var(--muted); font-weight: 500; }
+
+  /* Problem slide — declarative list */
+  .problem-list {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    max-width: 1400px;
+  }
+  .problem-list .row {
+    font-size: clamp(28px, 3vw, 44px);
+    line-height: 1.25;
+    font-weight: 500;
+    color: var(--fg);
+    letter-spacing: -0.015em;
+  }
+  .problem-list .row.dim { color: var(--muted); }
+  .problem-list .row .em { color: var(--accent); }
+  .problem-close {
+    margin-top: 56px;
+    font-size: clamp(28px, 3vw, 44px);
+    font-weight: 700;
+    color: var(--fg);
+    letter-spacing: -0.02em;
+  }
+
+  /* Cost slide — big number stack */
+  .cost-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 32px;
+    margin-top: 24px;
+  }
+  .cost-card {
+    padding: 36px 40px;
+    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .cost-card.headline { grid-column: 1 / -1; border-color: var(--accent-strong); background: linear-gradient(135deg, rgba(26, 248, 255, 0.06), transparent 60%); }
+  .cost-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--dim);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .cost-figure {
+    font-family: var(--font-mono);
+    font-size: clamp(48px, 6vw, 88px);
+    font-weight: 700;
+    color: var(--fg);
+    letter-spacing: -0.04em;
+    line-height: 1;
+  }
+  .cost-card.headline .cost-figure { color: var(--accent); }
+  .cost-label {
+    margin-top: 12px;
+    font-size: clamp(16px, 1.4vw, 22px);
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  .cost-source {
+    margin-top: 18px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--dim);
+  }
+
+  /* Solution — three rules */
+  .rules {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 28px;
+    margin-top: 32px;
+  }
+  .rule {
+    padding: 36px;
+    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  .rule::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--accent);
+    opacity: 0.6;
+  }
+  .rule-num {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--accent);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .rule-title {
+    font-size: clamp(28px, 2.6vw, 36px);
+    font-weight: 700;
+    color: var(--fg);
+    letter-spacing: -0.02em;
+    margin-bottom: 14px;
+    line-height: 1.05;
+  }
+  .rule-body {
+    font-size: clamp(15px, 1.3vw, 18px);
+    color: var(--muted);
+    line-height: 1.55;
+  }
+
+  /* Stack slide */
+  .stack-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-top: 32px;
+  }
+  .stack-card {
+    padding: 28px;
+    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .stack-icon {
+    width: 36px; height: 36px;
+    margin-bottom: 18px;
+    color: var(--accent);
+  }
+  .stack-name {
+    font-size: clamp(20px, 1.8vw, 26px);
+    font-weight: 700;
+    color: var(--fg);
+    margin-bottom: 8px;
+    letter-spacing: -0.015em;
+  }
+  .stack-desc {
+    font-size: clamp(13px, 1.1vw, 15px);
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .stack-flow {
+    margin-top: 32px;
+    text-align: center;
+    font-family: var(--font-mono);
+    color: var(--dim);
+    font-size: 14px;
+    letter-spacing: 0.05em;
+  }
+
+  /* Built right — three pillars with code-style bullets */
+  .pillars {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 28px;
+    margin-top: 24px;
+  }
+  .pillar {
+    padding: 32px;
+    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .pillar-title {
+    font-size: clamp(22px, 2vw, 30px);
+    font-weight: 700;
+    color: var(--fg);
+    margin-bottom: 16px;
+    letter-spacing: -0.02em;
+  }
+  .pillar-title .accent { color: var(--accent); }
+  .pillar ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .pillar li {
+    font-size: clamp(14px, 1.2vw, 17px);
+    color: var(--muted);
+    line-height: 1.45;
+    padding-left: 20px;
+    position: relative;
+  }
+  .pillar li::before {
+    content: "▸";
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+  }
+
+  /* Demo slide */
+  .demo-hero {
+    margin-top: 24px;
+    padding: 48px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .demo-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .demo-row:last-child { border-bottom: 0; }
+  .demo-step {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    width: 48px;
+    flex-shrink: 0;
+  }
+  .demo-label {
+    font-size: clamp(18px, 1.5vw, 22px);
+    color: var(--fg);
+    flex: 1;
+    font-weight: 500;
+  }
+  .demo-status {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--success);
+    letter-spacing: 0.1em;
+  }
+  .demo-cap {
+    margin-top: 28px;
+    font-size: 18px;
+    color: var(--muted);
+  }
+  .demo-cap b { color: var(--accent); font-weight: 500; }
+
+  /* Why now slide */
+  .why-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 24px;
+  }
+  .why-card {
+    padding: 28px 32px;
+    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 180px;
+  }
+  .why-stat {
+    font-family: var(--font-mono);
+    font-size: clamp(36px, 4vw, 56px);
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1;
+    letter-spacing: -0.03em;
+  }
+  .why-cap {
+    margin-top: 14px;
+    font-size: clamp(14px, 1.2vw, 18px);
+    color: var(--muted);
+    line-height: 1.4;
+  }
+
+  /* Business plan slide */
+  .plan-table {
+    margin-top: 24px;
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .plan-table th, .plan-table td {
+    padding: 18px 24px;
+    text-align: left;
+    font-size: clamp(13px, 1.1vw, 16px);
+  }
+  .plan-table thead th {
+    background: var(--elevated);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+  .plan-table tbody tr { background: var(--surface); }
+  .plan-table tbody tr:not(:last-child) td { border-bottom: 1px solid var(--border); }
+  .plan-table .plan-name { font-weight: 600; color: var(--fg); }
+  .plan-table .plan-price { font-family: var(--font-mono); color: var(--accent); white-space: nowrap; }
+  .plan-table .plan-who { color: var(--muted); }
+  .plan-note {
+    margin-top: 24px;
+    font-size: 16px;
+    color: var(--muted);
+  }
+  .plan-note b { color: var(--fg); font-weight: 500; }
+
+  /* Ask slide */
+  .ask-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 32px;
+  }
+  .ask-card {
+    padding: 36px;
+    border-radius: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+  }
+  .ask-card.primary {
+    border-color: var(--accent);
+    background: linear-gradient(135deg, rgba(26,248,255,0.08), transparent 60%);
+  }
+  .ask-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .ask-title {
+    font-size: clamp(28px, 2.6vw, 38px);
+    font-weight: 700;
+    color: var(--fg);
+    letter-spacing: -0.025em;
+    margin-bottom: 12px;
+    line-height: 1.05;
+  }
+  .ask-body {
+    font-size: clamp(14px, 1.2vw, 17px);
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* Contact slide */
+  .contact-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 28px;
+    max-width: 700px;
+  }
+  .contact-row {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .contact-row .label {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--dim);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    width: 120px;
+  }
+  .contact-row .val {
+    font-family: var(--font-mono);
+    font-size: clamp(16px, 1.5vw, 22px);
+    color: var(--fg);
+  }
+  .contact-row .val .accent { color: var(--accent); }
+
+  /* Navigation */
+  .nav {
+    position: fixed;
+    bottom: 28px;
+    right: 32px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--dim);
+    z-index: 10;
+    letter-spacing: 0.1em;
+  }
+  .nav-dots {
+    display: flex;
+    gap: 6px;
+  }
+  .nav-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--border-strong);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .nav-dot.active { background: var(--accent); }
+  .nav-dot:hover { background: var(--muted); }
+
+  /* Presenter notes */
+  .notes {
+    position: fixed;
+    bottom: 80px;
+    left: 32px;
+    right: 32px;
+    max-width: 720px;
+    padding: 20px 24px;
+    border-radius: 10px;
+    background: rgba(0,0,0,0.65);
+    border: 1px solid var(--border-strong);
+    backdrop-filter: blur(12px);
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--muted);
+    z-index: 9;
+    display: none;
+  }
+  .notes.visible { display: block; }
+  .notes .notes-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  /* Help overlay (initial) */
+  .help {
+    position: fixed;
+    top: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(10px);
+    padding: 10px 18px;
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    z-index: 20;
+    border: 1px solid var(--border-strong);
+    transition: opacity 0.6s;
+  }
+  .help.fade { opacity: 0; pointer-events: none; }
+  .help kbd {
+    display: inline-block;
+    padding: 2px 6px;
+    margin: 0 2px;
+    background: var(--surface);
+    border-radius: 4px;
+    border: 1px solid var(--border-strong);
+    color: var(--fg);
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+
+  /* Print / export */
+  @media print {
+    html, body { overflow: visible; }
+    .slide { display: flex !important; page-break-after: always; height: 100vh; }
+    .nav, .notes, .help { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="deck">
+
+  <!-- ========== SLIDE 1 — TITLE ========== -->
+  <section class="slide active title-slide" data-slide="1">
+    <span class="slide-num mono">01 / 10</span>
+
+    <div class="title-mark">
+      <div class="title-mark-shape"></div>
+      <div class="title-mark-name">Faraday</div>
+    </div>
+
+    <div class="title-tagline">
+      Air-gapped.<br>
+      Stateless.<br>
+      <span class="accent">Open source.</span>
+    </div>
+
+    <div class="title-sub">The Solana signer that forgets when you turn it off.</div>
+
+    <div class="title-meta">
+      <div><b>Frontier Hackathon 2026</b></div>
+      <div><b>Solana</b></div>
+      <div><b>$35 in parts</b></div>
+    </div>
+
+    <div class="slide-foot">Press → to advance · N for notes</div>
+  </section>
+
+  <!-- ========== SLIDE 2 — PROBLEM ========== -->
+  <section class="slide" data-slide="2">
+    <div class="slide-mark"><span class="mark-dot"></span> Faraday</div>
+    <span class="slide-num mono">02 / 10</span>
+
+    <div class="eyebrow">The Problem</div>
+
+    <div class="problem-list">
+      <div class="row"><span class="em">AI will break all connected security</span> — autonomous agents, machine speed.</div>
+      <div class="row dim">Hot wallets are attack surfaces.</div>
+      <div class="row dim">You sign blind — no way to know what you are really approving.</div>
+      <div class="row dim">Even hardware wallets still make you sign blind.</div>
+      <div class="row dim">People make mistakes.</div>
+      <div class="row dim">No native hardware solution exists for Solana.</div>
+    </div>
+
+    <div class="problem-close">Every signer today is vulnerable.</div>
+
+    <div class="slide-foot">02 — The Problem</div>
+  </section>
+
+  <!-- ========== SLIDE 3 — COST ========== -->
+  <section class="slide" data-slide="3">
+    <div class="slide-mark"><span class="mark-dot"></span> Faraday</div>
+    <span class="slide-num mono">03 / 10</span>
+
+    <div class="eyebrow">The Cost · Real Losses</div>
+    <h2>This isn't theoretical.</h2>
+
+    <div class="cost-grid">
+      <div class="cost-card headline">
+        <div class="cost-eyebrow">April 2026 — 26 days ago</div>
+        <div class="cost-figure">$285,000,000</div>
+        <div class="cost-label">Drift Protocol drained. Two of five multisig signers tricked into approving what they could not read. Second-largest hack in Solana history.</div>
+        <div class="cost-source">Sources: Bloomberg · Chainalysis · TRM Labs · BlockSec</div>
+      </div>
+
+      <div class="cost-card">
+        <div class="cost-eyebrow">2025 — Address Poisoning</div>
+        <div class="cost-figure">$3.4B</div>
+        <div class="cost-label">Stolen across the ecosystem from 80,000 victims.</div>
+      </div>
+
+      <div class="cost-card">
+        <div class="cost-eyebrow">December 2025 — One Click</div>
+        <div class="cost-figure">$50M</div>
+        <div class="cost-label">A single trader copying the wrong address from history.</div>
+      </div>
+    </div>
+
+    <div class="slide-foot">03 — The Cost</div>
+  </section>
+
+  <!-- ========== SLIDE 4 — SOLUTION ========== -->
+  <section class="slide" data-slide="4">
+    <div class="slide-mark"><span class="mark-dot"></span> Faraday</div>
+    <span class="slide-num mono">04 / 10</span>
+
+    <div class="eyebrow">The Solution</div>
+    <h2>Faraday is a signer.<br><span style="color:var(--muted)">Not a wallet. A signer.</span></h2>
+
+    <div class="rules">
+      <div class="rule">
+        <div class="rule-num">Rule 01</div>
+        <div class="rule-title">Always offline</div>
+        <div class="rule-body">No USB. No WiFi. No Bluetooth. Transactions move in and out only as QR codes. A fully infected computer cannot reach it.</div>
+      </div>
+      <div class="rule">
+        <div class="rule-num">Rule 02</div>
+        <div class="rule-title">Stateless</div>
+        <div class="rule-body">No keys when off. You bring your seed. The device signs. You turn it off. The device forgets. Nothing to steal — even if someone takes it.</div>
+      </div>
+      <div class="rule">
+        <div class="rule-num">Rule 03</div>
+        <div class="rule-title">Open source</div>
+        <div class="rule-body">All firmware, all hardware. Anyone audits. Anyone builds. You don't trust us — you check.</div>
+      </div>
+    </div>
+
+    <div class="slide-foot">04 — The Solution</div>
+  </section>
+
+  <!-- ========== SLIDE 5 — STACK ========== -->
+  <section class="slide" data-slide="5">
+    <div class="slide-mark"><span class="mark-dot"></span> Faraday</div>
+    <span class="slide-num mono">05 / 10</span>
+
+    <div class="eyebrow">The Full Stack</div>
+    <h2>Four parts.<br><span class="accent">All shipping.</span></h2>
+
+    <div class="stack-grid">
+      <div class="stack-card">
+        <svg class="stack-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="4" y="3" width="16" height="18" rx="2" />
+          <rect x="8" y="7" width="8" height="6" rx="1" />
+          <circle cx="12" cy="17" r="1.2" fill="currentColor" />
+        </svg>
+        <div class="stack-name">The signer</div>
+        <div class="stack-desc">Pi Zero, camera, display, buttons. Open source firmware in Rust. $35 in parts.</div>
+      </div>
+
+      <div class="stack-card">
+        <svg class="stack-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="4" width="18" height="14" rx="2" />
+          <path d="M3 8h18" />
+          <circle cx="6.5" cy="6" r="0.8" fill="currentColor" />
+        </svg>
+        <div class="stack-name">Browser extension</div>
+        <div class="stack-desc">Talks Wallet Standard. Works with Phantom, Squads, Jupiter, Drift, every Solana app.</div>
+      </div>
+
+      <div class="stack-card">
+        <svg class="stack-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <path d="M3 9h18 M9 21V9" />
+        </svg>
+        <div class="stack-name">Team dashboard</div>
+        <div class="stack-desc">Multisig payroll. Each approver verifies and signs on their own Faraday. Plain English on glass.</div>
+      </div>
+
+      <div class="stack-card">
+        <svg class="stack-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M5 9a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v0a4 4 0 0 1-4 4h-2" />
+          <path d="M19 15a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4v0a4 4 0 0 1 4-4h2" />
+        </svg>
+        <div class="stack-name">Reverse indexer</div>
+        <div class="stack-desc">Cloudflare worker that maps members to multisigs in &lt;100ms. Closes a gap Squads itself doesn't fill.</div>
+      </div>
+    </div>
+
+    <div class="stack-flow">device  ⇆  extension  ⇆  dashboard  ⇆  indexer</div>
+
+    <div class="slide-foot">05 — The Stack</div>
+  </section>
+
+  <!-- ========== SLIDE 6 — BUILT RIGHT ========== -->
+  <section class="slide" data-slide="6">
+    <div class="slide-mark"><span class="mark-dot"></span> Faraday</div>
+    <span class="slide-num mono">06 / 10</span>
+
+    <div class="eyebrow">Built Right</div>
+    <h2>The way critical infrastructure should be built.</h2>
+
+    <div class="pillars">
+      <div class="pillar">
+        <div class="pillar-title">Built in <span class="accent">Rust</span></div>
+        <ul>
+          <li>Memory-safe by default</li>
+          <li>No buffer overflows. No undefined behavior.</li>
+          <li>Same language Solana itself runs</li>
+          <li>Faster, smaller, harder to break than C</li>
+        </ul>
+      </div>
+
+      <div class="pillar">
+        <div class="pillar-title"><span class="accent">Off-the-shelf</span> hardware</div>
+        <ul>
+          <li>Raspberry Pi Zero</li>
+          <li>Display, camera, buttons</li>
+          <li>$35 in commodity parts</li>
+          <li>No custom silicon. No vendor lock.</li>
+        </ul>
+      </div>
+
+      <div class="pillar">
+        <div class="pillar-title"><span class="accent">Open source</span>, top to bottom</div>
+        <ul>
+          <li>Every line of firmware on GitHub</li>
+          <li>Every component you can buy yourself</li>
+          <li>Anyone audits. Anyone builds.</li>
+          <li>You verify. You don't trust us.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="slide-foot">06 — Built Right</div>
+  </section>
+
+  <!-- ========== SLIDE 7 — DEMO ========== -->
+  <section class="slide" data-slide="7">
+    <div class="slide-mark"><span class="mark-dot"></span> Faraday</div>
+    <span class="slide-num mono">07 / 10</span>
+
+    <div class="eyebrow">Demo · What works today</div>
+    <h2>End-to-end on Solana mainnet.</h2>
+
+    <div class="demo-hero">
+      <div class="demo-row">
+        <div class="demo-step">01</div>
+        <div class="demo-label">HR builds payroll batch in the dashboard</div>
+        <div class="demo-status">✓ shipping</div>
+      </div>
+      <div class="demo-row">
+        <div class="demo-step">02</div>
+        <div class="demo-label">Each approver scans a QR with their Faraday</div>
+        <div class="demo-status">✓ shipping</div>
+      </div>
+      <div class="demo-row">
+        <div class="demo-step">03</div>
+        <div class="demo-label">Device shows the transaction in plain English</div>
+        <div class="demo-status">✓ shipping</div>
+      </div>
+      <div class="demo-row">
+        <div class="demo-step">04</div>
+        <div class="demo-label">Approver signs offline, scans response back</div>
+        <div class="demo-status">✓ shipping</div>
+      </div>
+      <div class="demo-row">
+        <div class="demo-step">05</div>
+        <div class="demo-label">Threshold met → payment executes on-chain</div>
+        <div class="demo-status">✓ shipping</div>
+      </div>
+
+      <div class="demo-cap">
+        Verified live: a <b>2-of-3 multisig</b> created and a real payment executed end-to-end through the Faraday stack. Every step rendered in plain English on the device.
+      </div>
+    </div>
+
+    <div class="slide-foot">07 — Demo</div>
+  </section>
+
+  <!-- ========== SLIDE 8 — WHY NOW ========== -->
+  <section class="slide" data-slide="8">
+    <div class="slide-mark"><span class="mark-dot"></span> Faraday</div>
+    <span class="slide-num mono">08 / 10</span>
+
+    <div class="eyebrow">Why Now</div>
+    <h2>The moment is right here.</h2>
+
+    <div class="why-list">
+      <div class="why-card">
+        <div>
+          <div class="why-stat">$10B+</div>
+          <div class="why-cap">already secured by Squads multisigs across 300+ teams. Every signer on every multisig is exposed today.</div>
+        </div>
+      </div>
+      <div class="why-card">
+        <div>
+          <div class="why-stat">26 days</div>
+          <div class="why-cap">since the Drift hack. Solana Foundation has launched a security overhaul in response. The whole ecosystem is asking the same question.</div>
+        </div>
+      </div>
+      <div class="why-card">
+        <div>
+          <div class="why-stat">$3.4B / yr</div>
+          <div class="why-cap">drained through address poisoning alone. AI agents are running these attacks 24/7, and getting smarter.</div>
+        </div>
+      </div>
+      <div class="why-card">
+        <div>
+          <div class="why-stat">0</div>
+          <div class="why-cap">Solana-native signers exist. Ledger and Trezor were built for Bitcoin. The category is empty.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-foot">08 — Why Now</div>
+  </section>
+
+  <!-- ========== SLIDE 9 — BUSINESS PLAN ========== -->
+  <section class="slide" data-slide="9">
+    <div class="slide-mark"><span class="mark-dot"></span> Faraday</div>
+    <span class="slide-num mono">09 / 10</span>
+
+    <div class="eyebrow">Business Plan</div>
+    <h2>Devices and software, sold together.</h2>
+
+    <table class="plan-table">
+      <thead>
+        <tr><th>Plan</th><th>For</th><th>Price</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="plan-name">Build it yourself</td>
+          <td class="plan-who">Developers, auditors, individuals who want to verify</td>
+          <td class="plan-price">Free firmware<br>~$35 in parts</td>
+        </tr>
+        <tr>
+          <td class="plan-name">Faraday Personal</td>
+          <td class="plan-who">Individual users, validators, large holders</td>
+          <td class="plan-price">$129 one-time</td>
+        </tr>
+        <tr>
+          <td class="plan-name">Faraday Team</td>
+          <td class="plan-who">Solana-native companies, DAOs, foundations</td>
+          <td class="plan-price">$129 / signer<br>+ $49 / month</td>
+        </tr>
+        <tr>
+          <td class="plan-name">Faraday Plus</td>
+          <td class="plan-who">Larger teams: scheduled payments, custom flows, priority support</td>
+          <td class="plan-price">$129 / signer<br>+ $199 / month</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="plan-note">
+      <b>Open source firmware drives trust.</b> The team subscription compounds — 1,000 paying teams = ~$590k recurring revenue. Solana already has 300+ Squads teams growing fast.
+    </div>
+
+    <div class="slide-foot">09 — Business Plan</div>
+  </section>
+
+  <!-- ========== SLIDE 10 — ASK + CONTACT ========== -->
+  <section class="slide" data-slide="10">
+    <div class="slide-mark"><span class="mark-dot"></span> Faraday</div>
+    <span class="slide-num mono">10 / 10</span>
+
+    <div class="eyebrow">The Ask</div>
+    <h2>Help us secure Solana's signing surface.</h2>
+
+    <div class="ask-grid">
+      <div class="ask-card primary">
+        <div class="ask-eyebrow">Frontier 2026</div>
+        <div class="ask-title">Grand Champion.</div>
+        <div class="ask-body">No other entry ships secure custody hardware for Solana. We do — today, end-to-end, on-chain proven.</div>
+      </div>
+      <div class="ask-card">
+        <div class="ask-eyebrow">Design partners</div>
+        <div class="ask-title">Five Solana teams.</div>
+        <div class="ask-body">Solana-native companies running multisig payroll. We bring devices and the dashboard. You bring real signing volume to harden against.</div>
+      </div>
+    </div>
+
+    <div class="contact-list">
+      <div class="contact-row">
+        <div class="label">GitHub</div>
+        <div class="val">github.com/<span class="accent">nseguias/faraday</span></div>
+      </div>
+      <div class="contact-row">
+        <div class="label">Web</div>
+        <div class="val">faraday<span class="accent">.signer</span></div>
+      </div>
+      <div class="contact-row">
+        <div class="label">Contact</div>
+        <div class="val">nahem<span class="accent">@</span>faraday.signer</div>
+      </div>
+    </div>
+
+    <div class="slide-foot">10 — Thank you</div>
+  </section>
+
+</div>
+
+<!-- Navigation -->
+<nav class="nav">
+  <span id="counter">01 / 10</span>
+  <div class="nav-dots" id="dots"></div>
+</nav>
+
+<!-- Presenter notes -->
+<aside class="notes" id="notes">
+  <div class="notes-eyebrow">Presenter Notes</div>
+  <div id="notes-body"></div>
+</aside>
+
+<!-- Help banner -->
+<div class="help" id="help">
+  <kbd>←</kbd><kbd>→</kbd> navigate · <kbd>N</kbd> notes · <kbd>F</kbd> fullscreen · <kbd>P</kbd> print
+</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll(".slide"));
+  const total = slides.length;
+  let current = 0;
+
+  // Presenter notes — keyed by slide number
+  const NOTES = {
+    1: "Open with quiet confidence. Pause after the tagline. The audience just heard 'air-gapped, stateless, open source' — let it land for two beats before moving. Avoid reading the slide.",
+    2: "Read the lines slowly. Each one is a separate beat. The closing line — 'Every signer today is vulnerable' — should land like a verdict.",
+    3: "These are real public losses with real sources. Pause on $285M. Mention 'two of five signers' — that's the part that should chill the room. Drift used hardware wallets. The hardware did not save them.",
+    4: "Most important slide. Stress the difference between SIGNER and WALLET. A wallet stores keys. A signer signs and forgets. That's why even physically stealing a Faraday gets you nothing.",
+    5: "Walk left to right. The bottom flow line ('device ⇆ extension ⇆ dashboard ⇆ indexer') is the one-sentence summary of what nobody else has shipped.",
+    6: "This is the credibility slide. Rust matters: it's the same language as Solana itself, it's memory-safe, and it's faster than the C in Ledger/Trezor firmware. Off-the-shelf parts mean no supply-chain attacks via custom silicon.",
+    7: "If you can show a 30-second demo video here, do. Otherwise: walk the steps. Emphasize 'live, on Solana mainnet' — most hackathon submissions are figma + a Vercel link.",
+    8: "Connect the dots. Squads = $10B exposed. Drift = the proof point. AI = the trend line. Empty category = our window. Each card is one sentence.",
+    9: "Two products in one company. Hardware drives trust. Subscription compounds. The math at the bottom is enough — don't over-explain.",
+    10: "Be direct. We're asking for the Grand Champion and five design partners. Pause. Say thank you. Don't apologize for asking."
+  };
+
+  const counter = document.getElementById("counter");
+  const dotsEl = document.getElementById("dots");
+  const notesEl = document.getElementById("notes");
+  const notesBody = document.getElementById("notes-body");
+  const help = document.getElementById("help");
+
+  // Build dots
+  slides.forEach((_, i) => {
+    const d = document.createElement("div");
+    d.className = "nav-dot" + (i === 0 ? " active" : "");
+    d.addEventListener("click", () => go(i));
+    dotsEl.appendChild(d);
+  });
+
+  function go(i) {
+    if (i < 0 || i >= total) return;
+    slides[current].classList.remove("active");
+    slides[i].classList.add("active");
+    dotsEl.children[current].classList.remove("active");
+    dotsEl.children[i].classList.add("active");
+    current = i;
+    counter.textContent = String(i + 1).padStart(2, "0") + " / " + String(total).padStart(2, "0");
+    notesBody.textContent = NOTES[i + 1] || "";
+  }
+
+  // Hide help after 4s
+  setTimeout(() => help.classList.add("fade"), 4000);
+
+  // Keyboard
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") { e.preventDefault(); go(current + 1); }
+    else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); go(current - 1); }
+    else if (e.key === "Home") { go(0); }
+    else if (e.key === "End") { go(total - 1); }
+    else if (e.key === "n" || e.key === "N") { notesEl.classList.toggle("visible"); }
+    else if (e.key === "f" || e.key === "F") {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+      else document.exitFullscreen();
+    }
+    else if (e.key === "p" || e.key === "P") { window.print(); }
+  });
+
+  // Init
+  notesBody.textContent = NOTES[1];
+</script>
+</body>
+</html>

@@ -75,6 +75,9 @@ impl App {
                 rolls,
                 selected,
             } => draw_dice_rolls(display, *word_count, rolls, *selected, self.seed_loaded()),
+            Screen::CreateBackupWarning { selected, .. } => {
+                draw_create_backup_warning(display, *selected)
+            }
             Screen::CreateShowWords {
                 mnemonic,
                 page,
@@ -498,9 +501,11 @@ fn draw_invalid_mnemonic<D: DrawTarget<Color = Rgb565>>(
         CardRow::new("CHECK", "BIP39 failed"),
     ];
     let body = [
-        "Those words do not form",
-        "a valid recovery seed.",
-        "Check spelling and order.",
+        "Those words don't",
+        "form a valid seed.",
+        "",
+        "Check spelling",
+        "and the order.",
     ];
 
     CardScreen {
@@ -528,9 +533,11 @@ fn draw_derivation_error<D: DrawTarget<Color = Rgb565>>(
         CardRow::new("CAUSE", "HMAC / crypto lib"),
     ];
     let body = [
-        "Key derivation failed.",
-        "This should never happen.",
-        "Please report this error.",
+        "Key derivation",
+        "failed.",
+        "",
+        "Should not happen.",
+        "Please report this.",
     ];
 
     CardScreen {
@@ -737,13 +744,12 @@ fn draw_export_seed_qr_menu<D: DrawTarget<Color = Rgb565>>(
     use crate::ui::{screens::ListScreen, Theme};
 
     let theme = Theme::faraday_240();
-    let rows: [ListRow; 4] = [
+    let rows: [ListRow; 3] = [
+        ListRow::with_subtitle("PAPER BACKUP", "Transcribe QR blocks"),
         ListRow::with_subtitle("SHOW WORDS", "Read the seed aloud"),
-        ListRow::with_subtitle("PAPER BACKUP", "Transcribe as QR blocks"),
-        ListRow::with_subtitle("VERIFY", "Scan a paper SeedQR"),
         ListRow::with_subtitle("BACK", "Return to menu"),
     ];
-    let sel = selected.min(3);
+    let sel = selected.min(2);
 
     ListScreen {
         header: HeaderKind::Title(title),
@@ -849,8 +855,8 @@ fn draw_passphrase_prompt<D: DrawTarget<Color = Rgb565>>(
 
     let theme = Theme::faraday_240();
     let rows: [ListRow; 2] = [
-        ListRow::with_subtitle("SKIP", "No passphrase"),
-        ListRow::with_subtitle("ADD", "Extra security layer"),
+        ListRow::with_subtitle("SKIP", "Words only"),
+        ListRow::with_subtitle("ENCRYPT", "Extra security"),
     ];
     let sel = selected.min(1);
 
@@ -2003,8 +2009,7 @@ fn draw_show_address<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     address: Option<&str>,
 ) -> Result<(), D::Error> {
-    use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
-    use crate::ui::{screens::CardScreen, Theme};
+    use crate::ui::Theme;
 
     let theme = Theme::faraday_240();
 
@@ -2030,52 +2035,186 @@ fn draw_show_address<D: DrawTarget<Color = Rgb565>>(
             .draw(display, &theme, screen)
         }
         None => {
-            // No wallet loaded — card with a single info row.
-            let rows: [CardRow; 1] = [CardRow::new("STATUS", "No wallet loaded")];
-            CardScreen {
-                header: HeaderKind::Title("ADDRESS"),
-                counter: None,
-                right_label: None,
-                title: Some("NO WALLET"),
-                subtitle: Some("Create or load one first"),
-                body_lines: &[],
-                rows: &rows,
-                title_danger: false,
-                edge_hints: EdgeHints::new().k3(EdgeIcon::ArrowLeft),
-            }
-            .draw(display, &theme)
+            // No wallet loaded — chunky alert: "!" sigil + NO WALLET title.
+            draw_no_wallet_alert(display, "ADDRESS", "Create or load a", "wallet to view.")
         }
     }
 }
 
-/// About screen. Card register — hero title + key/value reference rows.
+/// About screen. Hero block uses the full pixel-art Faraday logo (mark +
+/// wordmark) instead of plain text, then a muted subtitle, then key/value
+/// reference rows.
 fn draw_about<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     _seed_loaded: bool,
 ) -> Result<(), D::Error> {
-    use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
-    use crate::ui::{screens::CardScreen, Theme};
+    use crate::gui::logo;
+    use crate::ui::layout::split_top;
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::Theme;
 
     let theme = Theme::faraday_240();
-    let rows: [CardRow; 4] = [
-        CardRow::new("VERSION", "v0.1.0"),
-        CardRow::new("NETWORK", "Solana"),
-        CardRow::new("HARDWARE", "Pi Zero 1.3"),
-        CardRow::new("KEYS", "RAM only"),
-    ];
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
+    display.fill_solid(&screen, theme.bg)?;
 
-    CardScreen {
-        header: HeaderKind::Title("ABOUT"),
+    let (header_rect, body_rect) = split_top(screen, theme.header_h as i32);
+
+    Header {
+        kind: HeaderKind::Title("ABOUT"),
         counter: None,
         right_label: None,
-        title: Some("FARADAY"),
-        subtitle: Some("Air-gapped Solana signer"),
-        body_lines: &[],
-        rows: &rows,
-        title_danger: false,
-        edge_hints: EdgeHints::new().k3(EdgeIcon::ArrowLeft),
     }
-    .draw(display, &theme)
+    .draw(display, &theme, header_rect)?;
+
+    let body_inner = Rectangle::new(
+        body_rect.top_left,
+        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),
+    );
+    let left_x = body_inner.top_left.x + theme.space_md;
+    let right_x = body_inner.top_left.x + body_inner.size.width as i32 - theme.space_md;
+    let center_x = body_inner.top_left.x + body_inner.size.width as i32 / 2;
+
+    // Hero: full logo (mark + FARADAY wordmark) at scale 3 — same scale
+    // we use on the splash so the "ABOUT" screen reads as the brand.
+    let logo_scale: u32 = 3;
+    let logo_w = (logo::LOGO_WIDTH * logo_scale) as i32;
+    let logo_h = (logo::LOGO_HEIGHT * logo_scale) as i32;
+    let logo_x = body_inner.top_left.x + (body_inner.size.width as i32 - logo_w) / 2;
+    let logo_y = body_inner.top_left.y + 18;
+    logo::draw_logo(display, logo_x, logo_y, logo_scale, theme.accent)?;
+
+    // Subtitle, centered under the logo.
+    let sub_y = logo_y + logo_h + 22;
+    Text::with_alignment(
+        "Air-gapped signer",
+        Point::new(center_x, sub_y),
+        theme.style_sm(theme.muted),
+        Alignment::Center,
+    )
+    .draw(display)?;
+
+    // Divider — same 1px hairline used by the Card widget.
+    let div_y = sub_y + 12;
+    Rectangle::new(
+        Point::new(body_inner.top_left.x, div_y),
+        Size::new(body_inner.size.width, 1),
+    )
+    .into_styled(PrimitiveStyle::with_fill(theme.border))
+    .draw(display)?;
+
+    // Key/value rows below.
+    let rows = [
+        ("VERSION", "v0.1.0"),
+        ("NETWORK", "Solana"),
+        ("HARDWARE", "Pi Zero 1.3"),
+        ("KEYS", "RAM only"),
+    ];
+    let rows_top = div_y + theme.space_md;
+    let remaining_h = body_inner.top_left.y + body_inner.size.height as i32 - rows_top;
+    let row_h = remaining_h / rows.len() as i32;
+    for (i, (label, value)) in rows.iter().enumerate() {
+        let baseline = rows_top + row_h * i as i32 + row_h / 2 + 6;
+        Text::with_alignment(
+            label,
+            Point::new(left_x, baseline),
+            theme.style_sm(theme.dim),
+            Alignment::Left,
+        )
+        .draw(display)?;
+        Text::with_alignment(
+            value,
+            Point::new(right_x, baseline),
+            theme.style_sm(theme.text),
+            Alignment::Right,
+        )
+        .draw(display)?;
+    }
+
+    let gutter = Rectangle::new(
+        Point::new(theme.width as i32 - GUTTER_W as i32, theme.header_h as i32),
+        Size::new(GUTTER_W, theme.height - theme.header_h),
+    );
+    EdgeHints::new()
+        .k3(EdgeIcon::ArrowLeft)
+        .draw(display, &theme, gutter)?;
+
+    Ok(())
+}
+
+/// First-time create-flow backup warning. Shown immediately after entropy
+/// is collected and the mnemonic is generated, before any plaintext word is
+/// rendered. Top third holds the pen-and-paper instruction; bottom two
+/// thirds hold the binary choice (CANCEL / I UNDERSTAND). Default
+/// selection is CANCEL.
+fn draw_create_backup_warning<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    selected: usize,
+) -> Result<(), D::Error> {
+    use crate::ui::layout::split_top;
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, List, ListRow, GUTTER_W};
+    use crate::ui::Theme;
+
+    let theme = Theme::faraday_240();
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
+    display.fill_solid(&screen, theme.bg)?;
+
+    let (header_rect, body_rect) = split_top(screen, theme.header_h as i32);
+
+    Header {
+        kind: HeaderKind::Title("BACKUP SEED"),
+        counter: None,
+        right_label: None,
+    }
+    .draw(display, &theme, header_rect)?;
+
+    // Reserve right gutter for the K1/K3 hints; rows + text live in the
+    // remaining width.
+    let body_inner = Rectangle::new(
+        body_rect.top_left,
+        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),
+    );
+
+    // Top third: instruction. Lines fit in ~20 chars at style_sm (mono
+    // profont17, ~9px wide) inside the inner body width minus left padding.
+    let third = body_inner.size.height as i32 / 3;
+    let (text_rect, list_rect) = split_top(body_inner, third);
+
+    let left_x = text_rect.top_left.x + theme.space_md;
+    let mut y = text_rect.top_left.y + 18;
+    for line in &["You need pen and", "paper to write the", "following words."] {
+        Text::with_alignment(
+            line,
+            Point::new(left_x, y),
+            theme.style_sm(theme.text),
+            Alignment::Left,
+        )
+        .draw(display)?;
+        y += 18;
+    }
+
+    // Bottom two thirds: binary choice.
+    let rows: [ListRow; 2] = [
+        ListRow::with_subtitle("CANCEL", "Go back"),
+        ListRow::with_subtitle("I UNDERSTAND", "Show the words"),
+    ];
+    List {
+        items: &rows,
+        selected: selected.min(1),
+        max_visible: 2,
+        selectable: true,
+    }
+    .draw(display, &theme, list_rect)?;
+
+    let gutter = Rectangle::new(
+        Point::new(theme.width as i32 - GUTTER_W as i32, theme.header_h as i32),
+        Size::new(GUTTER_W, theme.height - theme.header_h),
+    );
+    EdgeHints::new()
+        .k1(EdgeIcon::Check)
+        .k3(EdgeIcon::ArrowLeft)
+        .draw(display, &theme, gutter)?;
+
+    Ok(())
 }
 
 /// Seed-export warning. Shown before the SeedQR to force the user to
@@ -2230,23 +2369,94 @@ fn draw_word_picker_new<D: DrawTarget<Color = Rgb565>>(
 
 /// "Load a wallet first" — user hit SIGN on the main menu without a seed.
 fn draw_sign_no_wallet<D: DrawTarget<Color = Rgb565>>(display: &mut D) -> Result<(), D::Error> {
-    use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
-    use crate::ui::{screens::CardScreen, Theme};
+    draw_no_wallet_alert(display, "SIGN", "Create or load a", "wallet to sign.")
+}
+
+/// Shared "no wallet" alert — chunky exclamation sigil + danger-coloured
+/// "NO WALLET" title + two short body lines. Used by SIGN and ADDRESS
+/// when the user reaches a wallet-required screen with no seed loaded.
+fn draw_no_wallet_alert<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    header_title: &str,
+    body_l1: &str,
+    body_l2: &str,
+) -> Result<(), D::Error> {
+    use crate::ui::layout::split_top;
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::Theme;
+
     let theme = Theme::faraday_240();
-    let body = ["Create or load a wallet", "before signing."];
-    let rows: [CardRow; 0] = [];
-    CardScreen {
-        header: HeaderKind::Title("SIGN"),
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
+    display.fill_solid(&screen, theme.bg)?;
+
+    let (header_rect, body_rect) = split_top(screen, theme.header_h as i32);
+
+    Header {
+        kind: HeaderKind::Title(header_title),
         counter: None,
         right_label: None,
-        title: Some("NO WALLET"),
-        subtitle: Some("Nothing to sign with"),
-        body_lines: &body,
-        rows: &rows,
-        title_danger: false,
-        edge_hints: EdgeHints::new().k3(EdgeIcon::ArrowLeft),
     }
-    .draw(display, &theme)
+    .draw(display, &theme, header_rect)?;
+
+    let body_inner = Rectangle::new(
+        body_rect.top_left,
+        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),
+    );
+    let cx = body_inner.top_left.x + body_inner.size.width as i32 / 2;
+
+    // Chunky "!" sigil — vertical bar over a square dot, in danger red.
+    // Hand-drawn rectangles instead of a glyph so the icon reads as a
+    // visual alert weight, not a typographic one.
+    let sigil_w: i32 = 12;
+    let sigil_top = body_inner.top_left.y + 24;
+    let bar_h: i32 = 44;
+    let dot_gap: i32 = 8;
+    let dot_h: i32 = 12;
+    let sigil_x = cx - sigil_w / 2;
+
+    Rectangle::new(
+        Point::new(sigil_x, sigil_top),
+        Size::new(sigil_w as u32, bar_h as u32),
+    )
+    .into_styled(PrimitiveStyle::with_fill(theme.danger))
+    .draw(display)?;
+    Rectangle::new(
+        Point::new(sigil_x, sigil_top + bar_h + dot_gap),
+        Size::new(sigil_w as u32, dot_h as u32),
+    )
+    .into_styled(PrimitiveStyle::with_fill(theme.danger))
+    .draw(display)?;
+
+    let title_y = sigil_top + bar_h + dot_gap + dot_h + 30;
+    Text::with_alignment(
+        "NO WALLET",
+        Point::new(cx, title_y),
+        theme.style_lg(theme.danger),
+        Alignment::Center,
+    )
+    .draw(display)?;
+
+    let mut y = title_y + 26;
+    for line in [body_l1, body_l2] {
+        Text::with_alignment(
+            line,
+            Point::new(cx, y),
+            theme.style_sm(theme.muted),
+            Alignment::Center,
+        )
+        .draw(display)?;
+        y += 18;
+    }
+
+    let gutter = Rectangle::new(
+        Point::new(theme.width as i32 - GUTTER_W as i32, theme.header_h as i32),
+        Size::new(GUTTER_W, theme.height - theme.header_h),
+    );
+    EdgeHints::new()
+        .k3(EdgeIcon::ArrowLeft)
+        .draw(display, &theme, gutter)?;
+
+    Ok(())
 }
 
 /// Address-verification result. Shows whether the scanned address was
@@ -2349,11 +2559,15 @@ fn draw_verify_backup_success<D: DrawTarget<Color = Rgb565>>(
     use crate::ui::{screens::CardScreen, Theme};
     let theme = Theme::faraday_240();
     let subtitle = if has_passphrase {
-        "Seed + passphrase match"
+        "Seed + passphrase OK"
     } else {
-        "Seed matches this wallet"
+        "Seed matches wallet"
     };
-    let body = ["Your paper backup will", "restore this wallet."];
+    let body = [
+        "Your paper backup",
+        "will restore this",
+        "wallet.",
+    ];
     let rows: [CardRow; 0] = [];
     CardScreen {
         header: HeaderKind::Title("VERIFY BACKUP"),
