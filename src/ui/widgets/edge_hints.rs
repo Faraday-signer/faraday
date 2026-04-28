@@ -89,6 +89,15 @@ impl EdgeHints {
         theme: &Theme,
         rect: Rectangle,
     ) -> Result<(), D::Error> {
+        // Extend the rect 1px upward so the gutter's top border lands on the
+        // header's hairline rule (which sits at y = header_h - 1). Without
+        // this the two parallel borders sit one pixel apart and read as a
+        // doubled line at the junction.
+        let rect = Rectangle::new(
+            Point::new(rect.top_left.x, rect.top_left.y - 1),
+            Size::new(rect.size.width, rect.size.height + 1),
+        );
+
         // Opaque fill so the column reads as chrome on top of live camera
         // frames — same `theme.bg` as the header.
         display.fill_solid(&rect, theme.bg)?;
