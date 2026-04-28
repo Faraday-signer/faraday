@@ -91,10 +91,24 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             word_count,
             mut picker,
         } => {
-            if event == InputEvent::Back && picker.prefix.is_empty() && words.is_empty() {
-                return Screen::LoadWordCount { selected: 0 };
-            }
-            if event == InputEvent::Back && picker.prefix.is_empty() && !words.is_empty() {
+            // K3 (Back) — always navigates word-level: discards any partial
+            // prefix and either pops the previous word or exits to the word
+            // count picker. K2 (Secondary) is the in-word delete.
+            if event == InputEvent::Back {
+                if !picker.prefix.is_empty() {
+                    picker.prefix.clear();
+                    picker.cursor_row = 0;
+                    picker.cursor_col = 0;
+                    picker.snap_to_valid();
+                    return Screen::LoadEnterWords {
+                        words,
+                        word_count,
+                        picker,
+                    };
+                }
+                if words.is_empty() {
+                    return Screen::LoadWordCount { selected: 0 };
+                }
                 words.pop();
                 picker.word_index = words.len();
                 picker.words = words.clone();
@@ -104,26 +118,16 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     picker,
                 };
             }
-            if let Some(_word) = picker.handle_input(event) {
-                let entered = picker.words.clone();
-                if entered.len() == word_count {
-                    let mnemonic = entered.join(" ");
-                    if bip39::validate_mnemonic(&mnemonic) {
-                        let preview_address = match app.derive_address(&mnemonic, "") {
-                            Some(a) => a,
-                            None => return Screen::DerivationError,
-                        };
-                        return Screen::LoadFinalize {
-                            mnemonic,
-                            preview_address,
-                            selected: 0,
-                        };
-                    }
-                    // Invalid checksum — surface an error screen so the user
-                    // knows why nothing advanced.
-                    return Screen::LoadInvalidMnemonic { word_count };
-                }
-                words = entered;
+            if let Some(word) = picker.handle_input(event) {
+                // Auto-commit fired. Show the just-typed word as a brief
+                // flash; the tick handler in App::tick handles validation
+                // and routing once the flash window closes.
+                return Screen::LoadWordCommitted {
+                    just_committed: word,
+                    picker,
+                    word_count,
+                    shown_at: std::time::Instant::now(),
+                };
             }
             Screen::LoadEnterWords {
                 words,
@@ -131,6 +135,20 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 picker,
             }
         }
+
+        // Transient flash — the screen ignores all input. Tick auto-advances
+        // after ~900ms.
+        Screen::LoadWordCommitted {
+            just_committed,
+            picker,
+            word_count,
+            shown_at,
+        } => Screen::LoadWordCommitted {
+            just_committed,
+            picker,
+            word_count,
+            shown_at,
+        },
 
         Screen::LoadInvalidMnemonic { word_count } => {
             match event {

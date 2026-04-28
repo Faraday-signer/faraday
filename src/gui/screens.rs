@@ -11,7 +11,7 @@ use embedded_graphics::{
 use crate::gui::app::{App, Screen};
 use crate::gui::colors;
 use crate::gui::components::{
-    draw_char_grid, draw_option_list, draw_qr, draw_status_bar, draw_word_picker,
+    draw_char_grid, draw_option_list, draw_qr, draw_status_bar,
 };
 use crate::gui::logo;
 
@@ -185,6 +185,12 @@ impl App {
                 draw_create_word_count(display, *selected)
             }
             Screen::LoadEnterWords { picker, .. } => draw_word_picker_new(display, picker),
+            Screen::LoadWordCommitted {
+                just_committed,
+                picker,
+                word_count,
+                ..
+            } => draw_word_committed(display, just_committed, picker.words.len(), *word_count),
             Screen::LoadInvalidMnemonic { word_count } => {
                 draw_invalid_mnemonic(display, *word_count)
             }
@@ -490,22 +496,16 @@ fn draw_invalid_mnemonic<D: DrawTarget<Color = Rgb565>>(
     use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
     use crate::ui::{screens::CardScreen, Theme};
 
+    let _ = word_count;
     let theme = Theme::faraday_240();
-    let count_str = if word_count == 12 {
-        "12 WORDS"
-    } else {
-        "24 WORDS"
-    };
-    let rows: [CardRow; 2] = [
-        CardRow::new("ENTERED", count_str),
+    let rows: [CardRow; 1] = [
         CardRow::new("CHECK", "BIP39 failed"),
     ];
     let body = [
         "Those words don't",
         "form a valid seed.",
         "",
-        "Check spelling",
-        "and the order.",
+        "Try again.",
     ];
 
     CardScreen {
@@ -2286,19 +2286,16 @@ fn draw_word_picker_new<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     picker: &crate::gui::app::WordPicker,
 ) -> Result<(), D::Error> {
-    use crate::ui::layout::{split_bottom, split_top};
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, List, ListRow};
+    use crate::gui::app::{WordPicker, WORD_GRID_COLS, WORD_GRID_ROWS};
+    use crate::ui::layout::split_top;
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
     use crate::ui::Theme;
 
     let theme = Theme::faraday_240();
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
 
-    let (header_rect, rest) = split_top(screen, theme.header_h as i32);
-    // No button bar — Key3/Key1 grammar is enough; this screen has custom
-    // Left/Right (cycle letter) + Key2 (append) + Confirm (pick) semantics
-    // that on-screen labels can't capture cleanly.
-    let body_rect = rest;
+    let (header_rect, body_rect) = split_top(screen, theme.header_h as i32);
 
     Header {
         kind: HeaderKind::Title("WORD"),
@@ -2307,62 +2304,124 @@ fn draw_word_picker_new<D: DrawTarget<Color = Rgb565>>(
     }
     .draw(display, &theme, header_rect)?;
 
-    // Preview band: prefix + `[cursor]`. The cursor char gets a cyan fill
-    // behind it so it visually reads as "this is the letter you're about
-    // to add if you press Key2".
-    let preview_h = 38i32;
-    let (preview_rect, rest) = split_top(body_rect, preview_h);
-    let cx = preview_rect.top_left.x + preview_rect.size.width as i32 / 2;
-    let cy = preview_rect.top_left.y + preview_rect.size.height as i32 - 10;
-    let prefix = &picker.prefix;
-    let cursor_c = picker.current_char();
-    let composed = alloc::format!("{}{}", prefix, cursor_c);
+    // Reserve right gutter for K1/K2/K3 hints.
+    let body_inner = Rectangle::new(
+        body_rect.top_left,
+        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),
+    );
+
+    // Top band: the prefix being assembled. `_` cursor follows it so the
+    // user reads the live input as a single string.
+    let prefix_h = 36i32;
+    let (prefix_rect, grid_rect) = split_top(body_inner, prefix_h);
+    let prefix_baseline = prefix_rect.top_left.y + prefix_rect.size.height as i32 - 8;
+    let composed = alloc::format!("{}_", picker.prefix);
     Text::with_alignment(
         &composed,
-        Point::new(cx, cy),
-        theme.style_lg(theme.text),
-        Alignment::Center,
+        Point::new(prefix_rect.top_left.x + theme.space_md, prefix_baseline),
+        theme.style_lg(theme.accent),
+        Alignment::Left,
     )
     .draw(display)?;
 
-    // Filtered candidate list (lower body).
-    let filtered = picker.filtered_words();
-    let (list_rect, _footer) = split_bottom(rest, 0);
+    // 6×5 alphabet grid. Each cell is one letter; the trailing 4 cells in
+    // the last row are blank. Selected = cyan-filled; valid = bright text;
+    // dimmed = dim text (no BIP39 word starts with prefix + this letter).
+    let valid = picker.valid_letters();
+    let cell_w = grid_rect.size.width as i32 / WORD_GRID_COLS as i32;
+    let cell_h = grid_rect.size.height as i32 / WORD_GRID_ROWS as i32;
+    let grid_origin_x = grid_rect.top_left.x;
+    let grid_origin_y = grid_rect.top_left.y;
 
-    if filtered.is_empty() {
-        let fx = list_rect.top_left.x + list_rect.size.width as i32 / 2;
-        let fy = list_rect.top_left.y + list_rect.size.height as i32 / 2;
-        Text::with_alignment(
-            "no matches",
-            Point::new(fx, fy),
-            theme.style_sm(theme.dim),
-            Alignment::Center,
-        )
-        .draw(display)?;
-        return Ok(());
+    for r in 0..WORD_GRID_ROWS {
+        for c in 0..WORD_GRID_COLS {
+            let x = grid_origin_x + c as i32 * cell_w;
+            let y = grid_origin_y + r as i32 * cell_h;
+            let letter = WordPicker::cell_letter(r, c);
+            let Some(ch) = letter else {
+                continue;
+            };
+            let is_valid = valid[(ch as u8 - b'a') as usize];
+            let is_selected = r == picker.cursor_row && c == picker.cursor_col;
+
+            if is_selected && is_valid {
+                Rectangle::new(
+                    Point::new(x + 2, y + 2),
+                    Size::new((cell_w - 4) as u32, (cell_h - 4) as u32),
+                )
+                .into_styled(PrimitiveStyle::with_fill(theme.accent))
+                .draw(display)?;
+            }
+
+            let color = if is_selected && is_valid {
+                theme.bg
+            } else if is_valid {
+                theme.text
+            } else {
+                theme.dim
+            };
+            let mut buf = [0u8; 4];
+            let upper = ch.to_ascii_uppercase();
+            let s = upper.encode_utf8(&mut buf);
+            let cx = x + cell_w / 2;
+            let cy = y + cell_h / 2 + 9;
+            Text::with_alignment(
+                s,
+                Point::new(cx, cy),
+                theme.style_lg(color),
+                Alignment::Center,
+            )
+            .draw(display)?;
+        }
     }
 
-    // Build ListRows from the filtered words. Static strings from the
-    // wordlist — no allocation needed for the labels themselves.
-    let rows: Vec<ListRow> = filtered
-        .iter()
-        .map(|(_idx, word)| ListRow::new(word))
-        .collect();
-
-    let body_inset = Rectangle::new(
-        Point::new(list_rect.top_left.x, list_rect.top_left.y + theme.space_sm),
-        Size::new(
-            list_rect.size.width,
-            list_rect.size.height.saturating_sub(theme.space_sm as u32),
-        ),
+    let gutter = Rectangle::new(
+        Point::new(theme.width as i32 - GUTTER_W as i32, theme.header_h as i32),
+        Size::new(GUTTER_W, theme.height - theme.header_h),
     );
-    List {
-        items: &rows,
-        selected: picker.list_selected,
-        max_visible: 3,
-        selectable: true,
+    EdgeHints::new()
+        .k1(EdgeIcon::Check)
+        .k2(EdgeIcon::Delete)
+        .k3(EdgeIcon::ArrowLeft)
+        .draw(display, &theme, gutter)?;
+
+    Ok(())
+}
+
+/// Transient "word committed" flash. Big cyan word centered, with the
+/// "WORD N/M" counter in the header. Auto-dismissed by `App::tick`.
+fn draw_word_committed<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    word: &str,
+    committed: usize,
+    word_count: usize,
+) -> Result<(), D::Error> {
+    use crate::ui::layout::split_top;
+    use crate::ui::widgets::{Header, HeaderKind};
+    use crate::ui::Theme;
+
+    let theme = Theme::faraday_240();
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
+    display.fill_solid(&screen, theme.bg)?;
+
+    let (header_rect, body_rect) = split_top(screen, theme.header_h as i32);
+
+    Header {
+        kind: HeaderKind::Title("WORD"),
+        counter: Some((committed, word_count)),
+        right_label: None,
     }
-    .draw(display, &theme, body_inset)?;
+    .draw(display, &theme, header_rect)?;
+
+    let cx = body_rect.top_left.x + body_rect.size.width as i32 / 2;
+    let cy = body_rect.top_left.y + body_rect.size.height as i32 / 2 + 8;
+    Text::with_alignment(
+        word,
+        Point::new(cx, cy),
+        theme.style_lg(theme.accent),
+        Alignment::Center,
+    )
+    .draw(display)?;
 
     Ok(())
 }

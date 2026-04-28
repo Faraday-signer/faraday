@@ -178,6 +178,16 @@ pub enum Screen {
         word_count: usize,
         picker: WordPicker,
     },
+    /// Transient flash shown for ~1s after a word auto-commits during entry.
+    /// Tick advances to the next-word LoadEnterWords (or to the validation
+    /// branch — LoadFinalize / LoadInvalidMnemonic / DerivationError — when
+    /// this was the last word).
+    LoadWordCommitted {
+        just_committed: String,
+        picker: WordPicker,
+        word_count: usize,
+        shown_at: std::time::Instant,
+    },
     /// Transient "seed loaded" splash shown right after a successful
     /// scan / word entry. Auto-dismisses after ~1.2s in `tick()` and
     /// advances to the passphrase decision. The `shown_at` timestamp
@@ -422,10 +432,17 @@ impl CharGrid {
 }
 
 /// BIP39 word picker with prefix filtering.
+/// 6×5 alphabet keyboard for word entry. The first 26 cells (row-major)
+/// are A..Z; the last 4 cells (row 4, cols 2..5) are blank and never
+/// receive the cursor. Distinct from `GRID_COLS` / `GRID_ROWS` above,
+/// which size the passphrase `CharGrid`.
+pub const WORD_GRID_COLS: u8 = 6;
+pub const WORD_GRID_ROWS: u8 = 5;
+
 pub struct WordPicker {
     pub prefix: String,
-    pub char_cursor: u8,
-    pub list_selected: usize,
+    pub cursor_row: u8,
+    pub cursor_col: u8,
     pub word_index: usize,
     pub word_count: usize,
     pub words: Vec<String>,
@@ -433,77 +450,229 @@ pub struct WordPicker {
 
 impl WordPicker {
     pub fn new(word_count: usize) -> Self {
-        WordPicker {
+        let mut picker = WordPicker {
             prefix: String::new(),
-            char_cursor: 0,
-            list_selected: 0,
+            cursor_row: 0,
+            cursor_col: 0,
             word_index: 0,
             word_count,
             words: Vec::new(),
+        };
+        picker.snap_to_valid();
+        picker
+    }
+
+    /// Letter at grid cell (row, col), or None for the blank trailing cells.
+    pub const fn cell_letter(row: u8, col: u8) -> Option<char> {
+        let idx = row as u32 * WORD_GRID_COLS as u32 + col as u32;
+        if idx < 26 {
+            Some((b'a' + idx as u8) as char)
+        } else {
+            None
         }
     }
 
-    pub fn current_char(&self) -> char {
-        (b'a' + self.char_cursor) as char
+    /// Letter currently under the cursor, if the cursor sits on a real cell.
+    pub fn cursor_letter(&self) -> Option<char> {
+        Self::cell_letter(self.cursor_row, self.cursor_col)
     }
 
-    pub fn filtered_words(&self) -> Vec<(usize, &'static str)> {
-        let preview = format!("{}{}", self.prefix, self.current_char());
-        crate::crypto::bip39::words_with_prefix(&preview)
+    /// `[bool; 26]` — true at index `i` if at least one BIP39 word starting
+    /// with `prefix` has letter `'a' + i` at position `prefix.len()`.
+    /// I.e. "letters that, if appended next, still keep at least one
+    /// candidate alive." Any letter outside this set must be dimmed.
+    pub fn valid_letters(&self) -> [bool; 26] {
+        let mut valid = [false; 26];
+        let pos = self.prefix.len();
+        for (_, word) in crate::crypto::bip39::words_with_prefix(&self.prefix) {
+            let bytes = word.as_bytes();
+            if bytes.len() <= pos {
+                continue;
+            }
+            let next = bytes[pos];
+            if (b'a'..=b'z').contains(&next) {
+                valid[(next - b'a') as usize] = true;
+            }
+        }
+        valid
+    }
+
+    /// If the cursor is on a dimmed cell or a blank cell, jump it to the
+    /// first valid cell (row-major). Idempotent.
+    pub fn snap_to_valid(&mut self) {
+        let valid = self.valid_letters();
+        if let Some(ch) = self.cursor_letter() {
+            if valid[(ch as u8 - b'a') as usize] {
+                return;
+            }
+        }
+        for r in 0..WORD_GRID_ROWS {
+            for c in 0..WORD_GRID_COLS {
+                if let Some(ch) = Self::cell_letter(r, c) {
+                    if valid[(ch as u8 - b'a') as usize] {
+                        self.cursor_row = r;
+                        self.cursor_col = c;
+                        return;
+                    }
+                }
+            }
+        }
     }
 
     pub fn handle_input(&mut self, event: InputEvent) -> Option<String> {
+        let valid = self.valid_letters();
         match event {
-            InputEvent::Left => {
-                if self.char_cursor > 0 {
-                    self.char_cursor -= 1;
-                    self.list_selected = 0;
-                }
-            }
             InputEvent::Right => {
-                if self.char_cursor < 25 {
-                    self.char_cursor += 1;
-                    self.list_selected = 0;
-                }
+                self.move_right(&valid);
             }
-            InputEvent::Up => {
-                if self.list_selected > 0 {
-                    self.list_selected -= 1;
-                }
+            InputEvent::Left => {
+                self.move_left(&valid);
             }
-            InputEvent::Down => {
-                let filtered = self.filtered_words();
-                if self.list_selected + 1 < filtered.len() {
-                    self.list_selected += 1;
-                }
-            }
+            InputEvent::Down => self.move_vertical(&valid, /* down = */ true),
+            InputEvent::Up => self.move_vertical(&valid, /* down = */ false),
             InputEvent::Confirm => {
-                let filtered = self.filtered_words();
-                if !filtered.is_empty() && self.list_selected < filtered.len() {
-                    let word = filtered[self.list_selected].1.to_string();
-                    self.words.push(word.clone());
-                    self.word_index += 1;
-                    self.prefix.clear();
-                    self.char_cursor = 0;
-                    self.list_selected = 0;
-                    return Some(word);
+                // K1: append the highlighted letter to the prefix. If the
+                // prefix now uniquely identifies a word (typically after
+                // 3–5 letters because BIP39's first 4 chars are unique),
+                // auto-commit the full word and advance.
+                if let Some(ch) = self.cursor_letter() {
+                    if !valid[(ch as u8 - b'a') as usize] {
+                        return None;
+                    }
+                    self.prefix.push(ch);
+                    let matches = crate::crypto::bip39::words_with_prefix(&self.prefix);
+                    if matches.len() == 1 {
+                        let word = matches[0].1.to_string();
+                        self.words.push(word.clone());
+                        self.word_index += 1;
+                        self.prefix.clear();
+                        self.cursor_row = 0;
+                        self.cursor_col = 0;
+                        self.snap_to_valid();
+                        return Some(word);
+                    }
+                    self.snap_to_valid();
                 }
             }
             InputEvent::Secondary => {
-                self.prefix.push(self.current_char());
-                self.char_cursor = 0;
-                self.list_selected = 0;
-            }
-            InputEvent::Back => {
+                // K2: delete last letter.
                 if !self.prefix.is_empty() {
                     self.prefix.pop();
-                    self.char_cursor = 0;
-                    self.list_selected = 0;
+                    self.snap_to_valid();
                 }
             }
-            InputEvent::PowerOffShortcut => {}
+            InputEvent::Back | InputEvent::PowerOffShortcut => {
+                // Word-level / global navigation handled by the caller.
+            }
         }
         None
+    }
+
+    /// Walk forward, preferring within-row wrap. If the current row has no
+    /// other valid letter (so within-row wrap would leave the cursor stuck),
+    /// fall through to a row-major scan across the full grid so the user is
+    /// never trapped — they always advance to the next valid letter somewhere.
+    fn move_right(&mut self, valid: &[bool; 26]) {
+        let row_len = Self::row_letter_count(self.cursor_row);
+        if row_len > 0 {
+            for offset in 1..row_len {
+                let c = (self.cursor_col + offset) % row_len;
+                if let Some(ch) = Self::cell_letter(self.cursor_row, c) {
+                    if valid[(ch as u8 - b'a') as usize] {
+                        self.cursor_col = c;
+                        return;
+                    }
+                }
+            }
+        }
+        let total = WORD_GRID_ROWS as u32 * WORD_GRID_COLS as u32;
+        let start = self.cursor_row as u32 * WORD_GRID_COLS as u32 + self.cursor_col as u32;
+        for offset in 1..=total {
+            let idx = (start + offset) % total;
+            let r = (idx / WORD_GRID_COLS as u32) as u8;
+            let c = (idx % WORD_GRID_COLS as u32) as u8;
+            if let Some(ch) = Self::cell_letter(r, c) {
+                if valid[(ch as u8 - b'a') as usize] {
+                    self.cursor_row = r;
+                    self.cursor_col = c;
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Reverse of `move_right`: within-row wrap first, then row-major fallback.
+    fn move_left(&mut self, valid: &[bool; 26]) {
+        let row_len = Self::row_letter_count(self.cursor_row);
+        if row_len > 0 {
+            for offset in 1..row_len {
+                let c = (self.cursor_col + row_len - offset) % row_len;
+                if let Some(ch) = Self::cell_letter(self.cursor_row, c) {
+                    if valid[(ch as u8 - b'a') as usize] {
+                        self.cursor_col = c;
+                        return;
+                    }
+                }
+            }
+        }
+        let total = WORD_GRID_ROWS as u32 * WORD_GRID_COLS as u32;
+        let start = self.cursor_row as u32 * WORD_GRID_COLS as u32 + self.cursor_col as u32;
+        for offset in 1..=total {
+            let idx = (start + total - offset) % total;
+            let r = (idx / WORD_GRID_COLS as u32) as u8;
+            let c = (idx % WORD_GRID_COLS as u32) as u8;
+            if let Some(ch) = Self::cell_letter(r, c) {
+                if valid[(ch as u8 - b'a') as usize] {
+                    self.cursor_row = r;
+                    self.cursor_col = c;
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Number of real letter cells on `row`. The last row of the 6×5 grid
+    /// only carries 'y' and 'z' — the trailing 4 cells are blank and must
+    /// not participate in row-wrap.
+    fn row_letter_count(row: u8) -> u8 {
+        let mut count = 0u8;
+        for c in 0..WORD_GRID_COLS {
+            if Self::cell_letter(row, c).is_some() {
+                count += 1;
+            }
+        }
+        count
+    }
+
+    /// Move the cursor row-by-row (with wrap), preferring the same column
+    /// at the new row. If that cell is dimmed/blank, scan the new row
+    /// left-to-right for the first valid cell. If the new row is entirely
+    /// dim, advance to the next row and repeat. Always lands on something
+    /// as long as one valid letter exists.
+    fn move_vertical(&mut self, valid: &[bool; 26], down: bool) {
+        let rows = WORD_GRID_ROWS as i32;
+        for r_offset in 1..=rows {
+            let r = if down {
+                ((self.cursor_row as i32 + r_offset).rem_euclid(rows)) as u8
+            } else {
+                ((self.cursor_row as i32 - r_offset).rem_euclid(rows)) as u8
+            };
+            if let Some(ch) = Self::cell_letter(r, self.cursor_col) {
+                if valid[(ch as u8 - b'a') as usize] {
+                    self.cursor_row = r;
+                    return;
+                }
+            }
+            for c in 0..WORD_GRID_COLS {
+                if let Some(ch) = Self::cell_letter(r, c) {
+                    if valid[(ch as u8 - b'a') as usize] {
+                        self.cursor_row = r;
+                        self.cursor_col = c;
+                        return;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -706,6 +875,48 @@ impl App {
             }
         }
 
+        // Auto-dismiss the per-word commit flash. If this was the last word
+        // we either advance to LoadFinalize (valid mnemonic), LoadInvalidMnemonic
+        // (checksum failed), or DerivationError (HMAC failed). Otherwise we
+        // return to LoadEnterWords with the picker already advanced for the
+        // next word.
+        if let Screen::LoadWordCommitted { shown_at, .. } = &self.screen {
+            if shown_at.elapsed() >= std::time::Duration::from_millis(900) {
+                let taken = std::mem::replace(&mut self.screen, Screen::Splash);
+                if let Screen::LoadWordCommitted {
+                    picker, word_count, ..
+                } = taken
+                {
+                    if picker.words.len() == word_count {
+                        let mnemonic = picker.words.join(" ");
+                        if crate::crypto::bip39::validate_mnemonic(&mnemonic) {
+                            match self.derive_address(&mnemonic, "") {
+                                Some(preview_address) => {
+                                    self.screen = Screen::LoadFinalize {
+                                        mnemonic,
+                                        preview_address,
+                                        selected: 0,
+                                    };
+                                }
+                                None => {
+                                    self.screen = Screen::DerivationError;
+                                }
+                            }
+                        } else {
+                            self.screen = Screen::LoadInvalidMnemonic { word_count };
+                        }
+                    } else {
+                        let words = picker.words.clone();
+                        self.screen = Screen::LoadEnterWords {
+                            words,
+                            word_count,
+                            picker,
+                        };
+                    }
+                }
+            }
+        }
+
         let wants = self.wants_camera();
         if wants && self.camera.is_none() && self.camera_error.is_none() {
             match Camera::open() {
@@ -827,6 +1038,7 @@ impl App {
                 | Screen::LoadInvalidMnemonic { .. }
                 | Screen::LoadWordCount { .. }
                 | Screen::LoadEnterWords { .. }
+                | Screen::LoadWordCommitted { .. }
                 | Screen::LoadSeedLoaded { .. }
                 | Screen::LoadFinalize { .. }
                 | Screen::LoadPassphrasePrompt { .. }
