@@ -4,14 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BrowserQRCodeReader } from "@zxing/browser";
 import { QRCodeSVG } from "qrcode.react";
 
-import { AnimatedQr } from "../../src/components/animated-qr";
-import { FaradayLogo } from "../../src/lib/brand";
-import { sendRuntimeMessage } from "../../src/lib/runtime";
-import { FARADAY_SIG_PREFIX, spliceFaradaySignature } from "../../src/lib/solana";
-import { colors, fontFamily, font, radius, space } from "../../src/lib/theme";
-import { type TxRiskReport, type TxRiskWarning } from "../../src/lib/tx-risk";
-import type { GetSignSessionResult } from "../../src/lib/types";
-import { encodeTxForQr } from "../../src/lib/ur-encode";
+import { AnimatedQr } from "@/components/animated-qr";
+import { FaradayLogo } from "@/lib/brand";
+import { sendRuntimeMessage } from "@/lib/runtime";
+import { FARADAY_SIG_PREFIX, spliceFaradaySignature } from "@/lib/solana";
+import { colors, fontFamily, font, radius, space } from "@/lib/theme";
+import { type TxRiskReport, type TxRiskWarning } from "@/lib/tx-risk";
+import type { GetSignSessionResult } from "@/lib/types";
+import { encodeTxForQr } from "@/lib/ur-encode";
 
 type Step = "risk" | "display" | "scan";
 type ScanState = "starting" | "scanning" | "success" | "error";
@@ -72,6 +72,17 @@ function hostFromOrigin(origin: string): string {
   } catch {
     return origin;
   }
+}
+
+/**
+ * Sentinel origin used by the sidepanel's own Send flow. Mirrored from
+ * background.ts (`EXTENSION_ORIGIN`). Kept inline rather than imported
+ * because background isn't a runtime module the popup loads.
+ */
+const SIDEPANEL_ORIGIN = "ext:sidepanel";
+
+function isSidepanelOrigin(origin: string): boolean {
+  return origin === SIDEPANEL_ORIGIN;
 }
 
 function shortAddress(address: string): string {
@@ -464,7 +475,11 @@ function DisplayScreen({
       <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: space.xs }}>
         <h1 style={titleStyle}>{isMessage ? "Sign Message" : "Sign Transaction"}</h1>
         <p style={subtitleStyle}>
-          from <strong style={{ color: colors.text }}>{hostFromOrigin(session.origin)}</strong>
+          {isSidepanelOrigin(session.origin) ? (
+            <>from <strong style={{ color: colors.text }}>Faraday wallet</strong></>
+          ) : (
+            <>from <strong style={{ color: colors.text }}>{hostFromOrigin(session.origin)}</strong></>
+          )}
         </p>
         <span style={accentBadgeStyle}>{shortAddress(session.expectedPubkey)}</span>
       </div>

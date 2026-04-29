@@ -1,7 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 
-import "../../src/styles/global.css";
+import "@/styles/global.css";
 import { SidePanelApp } from "./sidepanel-app";
 
 const rootNode = document.getElementById("root");

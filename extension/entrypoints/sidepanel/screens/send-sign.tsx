@@ -1,27 +1,29 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
-import { BrandedQR } from "../../../src/components/branded-qr";
-import { LinkButton, PanelShell, PrimaryButton } from "../../../src/components/panel-shell";
-import { sendRuntimeMessage } from "../../../src/lib/runtime";
-import { useNavigation, useRouteOf } from "../../../src/lib/router";
-import { broadcastSignedTx, explorerTxUrl } from "../../../src/lib/sol-transfer";
-import { colors, fontFamily, font, letterSpacing, space } from "../../../src/lib/theme";
-import type { GetSignResult } from "../../../src/lib/types";
-import { encodeTxForQr } from "../../../src/lib/ur-encode";
+import { ErrorBanner } from "@/components/error-banner";
+import { LinkButton, PanelShell, PrimaryButton } from "@/components/panel-shell";
+import { explainBroadcastError } from "@/lib/broadcast-errors";
+import { sendRuntimeMessage } from "@/lib/runtime";
+import { useNavigation, useRouteOf } from "@/lib/router";
+import { broadcastSignedTx, buildSolTransfer, explorerTxUrl } from "@/lib/sol-transfer";
+import { colors, fontFamily, font, letterSpacing, space } from "@/lib/theme";
+import type { CreateSignSessionResult, GetSignResult } from "@/lib/types";
+import { useWallet } from "@/lib/use-wallet";
 
 const wrapStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
   padding: space.md,
-  gap: space.md
+  gap: space.md,
+  textAlign: "center"
 };
 
 const helpStyle: CSSProperties = {
   fontSize: font.sm,
   color: colors.textMuted,
   textAlign: "center",
-  maxWidth: 300,
+  maxWidth: 320,
   lineHeight: 1.5
 };
 
@@ -33,9 +35,42 @@ const metaStyle: CSSProperties = {
   textAlign: "center"
 };
 
-const errorStyle: CSSProperties = {
-  ...metaStyle,
-  color: colors.error,
+const draftHeroStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: 6,
+  paddingTop: space.sm
+};
+
+const draftAmountStyle: CSSProperties = {
+  fontFamily: fontFamily.display,
+  fontSize: font.hero,
+  letterSpacing: letterSpacing.tight,
+  color: colors.text,
+  lineHeight: 1
+};
+
+const draftSymbolStyle: CSSProperties = {
+  fontFamily: fontFamily.display,
+  fontSize: font.xl,
+  color: colors.accent,
+  letterSpacing: letterSpacing.loose,
+  marginLeft: space.xs
+};
+
+const draftRecipientStyle: CSSProperties = {
+  fontFamily: fontFamily.mono,
+  fontSize: font.sm,
+  color: colors.textMuted,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6
+};
+
+const draftArrowStyle: CSSProperties = {
+  color: colors.textDim,
+  fontFamily: fontFamily.display
 };
 
 const linkStyle: CSSProperties = {
@@ -45,84 +80,85 @@ const linkStyle: CSSProperties = {
   fontSize: font.xs,
 };
 
-type Phase = "idle" | "awaiting-scan" | "broadcasting" | "done" | "error";
+type Phase = "opening" | "awaiting-scan" | "broadcasting" | "done" | "error";
 
 const POLL_INTERVAL_MS = 500;
 
 /**
- * Extension-originated Send flow. Shows the unsigned tx as a QR for the
- * Faraday to scan, then on "Scan signed" opens the same sign window the
- * dapp path uses. Once the session completes (sign window scanned the
- * signed QR and validated it), this screen broadcasts via RPC and shows
- * the signature + explorer link.
+ * Extension-originated Send flow — popup variant.
+ *
+ * The sidepanel itself doesn't render the unsigned QR anymore. The popup at
+ * sign.html (the same one the dapp signing path uses) hosts the QR display
+ * + scan-back. This screen auto-opens that popup on mount, polls for the
+ * session result, and on success broadcasts via RPC and shows the signature.
+ *
+ * Design choice: a single signing surface for both dapps and sidepanel
+ * means one camera path, one set of QR-sizing knobs to tune, and a 480 px
+ * QR instead of the sidepanel's cramped 320 px (which the Faraday camera
+ * struggles to resolve at typical hand-held distance).
  */
 export function SendSignScreen() {
   const nav = useNavigation();
   const route = useRouteOf("send-sign");
 
-  const [phase, setPhase] = useState<Phase>("idle");
+  const wallet = useWallet();
+
+  const [phase, setPhase] = useState<Phase>("opening");
   const [error, setError] = useState<string | null>(null);
   const [signature, setSignature] = useState<string | null>(null);
-  const [qrFrameIndex, setQrFrameIndex] = useState(0);
   const pollTimerRef = useRef<number | null>(null);
+  // Tracks which sessionIds we've already opened, so a `nav.replace` from the
+  // retry path (which produces a NEW sessionId) re-fires the auto-open effect
+  // without React 19 strict-mode causing a double-fire on first mount.
+  const openedSessionsRef = useRef<Set<string>>(new Set());
+
+  function stopPolling() {
+    if (pollTimerRef.current !== null) {
+      window.clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }
 
   useEffect(() => {
     return () => {
-      if (pollTimerRef.current !== null) {
-        window.clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
+      stopPolling();
     };
   }, []);
 
-  if (!route) return null;
-  const { draft, txBase64, sessionId } = route;
-  const qrPayload = useMemo(() => encodeTxForQr(txBase64), [txBase64]);
-
+  // Auto-open the popup whenever the route's sessionId changes. The Set ref
+  // guarantees one open per sessionId — strict-mode re-mounts and route
+  // re-renders can't trigger duplicate windows.
   useEffect(() => {
-    setQrFrameIndex(0);
-    if (qrPayload.kind !== "animated") {
-      return;
-    }
-    const timer = window.setInterval(() => {
-      setQrFrameIndex((prev) => (prev + 1) % qrPayload.frames.length);
-    }, qrPayload.intervalMs);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [qrPayload]);
+    if (!route) return;
+    const id = route.sessionId;
+    if (openedSessionsRef.current.has(id)) return;
+    openedSessionsRef.current.add(id);
+    void openAndPoll(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route?.sessionId]);
 
-  const qrValue =
-    qrPayload.kind === "animated"
-      ? qrPayload.frames[qrFrameIndex] ?? qrPayload.frames[0]
-      : qrPayload.value;
-  const urSeq = (() => {
-    const match = qrValue.match(/^ur:[^/]+\/(\d+)-(\d+)\//i);
-    if (!match) {
-      return null;
-    }
-    return {
-      current: Number.parseInt(match[1], 10),
-      total: Number.parseInt(match[2], 10)
-    };
-  })();
+  if (!route) return null;
+  const { draft, sessionId } = route;
 
-  async function openSignWindowAndPoll() {
+  async function openAndPoll(id: string) {
     setError(null);
+    setPhase("opening");
+
     const open = await sendRuntimeMessage<{ opened: boolean }>({
       type: "faraday:ext-open-sign-window",
-      sessionId,
+      sessionId: id,
     });
     if (!open.ok) {
       setError(open.error);
       setPhase("error");
       return;
     }
+
     setPhase("awaiting-scan");
     pollTimerRef.current = window.setInterval(async () => {
       const result = await sendRuntimeMessage<GetSignResult>({
         type: "faraday:get-sign-result",
-        sessionId,
+        sessionId: id,
       });
       if (!result.ok) return;
       if (result.data.status === "completed" && result.data.signedTxBase64) {
@@ -134,13 +170,6 @@ export function SendSignScreen() {
         setPhase("error");
       }
     }, POLL_INTERVAL_MS);
-  }
-
-  function stopPolling() {
-    if (pollTimerRef.current !== null) {
-      window.clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
   }
 
   async function broadcast(signedTxBase64: string) {
@@ -165,6 +194,57 @@ export function SendSignScreen() {
     nav.back();
   }
 
+  /**
+   * Rebuild the unsigned tx with a fresh blockhash, register a new sign
+   * session, and replace the current route so the auto-open effect drives
+   * the rest of the flow with the new session.
+   *
+   * Why we can't just re-broadcast: the original broadcast failure here is
+   * usually a stale blockhash (-32002 with empty logs). The signed bytes
+   * already on hand still reference the expired blockhash, so re-sending
+   * them changes nothing — the device has to sign a fresh tx.
+   */
+  async function retry() {
+    if (!wallet.pairedPubkey) {
+      setError("No paired wallet to rebuild with.");
+      setPhase("error");
+      return;
+    }
+
+    setError(null);
+    setSignature(null);
+    setPhase("opening");
+    stopPolling();
+
+    try {
+      const { txBase64: newTxBase64 } = await buildSolTransfer({
+        from: wallet.pairedPubkey,
+        to: draft.recipient,
+        amountSol: draft.amountUi,
+      });
+      const res = await sendRuntimeMessage<CreateSignSessionResult>({
+        type: "faraday:ext-create-sign-session",
+        txBase64: newTxBase64,
+      });
+      if (!res.ok) {
+        setError(res.error);
+        setPhase("error");
+        return;
+      }
+      // Swap the current route with one carrying the fresh sessionId. The
+      // auto-open effect picks it up and runs the popup + poll cycle.
+      nav.replace({
+        name: "send-sign",
+        draft,
+        txBase64: newTxBase64,
+        sessionId: res.data.sessionId,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setPhase("error");
+    }
+  }
+
   // Terminal success state.
   if (phase === "done" && signature) {
     return (
@@ -182,45 +262,47 @@ export function SendSignScreen() {
     );
   }
 
-  return (
-    <PanelShell eyebrow="Sign transaction" title="Scan on Faraday">
-      <div style={wrapStyle}>
-        <BrandedQR
-          flow="sign"
-          value={qrValue}
-          size={320}
-          caption={
-            <span>
-              {draft.amountUi} {draft.symbol} → {draft.recipient.slice(0, 4)}…{draft.recipient.slice(-4)}
-            </span>
-          }
-        />
+  const errorReport = error ? explainBroadcastError(error) : null;
+  const errorBanner = errorReport ? (
+    <ErrorBanner
+      title="Signing did not complete"
+      message={errorReport.summary}
+      details={errorReport.details === errorReport.summary ? undefined : errorReport.details}
+      onRetry={phase === "error" ? retry : undefined}
+      onDismiss={() => setError(null)}
+    />
+  ) : null;
 
-        {qrPayload.kind === "animated" ? (
-          <p style={metaStyle}>
-            {urSeq ? `Animated UR part ${urSeq.current}/${urSeq.total}` : `Animated QR frame ${qrFrameIndex + 1}/${qrPayload.frames.length}`}
-          </p>
-        ) : null}
+  return (
+    <PanelShell eyebrow="Sign transaction" title="Sign on Faraday" banner={errorBanner}>
+      <div style={wrapStyle}>
+        <div style={draftHeroStyle}>
+          <div style={{ display: "flex", alignItems: "baseline" }}>
+            <span style={draftAmountStyle}>{draft.amountUi}</span>
+            <span style={draftSymbolStyle}>{draft.symbol}</span>
+          </div>
+          <div style={draftRecipientStyle}>
+            <span style={draftArrowStyle}>→</span>
+            <span>{draft.recipient.slice(0, 4)}…{draft.recipient.slice(-4)}</span>
+          </div>
+        </div>
 
         <p style={helpStyle}>
-          Hold your Faraday up to this QR, review the details on the device, and approve.
+          {phase === "opening"
+            ? "Opening signing window…"
+            : phase === "awaiting-scan"
+              ? "Hold your Faraday up to the QR in the popup. The popup will scan the signed response back automatically."
+              : phase === "broadcasting"
+                ? "Broadcasting to Solana…"
+                : phase === "error"
+                  ? "Signing did not complete."
+                  : ""}
         </p>
 
-        {phase === "awaiting-scan" ? (
-          <p style={metaStyle}>Waiting for the signed QR scan-back window…</p>
-        ) : phase === "broadcasting" ? (
-          <p style={metaStyle}>Broadcasting to Solana…</p>
-        ) : (
-          <p style={metaStyle}>After approval, scan the signed response back here.</p>
-        )}
-
-        {error && <p style={errorStyle}>{error}</p>}
-
-        {phase === "idle" || phase === "error" ? (
-          <PrimaryButton onClick={openSignWindowAndPoll}>
-            {phase === "error" ? "Retry signed scan" : "I've scanned → Scan signed"}
-          </PrimaryButton>
-        ) : null}
+        <p style={metaStyle}>
+          {phase === "awaiting-scan" ? "Waiting for signature…" : null}
+          {phase === "broadcasting" ? "Sending transaction…" : null}
+        </p>
 
         <LinkButton onClick={cancel}>Cancel</LinkButton>
       </div>

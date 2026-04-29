@@ -20,6 +20,7 @@ export type Route =
   | { name: "send-compose" }
   | { name: "send-review"; draft: SendDraft }
   | { name: "send-sign"; draft: SendDraft; txBase64: string; sessionId: string }
+  | { name: "token-detail"; mint: string }
   | { name: "settings" }
   | { name: "settings-device" }
   | { name: "settings-origins" }

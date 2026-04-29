@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 
-import { ErrorBoundary } from "../../src/components/error-boundary";
-import { sendRuntimeMessage } from "../../src/lib/runtime";
-import { NavigationProvider, useNavigation, type Route } from "../../src/lib/router";
-import type { ExtensionState } from "../../src/lib/types";
+import { ErrorBoundary } from "@/components/error-boundary";
+import { sendRuntimeMessage } from "@/lib/runtime";
+import { NavigationProvider, useNavigation, type Route } from "@/lib/router";
+import type { ExtensionState } from "@/lib/types";
 
 import { HomeScreen } from "./screens/home";
 import { OnboardingScreen } from "./screens/onboarding";
@@ -18,6 +18,7 @@ import { SettingsAboutScreen } from "./screens/settings-about";
 import { SettingsDeviceScreen } from "./screens/settings-device";
 import { SettingsNetworkScreen } from "./screens/settings-network";
 import { SettingsOriginsScreen } from "./screens/settings-origins";
+import { TokenDetailScreen } from "./screens/token-detail";
 
 function ActiveRoute() {
   const { current } = useNavigation();
@@ -48,6 +49,8 @@ function ActiveRoute() {
       return <SettingsNetworkScreen />;
     case "settings-about":
       return <SettingsAboutScreen />;
+    case "token-detail":
+      return <TokenDetailScreen />;
   }
 }
 

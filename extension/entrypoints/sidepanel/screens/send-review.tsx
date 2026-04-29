@@ -1,14 +1,15 @@
 import { useState, type CSSProperties } from "react";
 
-import { LinkButton, PanelShell, PrimaryButton } from "../../../src/components/panel-shell";
-import { sendRuntimeMessage } from "../../../src/lib/runtime";
-import { useNavigation, useRouteOf } from "../../../src/lib/router";
-import { buildSolTransfer } from "../../../src/lib/sol-transfer";
-import { RPC_URL } from "../../../src/lib/sol-client";
-import { colors, fontFamily, font, letterSpacing, radius, space } from "../../../src/lib/theme";
-import { analyzeTxRisk, type TxRiskReport, type TxRiskWarning } from "../../../src/lib/tx-risk";
-import type { CreateSignSessionResult } from "../../../src/lib/types";
-import { useWallet } from "../../../src/lib/use-wallet";
+import { ErrorBanner } from "@/components/error-banner";
+import { LinkButton, PanelShell, PrimaryButton } from "@/components/panel-shell";
+import { sendRuntimeMessage } from "@/lib/runtime";
+import { useNavigation, useRouteOf } from "@/lib/router";
+import { buildSolTransfer } from "@/lib/sol-transfer";
+import { RPC_URL } from "@/lib/sol-client";
+import { colors, fontFamily, font, letterSpacing, radius, space } from "@/lib/theme";
+import { analyzeTxRisk, type TxRiskReport, type TxRiskWarning } from "@/lib/tx-risk";
+import type { CreateSignSessionResult } from "@/lib/types";
+import { useWallet } from "@/lib/use-wallet";
 
 function shortAddress(address: string): string {
   if (address.length <= 12) return address;
@@ -238,9 +239,29 @@ export function SendReviewScreen() {
   }
 
   const isRiskPhase = (phase === "risk" || phase === "confirming") && riskReport !== null;
+  const isBusy = phase === "analyzing" || phase === "confirming";
+
+  const errorBanner = error ? (
+    <ErrorBanner
+      title="Could not prepare transaction"
+      message={error}
+      onRetry={() => {
+        // Retry the phase that failed: if we have a pending tx + risk
+        // report, we were in "confirming" → re-run proceed(); otherwise
+        // we were in "analyzing" → re-run analyze().
+        if (riskReport && pendingTxBase64) {
+          void proceed();
+        } else {
+          void analyze();
+        }
+      }}
+      retrying={isBusy}
+      onDismiss={() => setError(null)}
+    />
+  ) : null;
 
   return (
-    <PanelShell eyebrow="Send" title="Review">
+    <PanelShell eyebrow="Send" title="Review" banner={errorBanner}>
       <div style={wrapStyle}>
         <div style={rowStyle}>
           <span style={labelStyle}>You're sending</span>
@@ -277,21 +298,6 @@ export function SendReviewScreen() {
           }}>
             You'll see the unsigned transaction as a QR. Scan it with your Faraday, approve on the device, then
             scan the signed response back here.
-          </div>
-        )}
-
-        {error && (
-          <div style={{
-            padding: space.sm,
-            borderRadius: radius.md,
-            background: "rgba(255, 107, 107, 0.08)",
-            border: `1px solid ${colors.error}`,
-            color: colors.error,
-            fontSize: font.xs,
-            fontFamily: fontFamily.mono,
-            lineHeight: 1.5,
-          }}>
-            {error}
           </div>
         )}
 

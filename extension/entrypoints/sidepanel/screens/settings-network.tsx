@@ -1,8 +1,9 @@
 import type { CSSProperties } from "react";
 
-import { PanelShell } from "../../../src/components/panel-shell";
-import { CLUSTER_LABEL, IS_PUBLIC_RPC, RPC_URL, redactRpcUrl } from "../../../src/lib/sol-client";
-import { colors, fontFamily, font, letterSpacing, radius, space } from "../../../src/lib/theme";
+import { PanelShell } from "@/components/panel-shell";
+import { CLUSTER_LABEL, IS_PUBLIC_RPC, RPC_URL, redactRpcUrl } from "@/lib/sol-client";
+import { useTokenSettings } from "@/lib/use-tokens";
+import { colors, fontFamily, font, letterSpacing, radius, space } from "@/lib/theme";
 
 const wrapStyle: CSSProperties = {
   display: "flex",
@@ -53,8 +54,42 @@ const footnoteStyle: CSSProperties = {
   lineHeight: 1.5
 };
 
+const toggleRowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: space.md
+};
+
+const toggleSwitchStyle = (on: boolean): CSSProperties => ({
+  appearance: "none",
+  WebkitAppearance: "none",
+  width: 36,
+  height: 20,
+  borderRadius: radius.pill,
+  background: on ? colors.accent : colors.borderStrong,
+  border: "none",
+  cursor: "pointer",
+  position: "relative",
+  transition: "background 120ms ease",
+  flexShrink: 0
+});
+
+const toggleKnobStyle = (on: boolean): CSSProperties => ({
+  position: "absolute",
+  top: 2,
+  left: on ? 18 : 2,
+  width: 16,
+  height: 16,
+  borderRadius: radius.pill,
+  background: colors.bg,
+  transition: "left 120ms ease",
+  pointerEvents: "none"
+});
+
 export function SettingsNetworkScreen() {
   const displayUrl = redactRpcUrl(RPC_URL);
+  const { settings, setShowUnverified } = useTokenSettings();
 
   return (
     <PanelShell eyebrow="Settings" title="Network">
@@ -81,6 +116,27 @@ export function SettingsNetworkScreen() {
             Helius / QuickNode / your own endpoint.
           </div>
         ) : null}
+
+        <div style={cardStyle}>
+          <div style={toggleRowStyle}>
+            <span style={labelStyle}>Show unverified tokens</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.showUnverified}
+              aria-label="Show unverified tokens"
+              onClick={() => void setShowUnverified(!settings.showUnverified)}
+              style={toggleSwitchStyle(settings.showUnverified)}
+            >
+              <span style={toggleKnobStyle(settings.showUnverified)} />
+            </button>
+          </div>
+          <span style={{ ...footnoteStyle, marginTop: 2 }}>
+            Hidden tokens use the Jupiter verified-tag list. Unverified mints are
+            often airdrop spam — keep this off unless you're expecting a token
+            that hasn't been picked up yet.
+          </span>
+        </div>
 
         <p style={footnoteStyle}>
           Runtime cluster switching and a user-editable RPC override land with the full data-layer

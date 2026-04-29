@@ -1,4 +1,4 @@
-import type { RuntimeRequest, RuntimeResponse } from "../src/lib/types";
+import type { RuntimeRequest, RuntimeResponse } from "@/lib/types";
 
 const LOG_PREFIX = "[Faraday][content]";
 

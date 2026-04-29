@@ -1,26 +1,22 @@
 import { useState, type CSSProperties } from "react";
 
-import { FaradayMark } from "../../../src/lib/brand";
-import { useNavigation } from "../../../src/lib/router";
-import { formatSol, useWallet } from "../../../src/lib/use-wallet";
-import type { LiveConnectionState } from "../../../src/lib/use-live-balance";
-import { ErrorBanner } from "../../../src/components/error-banner";
-import { PanelShell } from "../../../src/components/panel-shell";
-import { CLUSTER_LABEL } from "../../../src/lib/sol-client";
-import { colors, fontFamily, font, letterSpacing, radius, space } from "../../../src/lib/theme";
+import { ErrorBanner } from "@/components/error-banner";
+import { PanelShell } from "@/components/panel-shell";
+import { FaradayLogo } from "@/lib/brand";
+import { formatTokenUsd } from "@/lib/token-format";
+import { CLUSTER_LABEL } from "@/lib/sol-client";
+import { colors, fontFamily, font, letterSpacing, radius, space } from "@/lib/theme";
+import { useNavigation } from "@/lib/router";
+import { formatSol, useWallet } from "@/lib/use-wallet";
+import { useSolPrice } from "@/lib/use-tokens";
+
+import { LiveDot } from "../components/live-dot";
+import { TokensSection } from "../components/tokens-section";
 
 function shortAddress(address: string): string {
   if (address.length <= 14) return address;
   return `${address.slice(0, 4)}…${address.slice(-4)}`;
 }
-
-const wordmarkStyle: CSSProperties = {
-  fontFamily: fontFamily.display,
-  fontSize: font.md,
-  letterSpacing: letterSpacing.wider,
-  color: colors.text,
-  textTransform: "uppercase"
-};
 
 const networkPillStyle: CSSProperties = {
   display: "inline-flex",
@@ -118,18 +114,6 @@ const actionButtonStyle: CSSProperties = {
   gap: space.xs
 };
 
-const tokensPlaceholderStyle: CSSProperties = {
-  margin: `${space.lg}px ${space.md}px`,
-  padding: space.lg,
-  borderRadius: radius.md,
-  border: `1px dashed ${colors.border}`,
-  background: colors.panel,
-  color: colors.textMuted,
-  fontSize: font.sm,
-  textAlign: "center",
-  lineHeight: 1.5
-};
-
 function GearIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
@@ -144,7 +128,13 @@ function GearIcon() {
 export function HomeScreen() {
   const nav = useNavigation();
   const wallet = useWallet();
+  const { priceUsd: solPriceUsd } = useSolPrice();
   const [justCopied, setJustCopied] = useState(false);
+
+  const solUsdValue =
+    solPriceUsd !== null && wallet.solUiAmount !== null
+      ? solPriceUsd * wallet.solUiAmount
+      : null;
 
   async function copyPubkey() {
     if (!wallet.pairedPubkey) return;
@@ -157,13 +147,22 @@ export function HomeScreen() {
     }
   }
 
+  const errorBanner = wallet.balanceError ? (
+    <ErrorBanner
+      title="Balance unavailable"
+      message={wallet.balanceError}
+      onRetry={wallet.refreshBalance}
+      retrying={wallet.balanceLoading}
+    />
+  ) : null;
+
   return (
     <PanelShell
       hideBack
+      banner={errorBanner}
       leading={
         <span style={{ display: "inline-flex", alignItems: "center", gap: space.xs }}>
-          <FaradayMark height={18} color={colors.accent} />
-          <span style={wordmarkStyle}>FARADAY</span>
+          <FaradayLogo height={18} />
           <span style={networkPillStyle}>{CLUSTER_LABEL}</span>
         </span>
       }
@@ -197,6 +196,18 @@ export function HomeScreen() {
           <span style={heroNumberStyle}>{formatSol(wallet.solUiAmount)}</span>
           <span style={heroUnitStyle}>SOL</span>
         </div>
+        {solUsdValue !== null ? (
+          <div
+            style={{
+              fontFamily: fontFamily.mono,
+              fontSize: font.xl,
+              color: colors.textMuted,
+              marginTop: 4
+            }}
+          >
+            {formatTokenUsd(solUsdValue)}
+          </div>
+        ) : null}
         <div style={{ ...heroMetaStyle, display: "flex", alignItems: "center", gap: 6 }}>
           <LiveDot state={wallet.liveState} />
           <span>
@@ -215,17 +226,6 @@ export function HomeScreen() {
         </div>
       </div>
 
-      {wallet.balanceError ? (
-        <div style={{ padding: `0 ${space.md}px` }}>
-          <ErrorBanner
-            title="Balance unavailable"
-            message={wallet.balanceError}
-            onRetry={wallet.refreshBalance}
-            retrying={wallet.balanceLoading}
-          />
-        </div>
-      ) : null}
-
       <div style={actionRowStyle}>
         <button
           type="button"
@@ -243,42 +243,7 @@ export function HomeScreen() {
         </button>
       </div>
 
-      <div style={tokensPlaceholderStyle}>
-        SPL tokens, activity, and USD values land in the next data-layer pass.
-      </div>
+      <TokensSection pairedPubkey={wallet.pairedPubkey} />
     </PanelShell>
-  );
-}
-
-function LiveDot({ state }: { state: LiveConnectionState }) {
-  const { color, title, pulse } = (() => {
-    switch (state) {
-      case "live":
-        return { color: colors.success, title: "Live", pulse: true };
-      case "connecting":
-        return { color: colors.accent, title: "Connecting", pulse: true };
-      case "reconnecting":
-        return { color: colors.warning, title: "Reconnecting", pulse: true };
-      case "failed":
-        return { color: colors.error, title: "Live connection unavailable", pulse: false };
-      default:
-        return { color: colors.textDim, title: "Idle", pulse: false };
-    }
-  })();
-
-  return (
-    <span
-      aria-label={title}
-      title={title}
-      style={{
-        display: "inline-block",
-        width: 6,
-        height: 6,
-        borderRadius: "50%",
-        background: color,
-        boxShadow: pulse ? `0 0 0 2px ${color}33` : "none",
-        animation: pulse ? "faraday-pulse 1.6s ease-in-out infinite" : "none"
-      }}
-    />
   );
 }

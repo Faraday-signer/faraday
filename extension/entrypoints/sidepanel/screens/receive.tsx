@@ -1,9 +1,9 @@
 import { useState, type CSSProperties } from "react";
 
-import { BrandedQR } from "../../../src/components/branded-qr";
-import { PanelShell, LinkButton } from "../../../src/components/panel-shell";
-import { useWallet } from "../../../src/lib/use-wallet";
-import { colors, fontFamily, font, letterSpacing, radius, space } from "../../../src/lib/theme";
+import { BrandedQR } from "@/components/branded-qr";
+import { PanelShell, LinkButton } from "@/components/panel-shell";
+import { useWallet } from "@/lib/use-wallet";
+import { colors, fontFamily, font, letterSpacing, radius, space } from "@/lib/theme";
 
 const wrapStyle: CSSProperties = {
   display: "flex",

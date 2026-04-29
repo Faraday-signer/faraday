@@ -1,11 +1,11 @@
 import { useState, type CSSProperties } from "react";
 
-import { ErrorBanner } from "../../../src/components/error-banner";
-import { PanelShell } from "../../../src/components/panel-shell";
-import { useNavigation } from "../../../src/lib/router";
-import { sendRuntimeMessage } from "../../../src/lib/runtime";
-import type { ExtensionState } from "../../../src/lib/types";
-import { colors, fontFamily, font, letterSpacing, radius, space } from "../../../src/lib/theme";
+import { ErrorBanner } from "@/components/error-banner";
+import { PanelShell } from "@/components/panel-shell";
+import { useNavigation } from "@/lib/router";
+import { sendRuntimeMessage } from "@/lib/runtime";
+import type { ExtensionState } from "@/lib/types";
+import { colors, fontFamily, font, letterSpacing, radius, space } from "@/lib/theme";
 
 const wrapStyle: CSSProperties = {
   flex: 1,
@@ -109,8 +109,18 @@ export function SettingsScreen() {
     nav.reset({ name: "onboarding" });
   }
 
+  const errorBanner = error ? (
+    <ErrorBanner
+      title="Disconnect failed"
+      message={error}
+      onRetry={disconnect}
+      retrying={busy}
+      onDismiss={() => setError(null)}
+    />
+  ) : null;
+
   return (
-    <PanelShell eyebrow="Settings" title="Settings">
+    <PanelShell eyebrow="Settings" title="Settings" banner={errorBanner}>
       <div style={wrapStyle}>
         <div style={listStyle}>
           {SECTIONS.map((s) => (
@@ -174,15 +184,6 @@ export function SettingsScreen() {
               <p style={disconnectHelpStyle}>Disconnects the wallet from this browser.</p>
             </>
           )}
-          {error ? (
-            <ErrorBanner
-              title="Disconnect failed"
-              message={error}
-              onRetry={disconnect}
-              retrying={busy}
-              onDismiss={() => setError(null)}
-            />
-          ) : null}
         </div>
       </div>
     </PanelShell>

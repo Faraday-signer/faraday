@@ -1,12 +1,12 @@
 import { useMemo, useState, type CSSProperties } from "react";
 
-import { ErrorBanner } from "../../../src/components/error-banner";
-import { LinkButton, PanelShell, PrimaryButton } from "../../../src/components/panel-shell";
-import { useNavigation } from "../../../src/lib/router";
-import { sendRuntimeMessage } from "../../../src/lib/runtime";
-import { isValidSolanaAddress } from "../../../src/lib/solana";
-import type { ExtensionState } from "../../../src/lib/types";
-import { colors, fontFamily, font, letterSpacing, radius, space } from "../../../src/lib/theme";
+import { ErrorBanner } from "@/components/error-banner";
+import { LinkButton, PanelShell, PrimaryButton } from "@/components/panel-shell";
+import { useNavigation } from "@/lib/router";
+import { sendRuntimeMessage } from "@/lib/runtime";
+import { isValidSolanaAddress } from "@/lib/solana";
+import type { ExtensionState } from "@/lib/types";
+import { colors, fontFamily, font, letterSpacing, radius, space } from "@/lib/theme";
 
 const wrapStyle: CSSProperties = {
   display: "flex",
@@ -69,19 +69,19 @@ export function PairPasteScreen() {
     }
   }
 
-  return (
-    <PanelShell eyebrow="Import wallet" title="Paste address">
-      <div style={wrapStyle}>
-        {mutationError ? (
-          <ErrorBanner
-            title="Import failed"
-            message={mutationError}
-            onRetry={confirm}
-            retrying={saving}
-            onDismiss={() => setMutationError(null)}
-          />
-        ) : null}
+  const errorBanner = mutationError ? (
+    <ErrorBanner
+      title="Import failed"
+      message={mutationError}
+      onRetry={confirm}
+      retrying={saving}
+      onDismiss={() => setMutationError(null)}
+    />
+  ) : null;
 
+  return (
+    <PanelShell eyebrow="Import wallet" title="Paste address" banner={errorBanner}>
+      <div style={wrapStyle}>
         <label style={{ display: "flex", flexDirection: "column", gap: space.xs }}>
           <span style={labelStyle}>Solana public key</span>
           <input

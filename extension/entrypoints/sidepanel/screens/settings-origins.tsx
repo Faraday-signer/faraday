@@ -1,10 +1,10 @@
 import { useEffect, useState, type CSSProperties } from "react";
 
-import { ErrorBanner } from "../../../src/components/error-banner";
-import { LinkButton, PanelShell, SecondaryButton } from "../../../src/components/panel-shell";
-import { sendRuntimeMessage } from "../../../src/lib/runtime";
-import type { ExtensionState } from "../../../src/lib/types";
-import { colors, fontFamily, font, letterSpacing, radius, space } from "../../../src/lib/theme";
+import { ErrorBanner } from "@/components/error-banner";
+import { LinkButton, PanelShell, SecondaryButton } from "@/components/panel-shell";
+import { sendRuntimeMessage } from "@/lib/runtime";
+import type { ExtensionState } from "@/lib/types";
+import { colors, fontFamily, font, letterSpacing, radius, space } from "@/lib/theme";
 
 const wrapStyle: CSSProperties = {
   display: "flex",
@@ -88,9 +88,9 @@ export function SettingsOriginsScreen() {
     }
   }
 
-  return (
-    <PanelShell eyebrow="Settings" title="Approved sites">
-      <div style={wrapStyle}>
+  const errorBanner =
+    loadError || mutationError ? (
+      <>
         {loadError ? (
           <ErrorBanner
             title="Load failed"
@@ -98,14 +98,18 @@ export function SettingsOriginsScreen() {
             onRetry={() => void refresh()}
           />
         ) : null}
-
         {mutationError ? (
           <ErrorBanner
             message={mutationError}
             onDismiss={() => setMutationError(null)}
           />
         ) : null}
+      </>
+    ) : null;
 
+  return (
+    <PanelShell eyebrow="Settings" title="Approved sites" banner={errorBanner}>
+      <div style={wrapStyle}>
         {!loadError && origins.length === 0 ? (
           <div style={emptyStyle}>
             No sites approved yet. Dapps ask for access the first time they call connect.

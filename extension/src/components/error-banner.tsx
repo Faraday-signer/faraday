@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 
 import { colors, fontFamily, font, letterSpacing, radius, space } from "../lib/theme";
 
@@ -9,6 +9,13 @@ interface ErrorBannerProps {
   title?: ReactNode;
   /** Longer human-readable description, typically from a thrown Error. */
   message: ReactNode;
+  /**
+   * Verbose technical details — full RPC error blob, stack trace, etc.
+   * Hidden by default behind a "Show details" toggle so the banner stays
+   * readable. The banner truncates this with monospace + scroll so even
+   * very long blobs don't blow out the layout.
+   */
+  details?: ReactNode;
   /** Fires a retry action. Renders a small RETRY button when provided. */
   onRetry?: () => void;
   /** Disabled state for the retry button (e.g. a fetch is already in flight). */
@@ -87,6 +94,7 @@ const dismissButtonStyle: CSSProperties = {
 export function ErrorBanner({
   title,
   message,
+  details,
   onRetry,
   retrying,
   onDismiss,
@@ -94,6 +102,36 @@ export function ErrorBanner({
   style
 }: ErrorBannerProps) {
   const palette = toneMap[tone];
+  const [showDetails, setShowDetails] = useState(false);
+
+  const detailsToggleStyle: CSSProperties = {
+    background: "transparent",
+    border: "none",
+    padding: 0,
+    color: palette.fg,
+    fontFamily: fontFamily.display,
+    fontSize: 10,
+    letterSpacing: letterSpacing.eyebrow,
+    textTransform: "uppercase",
+    cursor: "pointer",
+    textDecoration: "underline dotted",
+    textUnderlineOffset: 3,
+    alignSelf: "flex-start"
+  };
+
+  const detailsBoxStyle: CSSProperties = {
+    fontFamily: fontFamily.mono,
+    fontSize: font.xs,
+    color: palette.fg,
+    background: "rgba(0, 0, 0, 0.25)",
+    border: `1px solid ${palette.border}`,
+    borderRadius: radius.sm,
+    padding: space.xs,
+    maxHeight: 160,
+    overflow: "auto",
+    wordBreak: "break-all",
+    whiteSpace: "pre-wrap"
+  };
 
   return (
     <div
@@ -127,6 +165,20 @@ export function ErrorBanner({
       </div>
 
       <div style={messageStyle}>{message}</div>
+
+      {details ? (
+        <>
+          <button
+            type="button"
+            style={detailsToggleStyle}
+            onClick={() => setShowDetails((prev) => !prev)}
+            aria-expanded={showDetails}
+          >
+            {showDetails ? "Hide details ▴" : "Show details ▾"}
+          </button>
+          {showDetails ? <div style={detailsBoxStyle}>{details}</div> : null}
+        </>
+      ) : null}
 
       {onRetry ? (
         <div style={actionsRowStyle}>
