@@ -22,7 +22,16 @@ export default async function Image() {
           height: "100%",
           display: "flex",
           flexDirection: "column",
-          background: "#f7f6f1",
+          backgroundColor: "#f7f6f1",
+          backgroundImage: [
+            // Primary 100px grid (stronger lines)
+            "linear-gradient(to right, rgba(23,23,23,0.14) 1px, transparent 1px)",
+            "linear-gradient(to bottom, rgba(23,23,23,0.14) 1px, transparent 1px)",
+            // Sub 20px grid (lighter)
+            "linear-gradient(to right, rgba(23,23,23,0.06) 1px, transparent 1px)",
+            "linear-gradient(to bottom, rgba(23,23,23,0.06) 1px, transparent 1px)",
+          ].join(", "),
+          backgroundSize: "100px 100px, 100px 100px, 20px 20px, 20px 20px",
           padding: "80px",
           fontFamily: "Departure Mono",
         }}
@@ -40,6 +49,7 @@ export default async function Image() {
             width="380"
             height="80"
             fill="#1AF8FF"
+            style={{ filter: "drop-shadow(3px 3px 0 #717171)" }}
           >
             <path d="M757.438 54.0006H770.322V92.5085H757.438V54.0006ZM808.974 54.0006H821.859V92.5085H808.974V54.0006ZM783.206 118.18H796.09V143.852H783.206V118.18ZM783.206 143.852V156.688H757.438V143.852H783.206ZM796.09 92.5085H808.974V118.18H796.09V92.5085ZM770.322 92.5085H783.206V118.18H770.322V92.5085Z" />
             <path d="M667.198 92.5085H680.083V118.18H667.198V92.5085ZM680.083 118.18H705.851V131.016H680.083V118.18ZM705.851 105.344H718.735V92.5085H680.083V79.6725H718.735V66.8366H731.619V131.016H718.735V118.18H705.851V105.344ZM680.083 54.0006H718.735V66.8366H680.083V54.0006Z" />
@@ -53,11 +63,19 @@ export default async function Image() {
             <rect x="140.736" y="28" width="25.2642" height="25.2642" />
             <rect x="63" y="105.736" width="25.2642" height="25.2642" />
           </svg>
-          <svg viewBox="0 0 103 103" width="80" height="80" fill="#1f1f1f">
-            <rect width="51.5" height="51.5" />
-            <rect x="51.5" y="51.5" width="51.5" height="51.5" />
-            <rect x="77.7358" width="25.2642" height="25.2642" />
-            <rect y="77.7358" width="25.2642" height="25.2642" />
+          {/* QR finder pattern — matches the landing page corner mark */}
+          <svg
+            viewBox="0 0 7 7"
+            width="80"
+            height="80"
+            fill="#171717"
+            shapeRendering="crispEdges"
+          >
+            <rect x="0" y="0" width="7" height="1" />
+            <rect x="0" y="6" width="7" height="1" />
+            <rect x="0" y="1" width="1" height="5" />
+            <rect x="6" y="1" width="1" height="5" />
+            <rect x="2" y="2" width="3" height="3" />
           </svg>
         </div>
 
@@ -66,18 +84,18 @@ export default async function Image() {
           style={{
             display: "flex",
             flexDirection: "column",
-            marginTop: 80,
+            marginTop: 60,
           }}
         >
-          <span style={{ fontSize: 48, color: "#424242", lineHeight: 1.1 }}>
+          <span style={{ fontSize: 64, color: "#424242", lineHeight: 1.1 }}>
             Sign Solana Transactions
           </span>
           <span
             style={{
-              fontSize: 120,
+              fontSize: 96,
               color: "#1AF8FF",
               lineHeight: 1,
-              marginTop: 6,
+              marginTop: 8,
               textShadow: "3px 3px 0 #717171",
             }}
           >
@@ -85,22 +103,22 @@ export default async function Image() {
           </span>
           <span
             style={{
-              fontSize: 48,
+              fontSize: 64,
               color: "#424242",
               lineHeight: 1,
-              marginTop: 6,
+              marginTop: 8,
             }}
           >
             your computer
           </span>
         </div>
 
-        {/* Caption at bottom */}
+        {/* Caption */}
         <div
           style={{
-            marginTop: "auto",
+            marginTop: 56,
             display: "flex",
-            fontSize: 20,
+            fontSize: 22,
             color: "#717171",
             letterSpacing: 4,
             textTransform: "uppercase",
