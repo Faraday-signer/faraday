@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from "react";
 
 import { PanelShell } from "@/components/panel-shell";
 import { useRouteOf } from "@/lib/router";
+import { formatPricePerToken, formatTokenAmount, formatTokenUsd, shortMint } from "@/lib/token-format";
 import { useWallet } from "@/lib/use-wallet";
 import { useTokens } from "@/lib/use-tokens";
 import {
@@ -127,32 +128,6 @@ const footnoteStyle: CSSProperties = {
   textAlign: "center",
 };
 
-function shortMint(mint: string): string {
-  if (mint.length <= 14) return mint;
-  return `${mint.slice(0, 6)}…${mint.slice(-6)}`;
-}
-
-function formatUsd(value: number): string {
-  if (value < 0.01) return "<$0.01";
-  return `$${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
-}
-
-function formatAmount(amount: number, decimals: number): string {
-  if (amount === 0) return "0";
-  if (amount < 0.000001) return amount.toExponential(2);
-  const maxFrac = Math.min(decimals, amount < 1 ? 6 : 4);
-  return amount.toLocaleString("en-US", { maximumFractionDigits: maxFrac });
-}
-
-function formatPrice(price: number): string {
-  if (price >= 1) {
-    return `$${price.toLocaleString("en-US", { maximumFractionDigits: 4 })}`;
-  }
-  if (price >= 0.01) return `$${price.toFixed(4)}`;
-  if (price > 0) return `$${price.toExponential(2)}`;
-  return "—";
-}
-
 export function TokenDetailScreen() {
   const route = useRouteOf("token-detail");
   const wallet = useWallet();
@@ -205,13 +180,13 @@ export function TokenDetailScreen() {
       <div style={wrapStyle}>
         <div style={heroStyle}>
           <div style={{ display: "flex", alignItems: "baseline" }}>
-            <span style={heroAmountStyle}>
-              {formatAmount(token.amountUi, token.decimals)}
+              <span style={heroAmountStyle}>
+              {formatTokenAmount(token.amountUi, token.decimals)}
             </span>
             <span style={heroSymbolStyle}>{symbol}</span>
           </div>
           {token.usdValue !== null ? (
-            <div style={heroUsdStyle}>{formatUsd(token.usdValue)}</div>
+            <div style={heroUsdStyle}>{formatTokenUsd(token.usdValue)}</div>
           ) : null}
         </div>
 
@@ -231,14 +206,14 @@ export function TokenDetailScreen() {
           <span style={labelStyle}>
             Mint {justCopied ? "(copied)" : ""}
           </span>
-          <span style={valueStyle}>{shortMint(token.mint)}</span>
+          <span style={valueStyle}>{shortMint(token.mint, 6)}</span>
         </button>
 
         {token.pricePerToken !== null ? (
           <div style={cardStyle}>
             <span style={labelStyle}>Price</span>
             <span style={valueStyle}>
-              {formatPrice(token.pricePerToken)}
+              {formatPricePerToken(token.pricePerToken, 4)}
               <span style={{ color: colors.textMuted, marginLeft: 6 }}>
                 per {symbol}
               </span>
