@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
+import { ErrorBanner } from "@/components/error-banner";
 import { LinkButton, PanelShell, PrimaryButton } from "@/components/panel-shell";
+import { explainBroadcastError } from "@/lib/broadcast-errors";
 import { sendRuntimeMessage } from "@/lib/runtime";
 import { useNavigation, useRouteOf } from "@/lib/router";
 import { broadcastSignedTx, explorerTxUrl } from "@/lib/sol-transfer";
@@ -37,11 +39,6 @@ const draftLineStyle: CSSProperties = {
   fontSize: font.lg,
   color: colors.text,
   letterSpacing: letterSpacing.loose
-};
-
-const errorStyle: CSSProperties = {
-  ...metaStyle,
-  color: colors.error,
 };
 
 const linkStyle: CSSProperties = {
@@ -203,10 +200,18 @@ export function SendSignScreen() {
           {phase === "broadcasting" ? "Sending transaction…" : null}
         </p>
 
-        {error && <p style={errorStyle}>{error}</p>}
-
-        {phase === "error" ? (
-          <PrimaryButton onClick={retry}>Retry</PrimaryButton>
+        {error ? (
+          (() => {
+            const { summary, details } = explainBroadcastError(error);
+            return (
+              <ErrorBanner
+                title="Signing did not complete"
+                message={summary}
+                details={details === summary ? undefined : details}
+                onRetry={phase === "error" ? retry : undefined}
+              />
+            );
+          })()
         ) : null}
 
         <LinkButton onClick={cancel}>Cancel</LinkButton>
