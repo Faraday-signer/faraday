@@ -147,9 +147,19 @@ export function HomeScreen() {
     }
   }
 
+  const errorBanner = wallet.balanceError ? (
+    <ErrorBanner
+      title="Balance unavailable"
+      message={wallet.balanceError}
+      onRetry={wallet.refreshBalance}
+      retrying={wallet.balanceLoading}
+    />
+  ) : null;
+
   return (
     <PanelShell
       hideBack
+      banner={errorBanner}
       leading={
         <span style={{ display: "inline-flex", alignItems: "center", gap: space.xs }}>
           <FaradayLogo height={18} />
@@ -215,17 +225,6 @@ export function HomeScreen() {
           </span>
         </div>
       </div>
-
-      {wallet.balanceError ? (
-        <div style={{ padding: `0 ${space.md}px` }}>
-          <ErrorBanner
-            title="Balance unavailable"
-            message={wallet.balanceError}
-            onRetry={wallet.refreshBalance}
-            retrying={wallet.balanceLoading}
-          />
-        </div>
-      ) : null}
 
       <div style={actionRowStyle}>
         <button

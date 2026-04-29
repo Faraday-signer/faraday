@@ -340,9 +340,9 @@ export function PairScanScreen() {
     setRetryKey((k) => k + 1);
   }
 
-  return (
-    <PanelShell eyebrow="Import wallet" title={detectedPubkey ? "Confirm wallet" : "Scan to import"}>
-      <div style={wrapStyle}>
+  const errorBanner =
+    cameraError || mutationError ? (
+      <>
         {cameraError ? (
           <ErrorBanner
             title="Camera unavailable"
@@ -350,7 +350,6 @@ export function PairScanScreen() {
             onRetry={retryCamera}
           />
         ) : null}
-
         {mutationError ? (
           <ErrorBanner
             title="Import failed"
@@ -360,7 +359,16 @@ export function PairScanScreen() {
             onDismiss={() => setMutationError(null)}
           />
         ) : null}
+      </>
+    ) : null;
 
+  return (
+    <PanelShell
+      eyebrow="Import wallet"
+      title={detectedPubkey ? "Confirm wallet" : "Scan to import"}
+      banner={errorBanner}
+    >
+      <div style={wrapStyle}>
         {!detectedPubkey ? (
           <>
             <div style={instructionCardStyle}>

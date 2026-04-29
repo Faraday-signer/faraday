@@ -271,8 +271,17 @@ export function SendComposeScreen() {
     ...(recipientHelperKind === "warn" ? inputWarnStyle : {}),
   };
 
+  const errorBanner = wallet.balanceError ? (
+    <ErrorBanner
+      title="Balance unavailable"
+      message={wallet.balanceError}
+      onRetry={wallet.refreshBalance}
+      retrying={wallet.balanceLoading}
+    />
+  ) : null;
+
   return (
-    <PanelShell eyebrow="Send" title="Send SOL">
+    <PanelShell eyebrow="Send" title="Send SOL" banner={errorBanner}>
       <div style={wrapStyle}>
         <div style={cardStyle}>
           <span style={labelStyle}>Token</span>
@@ -296,14 +305,19 @@ export function SendComposeScreen() {
           </div>
         </div>
 
-        {wallet.balanceError ? (
-          <ErrorBanner
-            title="Balance unavailable"
-            message={wallet.balanceError}
-            onRetry={wallet.refreshBalance}
-            retrying={wallet.balanceLoading}
+        <label style={{ display: "flex", flexDirection: "column", gap: space.xs }}>
+          <span style={labelStyle}>To</span>
+          <input
+            value={recipient}
+            onChange={(event) => setRecipient(event.target.value)}
+            spellCheck={false}
+            placeholder="Solana address"
+            style={recipientFieldStyle}
           />
-        ) : null}
+          <span style={helperStyle(recipientHelperKind)}>
+            {recipientHelperMsg || " "}
+          </span>
+        </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: space.xs }}>
           <span style={labelStyle}>Amount</span>
@@ -326,20 +340,6 @@ export function SendComposeScreen() {
               Max
             </button>
           </div>
-        </label>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: space.xs }}>
-          <span style={labelStyle}>To</span>
-          <input
-            value={recipient}
-            onChange={(event) => setRecipient(event.target.value)}
-            spellCheck={false}
-            placeholder="Solana address"
-            style={recipientFieldStyle}
-          />
-          <span style={helperStyle(recipientHelperKind)}>
-            {recipientHelperMsg || " "}
-          </span>
         </label>
 
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: space.xs, marginTop: space.sm }}>

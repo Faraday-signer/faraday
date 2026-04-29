@@ -109,8 +109,18 @@ export function SettingsScreen() {
     nav.reset({ name: "onboarding" });
   }
 
+  const errorBanner = error ? (
+    <ErrorBanner
+      title="Disconnect failed"
+      message={error}
+      onRetry={disconnect}
+      retrying={busy}
+      onDismiss={() => setError(null)}
+    />
+  ) : null;
+
   return (
-    <PanelShell eyebrow="Settings" title="Settings">
+    <PanelShell eyebrow="Settings" title="Settings" banner={errorBanner}>
       <div style={wrapStyle}>
         <div style={listStyle}>
           {SECTIONS.map((s) => (
@@ -174,15 +184,6 @@ export function SettingsScreen() {
               <p style={disconnectHelpStyle}>Disconnects the wallet from this browser.</p>
             </>
           )}
-          {error ? (
-            <ErrorBanner
-              title="Disconnect failed"
-              message={error}
-              onRetry={disconnect}
-              retrying={busy}
-              onDismiss={() => setError(null)}
-            />
-          ) : null}
         </div>
       </div>
     </PanelShell>

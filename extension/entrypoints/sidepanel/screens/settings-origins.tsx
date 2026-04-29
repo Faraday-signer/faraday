@@ -88,9 +88,9 @@ export function SettingsOriginsScreen() {
     }
   }
 
-  return (
-    <PanelShell eyebrow="Settings" title="Approved sites">
-      <div style={wrapStyle}>
+  const errorBanner =
+    loadError || mutationError ? (
+      <>
         {loadError ? (
           <ErrorBanner
             title="Load failed"
@@ -98,14 +98,18 @@ export function SettingsOriginsScreen() {
             onRetry={() => void refresh()}
           />
         ) : null}
-
         {mutationError ? (
           <ErrorBanner
             message={mutationError}
             onDismiss={() => setMutationError(null)}
           />
         ) : null}
+      </>
+    ) : null;
 
+  return (
+    <PanelShell eyebrow="Settings" title="Approved sites" banner={errorBanner}>
+      <div style={wrapStyle}>
         {!loadError && origins.length === 0 ? (
           <div style={emptyStyle}>
             No sites approved yet. Dapps ask for access the first time they call connect.

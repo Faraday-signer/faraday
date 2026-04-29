@@ -105,8 +105,18 @@ export function SendReviewScreen() {
     }
   }
 
+  const errorBanner = error ? (
+    <ErrorBanner
+      title="Could not prepare transaction"
+      message={error}
+      onRetry={confirm}
+      retrying={busy}
+      onDismiss={() => setError(null)}
+    />
+  ) : null;
+
   return (
-    <PanelShell eyebrow="Send" title="Review">
+    <PanelShell eyebrow="Send" title="Review" banner={errorBanner}>
       <div style={wrapStyle}>
         <div style={rowStyle}>
           <span style={labelStyle}>You're sending</span>
@@ -132,15 +142,6 @@ export function SendReviewScreen() {
           You'll see the unsigned transaction as a QR. Scan it with your Faraday, approve on the device, then
           scan the signed response back here.
         </div>
-
-        {error ? (
-          <ErrorBanner
-            title="Could not prepare transaction"
-            message={error}
-            onRetry={confirm}
-            retrying={busy}
-          />
-        ) : null}
 
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: space.xs, marginTop: space.sm }}>
           <PrimaryButton onClick={confirm} disabled={busy || !pairedPubkey}>

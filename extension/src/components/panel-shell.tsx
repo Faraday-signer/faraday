@@ -18,6 +18,18 @@ interface PanelShellProps {
   hideBack?: boolean;
   /** Fill-down container instead of scrollable. Use for hero / centered screens. */
   center?: boolean;
+  /**
+   * Banner slot — renders between the header and the body in its own row.
+   * Use for errors, warnings, retries, etc. that the user must see while
+   * the underlying screen stays usable. Pass a single `ErrorBanner` or a
+   * fragment of multiple banners. Pass `null` / `undefined` to hide.
+   *
+   * In-flow rather than overlay: when a banner appears, body content
+   * shifts down by the banner's height. We accept that one-time shift
+   * because overlay positioning kept covering hero/title content and made
+   * the body unreadable.
+   */
+  banner?: ReactNode;
 }
 
 const shellStyle: CSSProperties = {
@@ -99,7 +111,8 @@ export function PanelShell({
   leading,
   children,
   hideBack,
-  center
+  center,
+  banner
 }: PanelShellProps) {
   const nav = useNavigation();
   const showBack = !hideBack && nav.canGoBack && leading === undefined;
@@ -126,6 +139,20 @@ export function PanelShell({
 
         <div style={trailingSlotStyle}>{trailing ?? <span />}</div>
       </header>
+
+      {banner ? (
+        <div
+          style={{
+            padding: `${space.sm}px ${space.md}px ${space.sm}px`,
+            display: "flex",
+            flexDirection: "column",
+            gap: space.xs,
+            background: colors.bg
+          }}
+        >
+          {banner}
+        </div>
+      ) : null}
 
       <section
         style={{

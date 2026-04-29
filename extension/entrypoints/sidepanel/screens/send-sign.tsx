@@ -5,9 +5,10 @@ import { LinkButton, PanelShell, PrimaryButton } from "@/components/panel-shell"
 import { explainBroadcastError } from "@/lib/broadcast-errors";
 import { sendRuntimeMessage } from "@/lib/runtime";
 import { useNavigation, useRouteOf } from "@/lib/router";
-import { broadcastSignedTx, explorerTxUrl } from "@/lib/sol-transfer";
+import { broadcastSignedTx, buildSolTransfer, explorerTxUrl } from "@/lib/sol-transfer";
 import { colors, fontFamily, font, letterSpacing, space } from "@/lib/theme";
-import type { GetSignResult } from "@/lib/types";
+import type { CreateSignSessionResult, GetSignResult } from "@/lib/types";
+import { useWallet } from "@/lib/use-wallet";
 
 const wrapStyle: CSSProperties = {
   display: "flex",
@@ -34,11 +35,42 @@ const metaStyle: CSSProperties = {
   textAlign: "center"
 };
 
-const draftLineStyle: CSSProperties = {
+const draftHeroStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: 6,
+  paddingTop: space.sm
+};
+
+const draftAmountStyle: CSSProperties = {
   fontFamily: fontFamily.display,
-  fontSize: font.lg,
+  fontSize: font.hero,
+  letterSpacing: letterSpacing.tight,
   color: colors.text,
-  letterSpacing: letterSpacing.loose
+  lineHeight: 1
+};
+
+const draftSymbolStyle: CSSProperties = {
+  fontFamily: fontFamily.display,
+  fontSize: font.xl,
+  color: colors.accent,
+  letterSpacing: letterSpacing.loose,
+  marginLeft: space.xs
+};
+
+const draftRecipientStyle: CSSProperties = {
+  fontFamily: fontFamily.mono,
+  fontSize: font.sm,
+  color: colors.textMuted,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6
+};
+
+const draftArrowStyle: CSSProperties = {
+  color: colors.textDim,
+  fontFamily: fontFamily.display
 };
 
 const linkStyle: CSSProperties = {
@@ -69,11 +101,16 @@ export function SendSignScreen() {
   const nav = useNavigation();
   const route = useRouteOf("send-sign");
 
+  const wallet = useWallet();
+
   const [phase, setPhase] = useState<Phase>("opening");
   const [error, setError] = useState<string | null>(null);
   const [signature, setSignature] = useState<string | null>(null);
   const pollTimerRef = useRef<number | null>(null);
-  const startedRef = useRef(false);
+  // Tracks which sessionIds we've already opened, so a `nav.replace` from the
+  // retry path (which produces a NEW sessionId) re-fires the auto-open effect
+  // without React 19 strict-mode causing a double-fire on first mount.
+  const openedSessionsRef = useRef<Set<string>>(new Set());
 
   function stopPolling() {
     if (pollTimerRef.current !== null) {
@@ -88,12 +125,15 @@ export function SendSignScreen() {
     };
   }, []);
 
-  // Auto-open the popup once on mount. `startedRef` guards against the
-  // double-fire we'd otherwise get from React 19 strict-mode re-mount.
+  // Auto-open the popup whenever the route's sessionId changes. The Set ref
+  // guarantees one open per sessionId — strict-mode re-mounts and route
+  // re-renders can't trigger duplicate windows.
   useEffect(() => {
-    if (!route || startedRef.current) return;
-    startedRef.current = true;
-    void openAndPoll(route.sessionId);
+    if (!route) return;
+    const id = route.sessionId;
+    if (openedSessionsRef.current.has(id)) return;
+    openedSessionsRef.current.add(id);
+    void openAndPoll(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route?.sessionId]);
 
@@ -154,9 +194,55 @@ export function SendSignScreen() {
     nav.back();
   }
 
+  /**
+   * Rebuild the unsigned tx with a fresh blockhash, register a new sign
+   * session, and replace the current route so the auto-open effect drives
+   * the rest of the flow with the new session.
+   *
+   * Why we can't just re-broadcast: the original broadcast failure here is
+   * usually a stale blockhash (-32002 with empty logs). The signed bytes
+   * already on hand still reference the expired blockhash, so re-sending
+   * them changes nothing — the device has to sign a fresh tx.
+   */
   async function retry() {
-    startedRef.current = true;
-    await openAndPoll(sessionId);
+    if (!wallet.pairedPubkey) {
+      setError("No paired wallet to rebuild with.");
+      setPhase("error");
+      return;
+    }
+
+    setError(null);
+    setSignature(null);
+    setPhase("opening");
+    stopPolling();
+
+    try {
+      const { txBase64: newTxBase64 } = await buildSolTransfer({
+        from: wallet.pairedPubkey,
+        to: draft.recipient,
+        amountSol: draft.amountUi,
+      });
+      const res = await sendRuntimeMessage<CreateSignSessionResult>({
+        type: "faraday:ext-create-sign-session",
+        txBase64: newTxBase64,
+      });
+      if (!res.ok) {
+        setError(res.error);
+        setPhase("error");
+        return;
+      }
+      // Swap the current route with one carrying the fresh sessionId. The
+      // auto-open effect picks it up and runs the popup + poll cycle.
+      nav.replace({
+        name: "send-sign",
+        draft,
+        txBase64: newTxBase64,
+        sessionId: res.data.sessionId,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setPhase("error");
+    }
   }
 
   // Terminal success state.
@@ -176,12 +262,30 @@ export function SendSignScreen() {
     );
   }
 
+  const errorReport = error ? explainBroadcastError(error) : null;
+  const errorBanner = errorReport ? (
+    <ErrorBanner
+      title="Signing did not complete"
+      message={errorReport.summary}
+      details={errorReport.details === errorReport.summary ? undefined : errorReport.details}
+      onRetry={phase === "error" ? retry : undefined}
+      onDismiss={() => setError(null)}
+    />
+  ) : null;
+
   return (
-    <PanelShell eyebrow="Sign transaction" title="Sign on Faraday">
+    <PanelShell eyebrow="Sign transaction" title="Sign on Faraday" banner={errorBanner}>
       <div style={wrapStyle}>
-        <p style={draftLineStyle}>
-          {draft.amountUi} {draft.symbol} → {draft.recipient.slice(0, 4)}…{draft.recipient.slice(-4)}
-        </p>
+        <div style={draftHeroStyle}>
+          <div style={{ display: "flex", alignItems: "baseline" }}>
+            <span style={draftAmountStyle}>{draft.amountUi}</span>
+            <span style={draftSymbolStyle}>{draft.symbol}</span>
+          </div>
+          <div style={draftRecipientStyle}>
+            <span style={draftArrowStyle}>→</span>
+            <span>{draft.recipient.slice(0, 4)}…{draft.recipient.slice(-4)}</span>
+          </div>
+        </div>
 
         <p style={helpStyle}>
           {phase === "opening"
@@ -199,20 +303,6 @@ export function SendSignScreen() {
           {phase === "awaiting-scan" ? "Waiting for signature…" : null}
           {phase === "broadcasting" ? "Sending transaction…" : null}
         </p>
-
-        {error ? (
-          (() => {
-            const { summary, details } = explainBroadcastError(error);
-            return (
-              <ErrorBanner
-                title="Signing did not complete"
-                message={summary}
-                details={details === summary ? undefined : details}
-                onRetry={phase === "error" ? retry : undefined}
-              />
-            );
-          })()
-        ) : null}
 
         <LinkButton onClick={cancel}>Cancel</LinkButton>
       </div>
