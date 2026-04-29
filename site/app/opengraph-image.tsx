@@ -12,7 +12,7 @@ export default async function Image() {
   const woff2 = await readFile(
     join(process.cwd(), "public", "fonts", "DepartureMono-Regular.woff2")
   );
-  const fontData = (await decompress(woff2)) as Uint8Array;
+  const fontData = Buffer.from((await decompress(woff2)) as Uint8Array);
 
   return new ImageResponse(
     (
