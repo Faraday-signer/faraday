@@ -1,3 +1,5 @@
+import type { TxRiskReport } from "./tx-risk";
+
 export type SignSessionStatus = "pending" | "completed" | "canceled" | "failed";
 
 export interface ExtensionState {
@@ -19,6 +21,7 @@ export interface SignSession {
   signedTxBase64?: string;
   signatureHex?: string;
   error?: string;
+  riskReport?: TxRiskReport;
 }
 
 export type RuntimeRequest =
@@ -73,6 +76,7 @@ export interface GetSignSessionResult {
   expectedPubkey: string;
   status: SignSessionStatus;
   error?: string;
+  riskReport?: TxRiskReport;
 }
 
 export interface GetSignResult {
