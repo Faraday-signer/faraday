@@ -18,6 +18,7 @@ import { SettingsAboutScreen } from "./screens/settings-about";
 import { SettingsDeviceScreen } from "./screens/settings-device";
 import { SettingsNetworkScreen } from "./screens/settings-network";
 import { SettingsOriginsScreen } from "./screens/settings-origins";
+import { TokenDetailScreen } from "./screens/token-detail";
 
 function ActiveRoute() {
   const { current } = useNavigation();
@@ -48,6 +49,8 @@ function ActiveRoute() {
       return <SettingsNetworkScreen />;
     case "settings-about":
       return <SettingsAboutScreen />;
+    case "token-detail":
+      return <TokenDetailScreen />;
   }
 }
 

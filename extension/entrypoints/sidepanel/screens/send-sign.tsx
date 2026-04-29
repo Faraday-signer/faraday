@@ -1,27 +1,26 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
-import { BrandedQR } from "../../../src/components/branded-qr";
 import { LinkButton, PanelShell, PrimaryButton } from "../../../src/components/panel-shell";
 import { sendRuntimeMessage } from "../../../src/lib/runtime";
 import { useNavigation, useRouteOf } from "../../../src/lib/router";
 import { broadcastSignedTx, explorerTxUrl } from "../../../src/lib/sol-transfer";
 import { colors, fontFamily, font, letterSpacing, space } from "../../../src/lib/theme";
 import type { GetSignResult } from "../../../src/lib/types";
-import { encodeTxForQr } from "../../../src/lib/ur-encode";
 
 const wrapStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
   padding: space.md,
-  gap: space.md
+  gap: space.md,
+  textAlign: "center"
 };
 
 const helpStyle: CSSProperties = {
   fontSize: font.sm,
   color: colors.textMuted,
   textAlign: "center",
-  maxWidth: 300,
+  maxWidth: 320,
   lineHeight: 1.5
 };
 
@@ -31,6 +30,13 @@ const metaStyle: CSSProperties = {
   color: colors.textMuted,
   letterSpacing: letterSpacing.normal,
   textAlign: "center"
+};
+
+const draftLineStyle: CSSProperties = {
+  fontFamily: fontFamily.display,
+  fontSize: font.lg,
+  color: colors.text,
+  letterSpacing: letterSpacing.loose
 };
 
 const errorStyle: CSSProperties = {
@@ -45,84 +51,77 @@ const linkStyle: CSSProperties = {
   fontSize: font.xs,
 };
 
-type Phase = "idle" | "awaiting-scan" | "broadcasting" | "done" | "error";
+type Phase = "opening" | "awaiting-scan" | "broadcasting" | "done" | "error";
 
 const POLL_INTERVAL_MS = 500;
 
 /**
- * Extension-originated Send flow. Shows the unsigned tx as a QR for the
- * Faraday to scan, then on "Scan signed" opens the same sign window the
- * dapp path uses. Once the session completes (sign window scanned the
- * signed QR and validated it), this screen broadcasts via RPC and shows
- * the signature + explorer link.
+ * Extension-originated Send flow — popup variant.
+ *
+ * The sidepanel itself doesn't render the unsigned QR anymore. The popup at
+ * sign.html (the same one the dapp signing path uses) hosts the QR display
+ * + scan-back. This screen auto-opens that popup on mount, polls for the
+ * session result, and on success broadcasts via RPC and shows the signature.
+ *
+ * Design choice: a single signing surface for both dapps and sidepanel
+ * means one camera path, one set of QR-sizing knobs to tune, and a 480 px
+ * QR instead of the sidepanel's cramped 320 px (which the Faraday camera
+ * struggles to resolve at typical hand-held distance).
  */
 export function SendSignScreen() {
   const nav = useNavigation();
   const route = useRouteOf("send-sign");
 
-  const [phase, setPhase] = useState<Phase>("idle");
+  const [phase, setPhase] = useState<Phase>("opening");
   const [error, setError] = useState<string | null>(null);
   const [signature, setSignature] = useState<string | null>(null);
-  const [qrFrameIndex, setQrFrameIndex] = useState(0);
   const pollTimerRef = useRef<number | null>(null);
+  const startedRef = useRef(false);
+
+  function stopPolling() {
+    if (pollTimerRef.current !== null) {
+      window.clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }
 
   useEffect(() => {
     return () => {
-      if (pollTimerRef.current !== null) {
-        window.clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
+      stopPolling();
     };
   }, []);
 
-  if (!route) return null;
-  const { draft, txBase64, sessionId } = route;
-  const qrPayload = useMemo(() => encodeTxForQr(txBase64), [txBase64]);
-
+  // Auto-open the popup once on mount. `startedRef` guards against the
+  // double-fire we'd otherwise get from React 19 strict-mode re-mount.
   useEffect(() => {
-    setQrFrameIndex(0);
-    if (qrPayload.kind !== "animated") {
-      return;
-    }
-    const timer = window.setInterval(() => {
-      setQrFrameIndex((prev) => (prev + 1) % qrPayload.frames.length);
-    }, qrPayload.intervalMs);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [qrPayload]);
+    if (!route || startedRef.current) return;
+    startedRef.current = true;
+    void openAndPoll(route.sessionId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route?.sessionId]);
 
-  const qrValue =
-    qrPayload.kind === "animated"
-      ? qrPayload.frames[qrFrameIndex] ?? qrPayload.frames[0]
-      : qrPayload.value;
-  const urSeq = (() => {
-    const match = qrValue.match(/^ur:[^/]+\/(\d+)-(\d+)\//i);
-    if (!match) {
-      return null;
-    }
-    return {
-      current: Number.parseInt(match[1], 10),
-      total: Number.parseInt(match[2], 10)
-    };
-  })();
+  if (!route) return null;
+  const { draft, sessionId } = route;
 
-  async function openSignWindowAndPoll() {
+  async function openAndPoll(id: string) {
     setError(null);
+    setPhase("opening");
+
     const open = await sendRuntimeMessage<{ opened: boolean }>({
       type: "faraday:ext-open-sign-window",
-      sessionId,
+      sessionId: id,
     });
     if (!open.ok) {
       setError(open.error);
       setPhase("error");
       return;
     }
+
     setPhase("awaiting-scan");
     pollTimerRef.current = window.setInterval(async () => {
       const result = await sendRuntimeMessage<GetSignResult>({
         type: "faraday:get-sign-result",
-        sessionId,
+        sessionId: id,
       });
       if (!result.ok) return;
       if (result.data.status === "completed" && result.data.signedTxBase64) {
@@ -134,13 +133,6 @@ export function SendSignScreen() {
         setPhase("error");
       }
     }, POLL_INTERVAL_MS);
-  }
-
-  function stopPolling() {
-    if (pollTimerRef.current !== null) {
-      window.clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
   }
 
   async function broadcast(signedTxBase64: string) {
@@ -165,6 +157,11 @@ export function SendSignScreen() {
     nav.back();
   }
 
+  async function retry() {
+    startedRef.current = true;
+    await openAndPoll(sessionId);
+  }
+
   // Terminal success state.
   if (phase === "done" && signature) {
     return (
@@ -183,43 +180,33 @@ export function SendSignScreen() {
   }
 
   return (
-    <PanelShell eyebrow="Sign transaction" title="Scan on Faraday">
+    <PanelShell eyebrow="Sign transaction" title="Sign on Faraday">
       <div style={wrapStyle}>
-        <BrandedQR
-          flow="sign"
-          value={qrValue}
-          size={320}
-          caption={
-            <span>
-              {draft.amountUi} {draft.symbol} → {draft.recipient.slice(0, 4)}…{draft.recipient.slice(-4)}
-            </span>
-          }
-        />
-
-        {qrPayload.kind === "animated" ? (
-          <p style={metaStyle}>
-            {urSeq ? `Animated UR part ${urSeq.current}/${urSeq.total}` : `Animated QR frame ${qrFrameIndex + 1}/${qrPayload.frames.length}`}
-          </p>
-        ) : null}
-
-        <p style={helpStyle}>
-          Hold your Faraday up to this QR, review the details on the device, and approve.
+        <p style={draftLineStyle}>
+          {draft.amountUi} {draft.symbol} → {draft.recipient.slice(0, 4)}…{draft.recipient.slice(-4)}
         </p>
 
-        {phase === "awaiting-scan" ? (
-          <p style={metaStyle}>Waiting for the signed QR scan-back window…</p>
-        ) : phase === "broadcasting" ? (
-          <p style={metaStyle}>Broadcasting to Solana…</p>
-        ) : (
-          <p style={metaStyle}>After approval, scan the signed response back here.</p>
-        )}
+        <p style={helpStyle}>
+          {phase === "opening"
+            ? "Opening signing window…"
+            : phase === "awaiting-scan"
+              ? "Hold your Faraday up to the QR in the popup. The popup will scan the signed response back automatically."
+              : phase === "broadcasting"
+                ? "Broadcasting to Solana…"
+                : phase === "error"
+                  ? "Signing did not complete."
+                  : ""}
+        </p>
+
+        <p style={metaStyle}>
+          {phase === "awaiting-scan" ? "Waiting for signature…" : null}
+          {phase === "broadcasting" ? "Sending transaction…" : null}
+        </p>
 
         {error && <p style={errorStyle}>{error}</p>}
 
-        {phase === "idle" || phase === "error" ? (
-          <PrimaryButton onClick={openSignWindowAndPoll}>
-            {phase === "error" ? "Retry signed scan" : "I've scanned → Scan signed"}
-          </PrimaryButton>
+        {phase === "error" ? (
+          <PrimaryButton onClick={retry}>Retry</PrimaryButton>
         ) : null}
 
         <LinkButton onClick={cancel}>Cancel</LinkButton>

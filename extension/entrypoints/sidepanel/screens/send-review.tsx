@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from "react";
 
+import { ErrorBanner } from "../../../src/components/error-banner";
 import { LinkButton, PanelShell, PrimaryButton } from "../../../src/components/panel-shell";
 import { sendRuntimeMessage } from "../../../src/lib/runtime";
 import { useNavigation, useRouteOf } from "../../../src/lib/router";
@@ -132,20 +133,14 @@ export function SendReviewScreen() {
           scan the signed response back here.
         </div>
 
-        {error && (
-          <div style={{
-            padding: space.sm,
-            borderRadius: radius.md,
-            background: "rgba(255, 107, 107, 0.08)",
-            border: `1px solid ${colors.error}`,
-            color: colors.error,
-            fontSize: font.xs,
-            fontFamily: fontFamily.mono,
-            lineHeight: 1.5,
-          }}>
-            {error}
-          </div>
-        )}
+        {error ? (
+          <ErrorBanner
+            title="Could not prepare transaction"
+            message={error}
+            onRetry={confirm}
+            retrying={busy}
+          />
+        ) : null}
 
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: space.xs, marginTop: space.sm }}>
           <PrimaryButton onClick={confirm} disabled={busy || !pairedPubkey}>

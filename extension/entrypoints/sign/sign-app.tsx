@@ -73,6 +73,17 @@ function hostFromOrigin(origin: string): string {
   }
 }
 
+/**
+ * Sentinel origin used by the sidepanel's own Send flow. Mirrored from
+ * background.ts (`EXTENSION_ORIGIN`). Kept inline rather than imported
+ * because background isn't a runtime module the popup loads.
+ */
+const SIDEPANEL_ORIGIN = "ext:sidepanel";
+
+function isSidepanelOrigin(origin: string): boolean {
+  return origin === SIDEPANEL_ORIGIN;
+}
+
 function shortAddress(address: string): string {
   if (address.length <= 14) {
     return address;
@@ -305,7 +316,11 @@ function DisplayScreen({
       <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: space.xs }}>
         <h1 style={titleStyle}>{isMessage ? "Sign Message" : "Sign Transaction"}</h1>
         <p style={subtitleStyle}>
-          from <strong style={{ color: colors.text }}>{hostFromOrigin(session.origin)}</strong>
+          {isSidepanelOrigin(session.origin) ? (
+            <>from <strong style={{ color: colors.text }}>Faraday wallet</strong></>
+          ) : (
+            <>from <strong style={{ color: colors.text }}>{hostFromOrigin(session.origin)}</strong></>
+          )}
         </p>
         <span style={accentBadgeStyle}>{shortAddress(session.expectedPubkey)}</span>
       </div>
