@@ -1,13 +1,13 @@
 import { useState, type CSSProperties } from "react";
 
-import { ErrorBanner } from "../../../src/components/error-banner";
-import { LinkButton, PanelShell, PrimaryButton } from "../../../src/components/panel-shell";
-import { sendRuntimeMessage } from "../../../src/lib/runtime";
-import { useNavigation, useRouteOf } from "../../../src/lib/router";
-import { buildSolTransfer } from "../../../src/lib/sol-transfer";
-import { colors, fontFamily, font, letterSpacing, radius, space } from "../../../src/lib/theme";
-import type { CreateSignSessionResult } from "../../../src/lib/types";
-import { useWallet } from "../../../src/lib/use-wallet";
+import { ErrorBanner } from "@/components/error-banner";
+import { LinkButton, PanelShell, PrimaryButton } from "@/components/panel-shell";
+import { sendRuntimeMessage } from "@/lib/runtime";
+import { useNavigation, useRouteOf } from "@/lib/router";
+import { buildSolTransfer } from "@/lib/sol-transfer";
+import { colors, fontFamily, font, letterSpacing, radius, space } from "@/lib/theme";
+import type { CreateSignSessionResult } from "@/lib/types";
+import { useWallet } from "@/lib/use-wallet";
 
 function shortAddress(address: string): string {
   if (address.length <= 12) return address;

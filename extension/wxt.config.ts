@@ -1,6 +1,8 @@
 import { defineConfig } from "wxt";
 
 export default defineConfig({
+  srcDir: "src",
+  entrypointsDir: "../entrypoints",
   modules: [],
   manifest: {
     name: "Faraday",

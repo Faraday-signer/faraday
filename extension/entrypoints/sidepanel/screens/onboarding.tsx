@@ -1,13 +1,13 @@
 import type { CSSProperties } from "react";
 
-import { FaradayHeroMark } from "../../../src/lib/brand";
-import { useNavigation } from "../../../src/lib/router";
+import { FaradayHeroMark } from "@/lib/brand";
+import { useNavigation } from "@/lib/router";
 import {
   PanelShell,
   PrimaryButton,
   SecondaryButton
-} from "../../../src/components/panel-shell";
-import { colors, fontFamily, font, letterSpacing, space } from "../../../src/lib/theme";
+} from "@/components/panel-shell";
+import { colors, fontFamily, font, letterSpacing, space } from "@/lib/theme";
 
 const columnStyle: CSSProperties = {
   flex: 1,

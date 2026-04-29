@@ -1,8 +1,8 @@
 import type { CSSProperties } from "react";
 
-import { FaradayHeroMark } from "../../../src/lib/brand";
-import { PanelShell } from "../../../src/components/panel-shell";
-import { colors, fontFamily, font, letterSpacing, space } from "../../../src/lib/theme";
+import { FaradayHeroMark } from "@/lib/brand";
+import { PanelShell } from "@/components/panel-shell";
+import { colors, fontFamily, font, letterSpacing, space } from "@/lib/theme";
 
 const wrapStyle: CSSProperties = {
   display: "flex",

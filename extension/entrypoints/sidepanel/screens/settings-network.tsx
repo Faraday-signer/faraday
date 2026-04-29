@@ -1,9 +1,9 @@
 import type { CSSProperties } from "react";
 
-import { PanelShell } from "../../../src/components/panel-shell";
-import { CLUSTER_LABEL, IS_PUBLIC_RPC, RPC_URL, redactRpcUrl } from "../../../src/lib/sol-client";
-import { useTokenSettings } from "../../../src/lib/use-tokens";
-import { colors, fontFamily, font, letterSpacing, radius, space } from "../../../src/lib/theme";
+import { PanelShell } from "@/components/panel-shell";
+import { CLUSTER_LABEL, IS_PUBLIC_RPC, RPC_URL, redactRpcUrl } from "@/lib/sol-client";
+import { useTokenSettings } from "@/lib/use-tokens";
+import { colors, fontFamily, font, letterSpacing, radius, space } from "@/lib/theme";
 
 const wrapStyle: CSSProperties = {
   display: "flex",

@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { BrowserQRCodeReader } from "@zxing/browser";
 
-import { ErrorBanner } from "../../../src/components/error-banner";
-import { LinkButton, PanelShell, PrimaryButton } from "../../../src/components/panel-shell";
-import { useNavigation } from "../../../src/lib/router";
-import { sendRuntimeMessage } from "../../../src/lib/runtime";
-import { isValidSolanaAddress } from "../../../src/lib/solana";
-import type { ExtensionState } from "../../../src/lib/types";
-import { colors, flowColors, fontFamily, font, radius, space } from "../../../src/lib/theme";
+import { ErrorBanner } from "@/components/error-banner";
+import { LinkButton, PanelShell, PrimaryButton } from "@/components/panel-shell";
+import { useNavigation } from "@/lib/router";
+import { sendRuntimeMessage } from "@/lib/runtime";
+import { isValidSolanaAddress } from "@/lib/solana";
+import type { ExtensionState } from "@/lib/types";
+import { colors, flowColors, fontFamily, font, radius, space } from "@/lib/theme";
 
 type BarcodeDetectorLike = {
   detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue?: string }>>;

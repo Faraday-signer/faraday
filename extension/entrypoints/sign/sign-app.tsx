@@ -4,13 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BrowserQRCodeReader } from "@zxing/browser";
 import { QRCodeSVG } from "qrcode.react";
 
-import { AnimatedQr } from "../../src/components/animated-qr";
-import { FaradayLogo } from "../../src/lib/brand";
-import { sendRuntimeMessage } from "../../src/lib/runtime";
-import { FARADAY_SIG_PREFIX, spliceFaradaySignature } from "../../src/lib/solana";
-import { colors, fontFamily, font, radius, space } from "../../src/lib/theme";
-import type { GetSignSessionResult } from "../../src/lib/types";
-import { encodeTxForQr } from "../../src/lib/ur-encode";
+import { AnimatedQr } from "@/components/animated-qr";
+import { FaradayLogo } from "@/lib/brand";
+import { sendRuntimeMessage } from "@/lib/runtime";
+import { FARADAY_SIG_PREFIX, spliceFaradaySignature } from "@/lib/solana";
+import { colors, fontFamily, font, radius, space } from "@/lib/theme";
+import type { GetSignSessionResult } from "@/lib/types";
+import { encodeTxForQr } from "@/lib/ur-encode";
 
 type Step = "display" | "scan";
 type ScanState = "starting" | "scanning" | "success" | "error";

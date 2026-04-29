@@ -5,7 +5,7 @@ import {
   getExtensionState,
   revokeOrigin,
   setPairedPubkey
-} from "../src/lib/storage";
+} from "@/lib/storage";
 import {
   buildSignMessageQrPayload,
   decodeBase64,
@@ -13,7 +13,7 @@ import {
   validateSignedMessage,
   validateSignedTransactionMatch,
   validateUnsignedTransactionPayload
-} from "../src/lib/solana";
+} from "@/lib/solana";
 import type {
   ConnectCheckResult,
   CreateSignSessionResult,
@@ -22,7 +22,7 @@ import type {
   RuntimeRequest,
   RuntimeResponse,
   SignSession
-} from "../src/lib/types";
+} from "@/lib/types";
 
 const SESSION_TTL_MS = 5 * 60 * 1000;
 const LOG_PREFIX = "[Faraday][background]";

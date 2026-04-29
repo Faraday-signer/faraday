@@ -1,9 +1,9 @@
 import { useState, type CSSProperties } from "react";
 
-import { PanelShell } from "../../../src/components/panel-shell";
-import { useRouteOf } from "../../../src/lib/router";
-import { useWallet } from "../../../src/lib/use-wallet";
-import { useTokens } from "../../../src/lib/use-tokens";
+import { PanelShell } from "@/components/panel-shell";
+import { useRouteOf } from "@/lib/router";
+import { useWallet } from "@/lib/use-wallet";
+import { useTokens } from "@/lib/use-tokens";
 import {
   colors,
   fontFamily,
@@ -11,7 +11,7 @@ import {
   letterSpacing,
   radius,
   space,
-} from "../../../src/lib/theme";
+} from "@/lib/theme";
 
 const wrapStyle: CSSProperties = {
   display: "flex",

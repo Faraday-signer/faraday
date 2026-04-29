@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
-import { LinkButton, PanelShell, PrimaryButton } from "../../../src/components/panel-shell";
-import { sendRuntimeMessage } from "../../../src/lib/runtime";
-import { useNavigation, useRouteOf } from "../../../src/lib/router";
-import { broadcastSignedTx, explorerTxUrl } from "../../../src/lib/sol-transfer";
-import { colors, fontFamily, font, letterSpacing, space } from "../../../src/lib/theme";
-import type { GetSignResult } from "../../../src/lib/types";
+import { LinkButton, PanelShell, PrimaryButton } from "@/components/panel-shell";
+import { sendRuntimeMessage } from "@/lib/runtime";
+import { useNavigation, useRouteOf } from "@/lib/router";
+import { broadcastSignedTx, explorerTxUrl } from "@/lib/sol-transfer";
+import { colors, fontFamily, font, letterSpacing, space } from "@/lib/theme";
+import type { GetSignResult } from "@/lib/types";
 
 const wrapStyle: CSSProperties = {
   display: "flex",

@@ -1,10 +1,10 @@
 import { useEffect, useState, type CSSProperties } from "react";
 
-import { LinkButton, PanelShell } from "../../../src/components/panel-shell";
-import { useNavigation } from "../../../src/lib/router";
-import { sendRuntimeMessage } from "../../../src/lib/runtime";
-import type { ExtensionState } from "../../../src/lib/types";
-import { colors, fontFamily, font, letterSpacing, radius, space } from "../../../src/lib/theme";
+import { LinkButton, PanelShell } from "@/components/panel-shell";
+import { useNavigation } from "@/lib/router";
+import { sendRuntimeMessage } from "@/lib/runtime";
+import type { ExtensionState } from "@/lib/types";
+import { colors, fontFamily, font, letterSpacing, radius, space } from "@/lib/theme";
 
 const wrapStyle: CSSProperties = {
   display: "flex",

@@ -1,16 +1,16 @@
 import { useMemo, useState, type CSSProperties } from "react";
 
-import { ErrorBanner } from "../../../src/components/error-banner";
-import { LinkButton, PanelShell, PrimaryButton } from "../../../src/components/panel-shell";
-import { useNavigation } from "../../../src/lib/router";
-import { formatSol, useWallet } from "../../../src/lib/use-wallet";
+import { ErrorBanner } from "@/components/error-banner";
+import { LinkButton, PanelShell, PrimaryButton } from "@/components/panel-shell";
+import { useNavigation } from "@/lib/router";
+import { formatSol, useWallet } from "@/lib/use-wallet";
 import {
   FEE_RESERVE_LAMPORTS,
   useRecipientCheck,
   validateAmount,
   validateRecipientFormat,
-} from "../../../src/lib/send-validation";
-import { colors, fontFamily, font, letterSpacing, radius, space } from "../../../src/lib/theme";
+} from "@/lib/send-validation";
+import { colors, fontFamily, font, letterSpacing, radius, space } from "@/lib/theme";
 
 const wrapStyle: CSSProperties = {
   display: "flex",

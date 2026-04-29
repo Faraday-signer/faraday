@@ -8,15 +8,15 @@ import {
   formatSiwsMessage,
   isValidSolanaAddress,
   SUPPORTED_SOLANA_CHAINS
-} from "../src/lib/solana";
-import type { SiwsInput } from "../src/lib/solana";
+} from "@/lib/solana";
+import type { SiwsInput } from "@/lib/solana";
 import type {
   ConnectCheckResult,
   CreateSignSessionResult,
   GetSignResult,
   RuntimeRequest,
   RuntimeResponse
-} from "../src/lib/types";
+} from "@/lib/types";
 
 const LOG_PREFIX = "[Faraday][inpage]";
 const BRIDGE_TIMEOUT_MS = 15_000;

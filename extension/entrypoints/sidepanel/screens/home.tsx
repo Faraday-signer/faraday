@@ -1,15 +1,15 @@
 import { useState, type CSSProperties } from "react";
 
-import { FaradayLogo } from "../../../src/lib/brand";
-import { useNavigation } from "../../../src/lib/router";
-import { formatSol, useWallet } from "../../../src/lib/use-wallet";
-import { useSolPrice, useTokens } from "../../../src/lib/use-tokens";
-import type { Token } from "../../../src/lib/tokens";
-import type { LiveConnectionState } from "../../../src/lib/use-live-balance";
-import { ErrorBanner } from "../../../src/components/error-banner";
-import { PanelShell } from "../../../src/components/panel-shell";
-import { CLUSTER_LABEL } from "../../../src/lib/sol-client";
-import { colors, fontFamily, font, letterSpacing, radius, space } from "../../../src/lib/theme";
+import { FaradayLogo } from "@/lib/brand";
+import { useNavigation } from "@/lib/router";
+import { formatSol, useWallet } from "@/lib/use-wallet";
+import { useSolPrice, useTokens } from "@/lib/use-tokens";
+import type { Token } from "@/lib/tokens";
+import type { LiveConnectionState } from "@/lib/use-live-balance";
+import { ErrorBanner } from "@/components/error-banner";
+import { PanelShell } from "@/components/panel-shell";
+import { CLUSTER_LABEL } from "@/lib/sol-client";
+import { colors, fontFamily, font, letterSpacing, radius, space } from "@/lib/theme";
 
 function shortAddress(address: string): string {
   if (address.length <= 14) return address;
