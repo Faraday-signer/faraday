@@ -480,7 +480,7 @@ function detectHighValueSol(sim: SimulationResult, userPubkey: string, accountKe
  * Latin equivalents. Returns the result in uppercase for case-insensitive
  * comparison against the canonical ticker list.
  */
-function normalizeSymbol(symbol: string): string {
+export function normalizeSymbol(symbol: string): string {
   let s = symbol.normalize("NFKD");
   s = s.replace(ZERO_WIDTH_RE, "");
   s = [...s].map((ch) => CONFUSABLE_MAP[ch] ?? ch).join("");
