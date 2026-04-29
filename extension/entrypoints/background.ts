@@ -14,6 +14,8 @@ import {
   validateSignedTransactionMatch,
   validateUnsignedTransactionPayload
 } from "../src/lib/solana";
+import { RPC_URL } from "../src/lib/sol-client";
+import { analyzeTxRisk } from "../src/lib/tx-risk";
 import type {
   ConnectCheckResult,
   CreateSignSessionResult,
@@ -319,6 +321,15 @@ async function handleMessage(
         return { ok: false, error: msg };
       }
 
+      // Analyze the transaction for fraud signals before creating the session.
+      // Errors are swallowed — a failed analysis must never block signing.
+      let riskReport: Awaited<ReturnType<typeof analyzeTxRisk>> | undefined;
+      try {
+        riskReport = await analyzeTxRisk(message.txBase64, RPC_URL, state.pairedPubkey);
+      } catch {
+        // analyzeTxRisk handles its own errors internally; this catches any unexpected throw.
+      }
+
       const sessionId = makeSessionId();
       const session: SignSession = {
         id: sessionId,
@@ -328,7 +339,8 @@ async function handleMessage(
         expectedPubkey: state.pairedPubkey,
         status: "pending",
         createdAt: Date.now(),
-        expiresAt: Date.now() + SESSION_TTL_MS
+        expiresAt: Date.now() + SESSION_TTL_MS,
+        riskReport,
       };
       await sessions.set(sessionId, session);
 
@@ -486,7 +498,8 @@ async function handleMessage(
         messageQrBase64: session.messageQrBase64,
         expectedPubkey: session.expectedPubkey,
         status: session.status,
-        error: session.error
+        error: session.error,
+        riskReport: session.riskReport,
       };
       return { ok: true, data };
     }

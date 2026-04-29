@@ -9,10 +9,11 @@ import { FaradayLogo } from "../../src/lib/brand";
 import { sendRuntimeMessage } from "../../src/lib/runtime";
 import { FARADAY_SIG_PREFIX, spliceFaradaySignature } from "../../src/lib/solana";
 import { colors, fontFamily, font, radius, space } from "../../src/lib/theme";
+import { type TxRiskReport, type TxRiskWarning } from "../../src/lib/tx-risk";
 import type { GetSignSessionResult } from "../../src/lib/types";
 import { encodeTxForQr } from "../../src/lib/ur-encode";
 
-type Step = "display" | "scan";
+type Step = "risk" | "display" | "scan";
 type ScanState = "starting" | "scanning" | "success" | "error";
 
 const LOG_PREFIX = "[Faraday][sign]";
@@ -248,6 +249,164 @@ function Shell({ children, onCancel }: { children: React.ReactNode; onCancel: ()
       </header>
       <div style={contentStyle}>{children}</div>
     </main>
+  );
+}
+
+const riskScrollStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: space.sm,
+  width: "100%",
+  maxWidth: 420,
+  overflowY: "auto",
+  maxHeight: "calc(100vh - 120px)",
+  paddingBottom: space.md,
+};
+
+const riskBannerStyle = (color: string): CSSProperties => ({
+  padding: space.sm,
+  borderRadius: radius.md,
+  background: `${color}14`,
+  border: `1px solid ${color}`,
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+});
+
+const riskWarningStyle = (color: string): CSSProperties => ({
+  padding: space.sm,
+  borderRadius: radius.md,
+  background: `${color}0d`,
+  border: `1px solid ${color}`,
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+});
+
+function WarningItem({ warning }: { warning: TxRiskWarning }) {
+  const color = warning.severity === "critical" ? colors.error : colors.warning;
+  return (
+    <div style={riskWarningStyle(color)}>
+      <span style={{ fontFamily: fontFamily.mono, fontSize: font.xs, color, letterSpacing: 0.6 }}>
+        {warning.title}
+      </span>
+      <span style={{ fontFamily: fontFamily.mono, fontSize: font.xs, color: colors.textMuted, lineHeight: 1.5 }}>
+        {warning.description}
+      </span>
+    </div>
+  );
+}
+
+function formatAmount(amount: number): string {
+  const abs = Math.abs(amount);
+  const sign = amount >= 0 ? "+" : "-";
+  if (abs < 0.000001) return `${sign}0`;
+  if (abs >= 1000) return `${sign}${abs.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+  return `${sign}${abs.toFixed(abs < 0.01 ? 6 : abs < 1 ? 4 : 2)}`;
+}
+
+function BalanceChanges({ report }: { report: TxRiskReport }) {
+  const allChanges = report.tokenChanges.slice();
+  const hasSolInChanges = allChanges.some((c) => c.symbol === "SOL");
+  if (!hasSolInChanges && report.solChangeSol !== null && !report.simulationFailed) {
+    allChanges.push({ mint: "SOL", symbol: "SOL", amount: report.solChangeSol });
+  }
+  if (allChanges.length === 0) return null;
+  return (
+    <div style={{ padding: space.sm, borderRadius: radius.md, background: colors.panel, border: `1px solid ${colors.borderStrong}`, display: "flex", flexDirection: "column", gap: 6 }}>
+      <span style={{ fontFamily: fontFamily.mono, fontSize: font.xs, color: colors.textDim, letterSpacing: 0.8, textTransform: "uppercase" }}>
+        Balance changes
+      </span>
+      {allChanges.map((c) => (
+        <div key={c.mint} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <span style={{ fontFamily: fontFamily.mono, fontSize: font.xs, color: colors.textMuted }}>{c.symbol}</span>
+          <span style={{ fontFamily: fontFamily.mono, fontSize: font.sm, color: c.amount >= 0 ? colors.success : colors.error }}>
+            {formatAmount(c.amount)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RiskScreen({
+  session,
+  report,
+  onProceed,
+  onCancel,
+}: {
+  session: GetSignSessionResult;
+  report: TxRiskReport;
+  onProceed: () => void;
+  onCancel: () => void;
+}) {
+  const levelColor =
+    report.level === "SAFE" ? colors.success :
+    report.level === "WARNING" ? colors.warning :
+    colors.error;
+
+  const levelLabel =
+    report.level === "SAFE" ? "Transaction looks safe" :
+    report.level === "WARNING" ? "Review warnings before signing" :
+    "Potential fraud detected";
+
+  const proceedLabel =
+    report.level === "SAFE" ? "Proceed to QR" :
+    report.level === "WARNING" ? "Proceed with caution" :
+    "Sign anyway — I accept the risk";
+
+  return (
+    <div style={riskScrollStyle}>
+      <div style={{ textAlign: "center" }}>
+        <h1 style={titleStyle}>Risk Check</h1>
+        <p style={subtitleStyle}>
+          from <strong style={{ color: colors.text }}>{hostFromOrigin(session.origin)}</strong>
+        </p>
+      </div>
+
+      <div style={riskBannerStyle(levelColor)}>
+        <span style={{
+          fontFamily: fontFamily.mono,
+          fontSize: font.xs,
+          color: levelColor,
+          letterSpacing: 0.8,
+          textTransform: "uppercase",
+        }}>
+          {report.level} — {levelLabel}
+        </span>
+      </div>
+
+      <BalanceChanges report={report} />
+
+      {report.warnings.map((w, i) => (
+        <WarningItem key={i} warning={w} />
+      ))}
+
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: space.sm, marginTop: space.xs }}>
+        <button
+          type="button"
+          onClick={onProceed}
+          style={{
+            background: levelColor,
+            color: colors.bg,
+            border: "none",
+            borderRadius: radius.pill,
+            padding: `${space.sm}px ${space.xl}px`,
+            fontFamily: fontFamily.display,
+            fontSize: font.sm,
+            letterSpacing: 0.6,
+            cursor: "pointer",
+            width: "100%",
+            maxWidth: 280,
+          }}
+        >
+          {proceedLabel}
+        </button>
+        <button type="button" onClick={onCancel} style={secondaryLinkStyle}>
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -567,7 +726,7 @@ export function SignApp() {
   const sessionId = useMemo(() => getSessionId(), []);
   const [session, setSession] = useState<GetSignSessionResult | null>(null);
   const [fatalError, setFatalError] = useState<string | null>(null);
-  const [step, setStep] = useState<Step>("display");
+  const [step, setStep] = useState<Step>("risk");
 
   useEffect(() => {
     if (!sessionId) {
@@ -581,9 +740,7 @@ export function SignApp() {
         type: "faraday:get-sign-session",
         sessionId
       });
-      if (cancelled) {
-        return;
-      }
+      if (cancelled) return;
       if (!response.ok) {
         warn("Failed to load sign session", { sessionId, error: response.error });
         setFatalError(response.error);
@@ -604,6 +761,9 @@ export function SignApp() {
         origin: response.data.origin
       });
       setSession(response.data);
+      // Risk report comes pre-computed from background. For sign-message or
+      // sessions without a report, go straight to the QR display screen.
+      setStep(response.data.kind === "tx" && response.data.riskReport ? "risk" : "display");
     })();
 
     return () => {
@@ -707,7 +867,14 @@ export function SignApp() {
 
   return (
     <Shell onCancel={() => void cancelSession()}>
-      {step === "display" ? (
+      {step === "risk" && session.riskReport ? (
+        <RiskScreen
+          session={session}
+          report={session.riskReport}
+          onProceed={() => setStep("display")}
+          onCancel={() => void cancelSession()}
+        />
+      ) : step === "display" ? (
         <DisplayScreen
           session={session}
           onAdvance={() => setStep("scan")}
