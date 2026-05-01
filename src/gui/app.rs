@@ -233,7 +233,6 @@ pub enum Screen {
     DerivationError,
 
     // Sign TX flow
-    SignNoWallet,
     SignScanTx,
     SignReview {
         tx_bytes: Vec<u8>,
@@ -782,11 +781,12 @@ impl App {
             // doesn't accidentally confirm a dialog they couldn't see.
             return;
         }
-        // Long-press Back shortcut: jump straight to the Power Off confirm
-        // regardless of current screen. Bypasses normal transition so users
-        // can shut down from anywhere (scan, char grid, tx review, …).
+        // Long-press Back shortcut: jump straight to Reset Wallet confirm
+        // from anywhere. Only meaningful when a wallet is loaded.
         if matches!(event, InputEvent::PowerOffShortcut) {
-            self.screen = Screen::SettingsPowerOff { selected: 0 };
+            if self.wallet.is_some() {
+                self.screen = Screen::SettingsPowerOff { selected: 0 };
+            }
             return;
         }
         let screen = std::mem::replace(&mut self.screen, Screen::Splash);
@@ -995,15 +995,13 @@ impl App {
             Screen::Splash => Screen::MainMenu { selected: 0 },
 
             Screen::MainMenu { mut selected } => {
-                // Vertical list: Up/Down move one item at a time; Left/Right
-                // behave like Up/Down for joystick ergonomics.
-                const MAIN_MENU_LEN: usize = 4;
+                let menu_len = self.menu_items().len();
                 match event {
                     InputEvent::Up | InputEvent::Left => {
                         selected = selected.saturating_sub(1);
                     }
                     InputEvent::Down | InputEvent::Right => {
-                        if selected + 1 < MAIN_MENU_LEN {
+                        if selected + 1 < menu_len {
                             selected += 1;
                         }
                     }
@@ -1049,8 +1047,7 @@ impl App {
 
             Screen::DerivationError => Screen::MainMenu { selected: 0 },
 
-            s @ (Screen::SignNoWallet
-            | Screen::SignScanTx
+            s @ (Screen::SignScanTx
             | Screen::SignReview { .. }
             | Screen::SignShowQr { .. }
             | Screen::SignMessageInput { .. }
@@ -1073,20 +1070,34 @@ impl App {
         }
     }
 
+    /// Visible menu action indices.
+    /// With wallet: SIGN(2), WALLET DATA(3), ABOUT(4).
+    /// Without:     CREATE(0), LOAD(1), ABOUT(4).
+    fn menu_items(&self) -> &'static [usize] {
+        if self.wallet.is_some() {
+            &[2, 3, 4]
+        } else {
+            &[0, 1, 4]
+        }
+    }
+
     fn menu_select(&mut self, selected: usize) -> Screen {
-        match selected {
+        let items = self.menu_items();
+        let action = items.get(selected).copied().unwrap_or(usize::MAX);
+        match action {
             0 => Screen::CreateWordCount { selected: 0 },
             1 => Screen::LoadMethod { selected: 0 },
-            2 => {
-                if self.wallet.is_some() {
-                    Screen::SignScanTx
-                } else {
-                    Screen::SignNoWallet
-                }
-            }
+            2 => Screen::SignScanTx,
             3 => Screen::SettingsMenu { selected: 0 },
+            4 => Screen::SettingsAbout,
             _ => Screen::MainMenu { selected },
         }
+    }
+
+    /// Visual index of a given action (0=CREATE, 1=LOAD, 2=SIGN,
+    /// 3=WALLET DATA, 4=ABOUT) in the current menu layout.
+    pub(crate) fn menu_index_of(&self, action: usize) -> usize {
+        self.menu_items().iter().position(|&a| a == action).unwrap_or(0)
     }
 
     pub(crate) fn derive_address(&self, mnemonic: &str, passphrase: &str) -> Option<String> {

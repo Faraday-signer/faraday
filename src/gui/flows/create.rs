@@ -143,7 +143,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         } => {
             let total_flips = if word_count == 12 { 128 } else { 256 };
             match event {
-                InputEvent::Left | InputEvent::Right => {
+                InputEvent::Left | InputEvent::Right | InputEvent::Up | InputEvent::Down => {
                     selected = 1 - selected;
                 }
                 InputEvent::Confirm => {
@@ -568,7 +568,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         return if from_settings {
                             Screen::SettingsMenu { selected: 0 }
                         } else {
-                            Screen::MainMenu { selected: 0 }
+                            Screen::MainMenu { selected: app.menu_index_of(2) }
                         };
                     }
                 },
@@ -576,7 +576,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     return if from_settings {
                         Screen::SettingsMenu { selected: 0 }
                     } else {
-                        Screen::MainMenu { selected: 0 }
+                        Screen::MainMenu { selected: app.menu_index_of(2) }
                     };
                 }
                 _ => {}
@@ -749,14 +749,14 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     return if from_settings {
                         Screen::SettingsMenu { selected: 0 }
                     } else {
-                        Screen::MainMenu { selected: 0 }
+                        Screen::MainMenu { selected: app.menu_index_of(2) }
                     };
                 }
                 InputEvent::Back => {
                     return if from_settings {
                         Screen::SettingsMenu { selected: 0 }
                     } else {
-                        Screen::MainMenu { selected: 0 }
+                        Screen::MainMenu { selected: app.menu_index_of(2) }
                     };
                 }
                 _ => {}

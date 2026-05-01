@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { BrowserQRCodeReader } from "@zxing/browser";
 
+import { CameraBlockedPanel, CameraRequestPrompt } from "@/components/camera-permission-prompts";
 import { ErrorBanner } from "@/components/error-banner";
 import { LinkButton, PanelShell, PrimaryButton } from "@/components/panel-shell";
+import { categorizeCameraError, getCameraPermissionState } from "@/lib/camera-permission";
 import { useNavigation } from "@/lib/router";
 import { sendRuntimeMessage } from "@/lib/runtime";
 import { isValidSolanaAddress } from "@/lib/solana";
@@ -190,14 +192,45 @@ const previewAddressStyle: CSSProperties = {
   wordBreak: "break-all"
 };
 
+/**
+ * Camera-access phase machine:
+ *   - "prompt"  → user hasn't initiated yet; show the explicit Allow card
+ *                so Chrome's permission prompt fires on a clear gesture.
+ *   - "running" → camera is active and we're scanning.
+ *   - "denied"  → previously blocked; show recovery panel that links to
+ *                Chrome's extension settings.
+ *
+ * The scan effect runs only in "running". On mount we skip straight to
+ * "running" when the Permissions API reports `granted`, so re-visiting
+ * the screen after a successful pair-and-back doesn't make the user
+ * click "Allow" again.
+ */
+type CameraPhase = "prompt" | "running" | "denied";
+
 export function PairScanScreen() {
   const nav = useNavigation();
-  const [status, setStatus] = useState("Requesting camera access…");
+  const [status, setStatus] = useState("Point the camera at your device's address QR");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [detectedPubkey, setDetectedPubkey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [cameraPhase, setCameraPhase] = useState<CameraPhase>("prompt");
+
+  // Skip the explicit allow card when permission is already granted —
+  // returning to this screen after a successful pair shouldn't make the
+  // user re-click the button.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const state = await getCameraPermissionState();
+      if (cancelled) return;
+      if (state === "granted") setCameraPhase("running");
+      else if (state === "denied") setCameraPhase("denied");
+      // "prompt" / "unknown" → keep the default "prompt" phase
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -297,6 +330,8 @@ export function PairScanScreen() {
       setStatus("Point the camera at your device's address QR");
     }
 
+    if (cameraPhase !== "running") return undefined;
+
     void (async () => {
       setCameraError(null);
       try {
@@ -304,9 +339,16 @@ export function PairScanScreen() {
         else await startZxing();
       } catch (error) {
         if (cancelled) return;
-        const msg = error instanceof Error ? error.message : "Failed to start camera.";
-        setCameraError(msg);
-        setStatus("Camera unavailable.");
+        const { kind, message } = categorizeCameraError(error);
+        if (kind === "denied") {
+          // Permission was just denied (user clicked "Block") or was
+          // already denied at start. Switch to the recovery panel.
+          setCameraPhase("denied");
+          setCameraError(null);
+        } else {
+          setCameraError(message);
+          setStatus("Camera unavailable.");
+        }
       }
     })();
 
@@ -315,7 +357,7 @@ export function PairScanScreen() {
       stopCamera();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [retryKey]);
+  }, [retryKey, cameraPhase]);
 
   async function confirmPair() {
     if (!detectedPubkey) return;
@@ -336,7 +378,14 @@ export function PairScanScreen() {
   function retryCamera() {
     lockedRef.current = false;
     setDetectedPubkey(null);
-    setStatus("Requesting camera access…");
+    setCameraError(null);
+    setStatus("Point the camera at your device's address QR");
+    setCameraPhase("running");
+    setRetryKey((k) => k + 1);
+  }
+
+  function allowCamera() {
+    setCameraPhase("running");
     setRetryKey((k) => k + 1);
   }
 
@@ -379,15 +428,25 @@ export function PairScanScreen() {
               </span>
             </div>
 
-            <div style={frameStyle}>
-              <video ref={videoRef} autoPlay muted playsInline style={videoStyle} />
-              <span style={corner("tl")} aria-hidden />
-              <span style={corner("tr")} aria-hidden />
-              <span style={corner("bl")} aria-hidden />
-              <span style={corner("br")} aria-hidden />
-            </div>
-
-            <p style={statusStyle(false)}>{status}</p>
+            {cameraPhase === "prompt" ? (
+              <CameraRequestPrompt
+                intent="scan your Faraday device's address QR."
+                onAllow={allowCamera}
+              />
+            ) : cameraPhase === "denied" ? (
+              <CameraBlockedPanel onRetry={retryCamera} />
+            ) : (
+              <>
+                <div style={frameStyle}>
+                  <video ref={videoRef} autoPlay muted playsInline style={videoStyle} />
+                  <span style={corner("tl")} aria-hidden />
+                  <span style={corner("tr")} aria-hidden />
+                  <span style={corner("bl")} aria-hidden />
+                  <span style={corner("br")} aria-hidden />
+                </div>
+                <p style={statusStyle(false)}>{status}</p>
+              </>
+            )}
 
             <LinkButton onClick={() => nav.replace({ name: "pair-paste" })}>Paste address instead</LinkButton>
           </>

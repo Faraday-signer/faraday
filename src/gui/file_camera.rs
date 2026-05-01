@@ -51,6 +51,8 @@ impl FileCamera {
 
     pub fn set_decode_enabled(&self, _on: bool) {}
 
+    pub fn set_small_qr_mode(&self, _on: bool) {}
+
     /// No live diagnostics for a single-image source — always returns defaults.
     pub fn diagnostics(&self) -> crate::camera::ScanDiagnostics {
         Default::default()

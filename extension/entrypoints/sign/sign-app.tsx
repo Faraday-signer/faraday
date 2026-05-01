@@ -5,9 +5,17 @@ import { BrowserQRCodeReader } from "@zxing/browser";
 import { QRCodeSVG } from "qrcode.react";
 
 import { AnimatedQr } from "@/components/animated-qr";
+import {
+  CameraBlockedPanel,
+  CameraRequestPrompt,
+} from "@/components/camera-permission-prompts";
 import { RiskProceedButton } from "@/components/risk-proceed-button";
 import { RiskReportView } from "@/components/risk-report-view";
 import { WhatWillHappen } from "@/components/what-will-happen";
+import {
+  categorizeCameraError,
+  getCameraPermissionState,
+} from "@/lib/camera-permission";
 import { FaradayLogo } from "@/lib/brand";
 import { sendRuntimeMessage } from "@/lib/runtime";
 import { FARADAY_SIG_PREFIX, spliceFaradaySignature } from "@/lib/solana";
@@ -436,6 +444,22 @@ function ScanScreen({
 }) {
   const [scanState, setScanState] = useState<ScanState>("starting");
   const [statusText, setStatusText] = useState("Requesting camera access…");
+  // The user clicked through "I've scanned → Scan signed" to get here,
+  // which is itself a recent gesture — so we attempt camera start
+  // immediately for the granted/prompt states. The "denied" branch
+  // shows the recovery panel instead of trying and failing silently.
+  const [cameraPhase, setCameraPhase] = useState<"checking" | "running" | "denied">("checking");
+  const [retryKey, setRetryKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const state = await getCameraPermissionState();
+      if (cancelled) return;
+      setCameraPhase(state === "denied" ? "denied" : "running");
+    })();
+    return () => { cancelled = true; };
+  }, [retryKey]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const readerRef = useRef<BrowserQRCodeReader | null>(null);
@@ -574,6 +598,12 @@ function ScanScreen({
       debug("ZXing scanner started");
     }
 
+    if (cameraPhase !== "running") {
+      return () => {
+        cancelled = true;
+      };
+    }
+
     void (async () => {
       try {
         if (getBarcodeDetectorCtor()) {
@@ -585,8 +615,12 @@ function ScanScreen({
         if (cancelled) {
           return;
         }
-        const message = error instanceof Error ? error.message : "Failed to start camera.";
-        warn("Failed starting camera scanner", { error: message });
+        const { kind, message } = categorizeCameraError(error);
+        warn("Failed starting camera scanner", { error: message, kind });
+        if (kind === "denied") {
+          setCameraPhase("denied");
+          return;
+        }
         setScanState("error");
         setStatusText(message);
       }
@@ -598,7 +632,7 @@ function ScanScreen({
       readerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [cameraPhase, retryKey]);
 
   const statusColor = scanState === "error" ? colors.error : colors.textMuted;
 
@@ -609,15 +643,24 @@ function ScanScreen({
         <p style={subtitleStyle}>Hold your Faraday device up to the camera.</p>
       </div>
 
-      <div style={videoFrameStyle}>
-        <video ref={videoRef} autoPlay muted playsInline style={videoStyle} />
-        <span style={cornerStyle("tl")} aria-hidden />
-        <span style={cornerStyle("tr")} aria-hidden />
-        <span style={cornerStyle("bl")} aria-hidden />
-        <span style={cornerStyle("br")} aria-hidden />
-      </div>
-
-      <p style={{ margin: 0, fontSize: font.sm, color: statusColor, textAlign: "center" }}>{statusText}</p>
+      {cameraPhase === "denied" ? (
+        <CameraBlockedPanel onRetry={() => setRetryKey((k) => k + 1)} />
+      ) : cameraPhase === "checking" ? (
+        <p style={{ margin: 0, fontSize: font.sm, color: colors.textMuted, textAlign: "center" }}>
+          Checking camera access…
+        </p>
+      ) : (
+        <>
+          <div style={videoFrameStyle}>
+            <video ref={videoRef} autoPlay muted playsInline style={videoStyle} />
+            <span style={cornerStyle("tl")} aria-hidden />
+            <span style={cornerStyle("tr")} aria-hidden />
+            <span style={cornerStyle("bl")} aria-hidden />
+            <span style={cornerStyle("br")} aria-hidden />
+          </div>
+          <p style={{ margin: 0, fontSize: font.sm, color: statusColor, textAlign: "center" }}>{statusText}</p>
+        </>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: space.sm }}>
         <button type="button" onClick={onBack} style={secondaryLinkStyle}>
