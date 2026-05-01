@@ -158,3 +158,57 @@ export async function signAndSendTransfer(params: {
 export function explorerTxUrl(signature: string): string {
   return `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
 }
+
+/**
+ * Sign + broadcast an arbitrary pre-built `Transaction`. Used by the risk-
+ * scenario harness so each scenario can build its own tx (compute-budget
+ * instructions, oversized transfers, etc.) and feed it through the same
+ * Wallet Standard signing path.
+ *
+ * Skips `confirmTransaction` because some scenarios are *expected* to be
+ * caught at simulation time — we want the run log to surface the broadcast
+ * error string immediately rather than time out waiting for a confirmation
+ * that will never come.
+ */
+export async function signAndSendBuiltTx(params: {
+  wallet: SupportedWallet;
+  account: StandardAccount;
+  tx: Transaction;
+}): Promise<{ signature: string }> {
+  const { wallet, account, tx } = params;
+
+  if (!tx.recentBlockhash) {
+    const latest = await connection.getLatestBlockhash("confirmed");
+    tx.recentBlockhash = latest.blockhash;
+  }
+  if (!tx.feePayer) {
+    tx.feePayer = new PublicKey(account.address);
+  }
+
+  const unsignedBytes = tx.serialize({
+    requireAllSignatures: false,
+    verifySignatures: false,
+  });
+
+  const signFeature = wallet.features["solana:signTransaction"];
+  if (!signFeature) {
+    throw new Error("Wallet missing solana:signTransaction feature.");
+  }
+
+  const outputs = await signFeature.signTransaction({
+    account,
+    chain: CHAIN,
+    transaction: unsignedBytes,
+  });
+
+  const signedBytes = outputs?.[0]?.signedTransaction;
+  if (!signedBytes) {
+    throw new Error("Wallet did not return signed transaction bytes.");
+  }
+
+  const signature = await connection.sendRawTransaction(signedBytes, {
+    skipPreflight: false,
+  });
+
+  return { signature };
+}

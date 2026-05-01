@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, RefreshCw } from "lucide-react";
 
 import { FaradayLogo } from "@/components/brand-logo";
+import { ScenariosPanel } from "@/components/scenarios-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -293,6 +294,14 @@ export default function App() {
             </CardContent>
           </Card>
         </div>
+
+        <ScenariosPanel
+          wallet={activeWallet}
+          account={account}
+          busy={busy}
+          setBusy={setBusy}
+          log={log}
+        />
 
         <Card>
           <CardHeader>
