@@ -16,6 +16,7 @@ import {
 } from "@/lib/solana";
 import { RPC_URL } from "@/lib/sol-client";
 import { analyzeTxRisk } from "@/lib/tx-risk";
+import { getRecipientHistory } from "@/lib/recipient-history";
 import type {
   ConnectCheckResult,
   CreateSignSessionResult,
@@ -325,7 +326,13 @@ async function handleMessage(
       // Errors are swallowed — a failed analysis must never block signing.
       let riskReport: Awaited<ReturnType<typeof analyzeTxRisk>> | undefined;
       try {
-        riskReport = await analyzeTxRisk(message.txBase64, RPC_URL, state.pairedPubkey);
+        const recipientHistory = await getRecipientHistory().catch(() => []);
+        riskReport = await analyzeTxRisk(
+          message.txBase64,
+          RPC_URL,
+          state.pairedPubkey,
+          { recipientHistory },
+        );
       } catch {
         // analyzeTxRisk handles its own errors internally; this catches any unexpected throw.
       }
@@ -444,6 +451,38 @@ async function handleMessage(
         return { ok: false, error: msg };
       }
 
+      // Run risk analysis here so the popup is the single risk surface.
+      // STRICT MODE for sidepanel sends: when the analyzer itself failed
+      // to run (network error, 30s timeout) we block the session and
+      // surface the error to the sidepanel so the user can retry. We
+      // distinguish "analyzer broke" from "tx itself is broken" by the
+      // level: WARNING + simulationFailed = analyzer broke; DANGER +
+      // simulationFailed = tx is broken (popup should still show that).
+      let riskReport: Awaited<ReturnType<typeof analyzeTxRisk>> | undefined;
+      try {
+        const recipientHistory = await getRecipientHistory().catch(() => []);
+        riskReport = await analyzeTxRisk(
+          message.txBase64,
+          RPC_URL,
+          state.pairedPubkey,
+          { recipientHistory },
+        );
+      } catch {
+        return {
+          ok: false,
+          error: "Risk analysis failed unexpectedly. Please retry.",
+        };
+      }
+
+      if (riskReport.simulationFailed && riskReport.level === "WARNING") {
+        const reason = riskReport.warnings[0]?.description ??
+          "The risk analyzer could not inspect this transaction.";
+        return {
+          ok: false,
+          error: `${reason} Please retry — this can happen on slow RPC endpoints.`,
+        };
+      }
+
       const sessionId = makeSessionId();
       const session: SignSession = {
         id: sessionId,
@@ -453,7 +492,8 @@ async function handleMessage(
         expectedPubkey: state.pairedPubkey,
         status: "pending",
         createdAt: Date.now(),
-        expiresAt: Date.now() + SESSION_TTL_MS
+        expiresAt: Date.now() + SESSION_TTL_MS,
+        riskReport,
       };
       await sessions.set(sessionId, session);
 
