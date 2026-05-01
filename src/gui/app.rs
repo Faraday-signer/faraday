@@ -31,9 +31,63 @@ pub enum InputEvent {
     PowerOffShortcut,
 }
 
+/// Topics for the guided-mode interstitial help screens.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum HelpTopic {
+    CreateWallet,
+    LoadWallet,
+    SignTx,
+    WalletData,
+    ChooseEntropyMethod,
+    ScanSeedQr,
+    TypeWords,
+    BackupSeed,
+    VerifyWords,
+    Passphrase,
+}
+
+impl HelpTopic {
+    pub fn title(self) -> &'static str {
+        match self {
+            Self::CreateWallet => "CREATE WALLET",
+            Self::LoadWallet => "LOAD WALLET",
+            Self::SignTx => "SIGN",
+            Self::WalletData => "WALLET DATA",
+            Self::ChooseEntropyMethod => "ENTROPY",
+            Self::ScanSeedQr => "SCAN SEEDQR",
+            Self::TypeWords => "TYPE WORDS",
+            Self::BackupSeed => "BACKUP",
+            Self::VerifyWords => "VERIFY",
+            Self::Passphrase => "PASSPHRASE",
+        }
+    }
+
+    pub fn body(self) -> &'static str {
+        match self {
+            Self::CreateWallet => "Generate a brand new\nwallet from random\nentropy. You will back\nit up on paper.",
+            Self::LoadWallet => "Restore a wallet you\nalready backed up, by\nscanning its QR or\ntyping the words.",
+            Self::SignTx => "Scan a transaction QR\nfrom your computer,\nreview it, and sign\nwith your loaded key.",
+            Self::WalletData => "Show your address,\nbackup your seed,\nlist accounts, or\nverify an address.",
+            Self::ChooseEntropyMethod => "Pick how randomness\nis generated: auto,\ncamera noise, coin\nflips, or dice rolls.",
+            Self::ScanSeedQr => "Point the camera at\nyour paper SeedQR.\nIt will be decoded\nautomatically.",
+            Self::TypeWords => "Enter each BIP39 word\nusing the grid. Words\nauto-complete after a\nfew letters.",
+            Self::BackupSeed => "Your seed is the ONLY\nway to recover funds.\nWrite it on paper or\nmetal. Keep it safe.",
+            Self::VerifyWords => "We will now check\nthat you wrote the\nwords correctly. A\nfew will be asked.",
+            Self::Passphrase => "A passphrase adds\nextra security. If\nyou skip it, the seed\nalone unlocks funds.",
+        }
+    }
+}
+
 /// Current screen with its mutable state.
 pub enum Screen {
     Splash,
+    ModeSelect {
+        selected: usize,
+        shown_at: std::time::Instant,
+    },
+    Help {
+        topic: HelpTopic,
+    },
     MainMenu {
         selected: usize,
     },
@@ -706,6 +760,10 @@ pub fn should_blank(idle_ms: u64, timeout_ms: u64, on_camera_screen: bool) -> bo
 /// Top-level application.
 pub struct App {
     pub screen: Screen,
+    pub guided: bool,
+    pub pending_screen: Option<Screen>,
+    help_return: Option<HelpTopic>,
+    help_return_for: Option<std::mem::Discriminant<Screen>>,
     pub wallet: Option<LoadedWallet>,
     pub last_activity: std::time::Instant,
     pub blank_timeout_ms: u64,
@@ -733,6 +791,10 @@ impl App {
     pub fn new() -> Self {
         App {
             screen: Screen::Splash,
+            guided: false,
+            pending_screen: None,
+            help_return: None,
+            help_return_for: None,
             wallet: None,
             last_activity: std::time::Instant::now(),
             blank_timeout_ms: DEFAULT_BLANK_TIMEOUT_MS,
@@ -770,7 +832,10 @@ impl App {
     }
 
     pub fn enter_main_menu(&mut self) {
-        self.screen = Screen::MainMenu { selected: 0 };
+        self.screen = Screen::ModeSelect {
+            selected: 0,
+            shown_at: std::time::Instant::now(),
+        };
     }
 
     pub fn handle_input(&mut self, event: InputEvent) {
@@ -854,6 +919,13 @@ impl App {
     /// Shared between simulator (macOS nokhwa) and Pi (V4L2) via the `Camera` type alias.
     #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
     pub fn tick(&mut self) {
+        if let Screen::ModeSelect { shown_at, .. } = &self.screen {
+            if shown_at.elapsed() >= std::time::Duration::from_secs(5) {
+                self.guided = false;
+                self.screen = Screen::MainMenu { selected: 0 };
+            }
+        }
+
         // Auto-dismiss the "seed loaded" splash after a short beat — the user
         // shouldn't have to press anything; the screen just flashes and moves
         // on to the passphrase decision.
@@ -991,8 +1063,60 @@ impl App {
     }
 
     fn transition(&mut self, screen: Screen, event: InputEvent) -> Screen {
+        if event == InputEvent::Back {
+            if let (Some(topic), Some(disc)) = (self.help_return, self.help_return_for) {
+                if disc == std::mem::discriminant(&screen) {
+                    self.help_return = None;
+                    self.help_return_for = None;
+                    self.pending_screen = Some(screen);
+                    return Screen::Help { topic };
+                }
+            }
+        }
+        if let Some(disc) = self.help_return_for {
+            if disc != std::mem::discriminant(&screen) {
+                self.help_return = None;
+                self.help_return_for = None;
+            }
+        }
+
         match screen {
-            Screen::Splash => Screen::MainMenu { selected: 0 },
+            Screen::Splash => Screen::ModeSelect {
+                selected: 0,
+                shown_at: std::time::Instant::now(),
+            },
+
+            Screen::ModeSelect { mut selected, shown_at } => {
+                match event {
+                    InputEvent::Up | InputEvent::Down => {
+                        selected = 1 - selected;
+                    }
+                    InputEvent::Confirm => {
+                        self.guided = selected == 1;
+                        return Screen::MainMenu { selected: 0 };
+                    }
+                    _ => {}
+                }
+                Screen::ModeSelect { selected, shown_at }
+            }
+
+            Screen::Help { topic } => {
+                match event {
+                    InputEvent::Confirm => {
+                        let next = self.pending_screen.take().unwrap_or(Screen::MainMenu { selected: 0 });
+                        self.help_return = Some(topic);
+                        self.help_return_for = Some(std::mem::discriminant(&next));
+                        next
+                    }
+                    InputEvent::Back => {
+                        self.pending_screen = None;
+                        self.help_return = None;
+                        self.help_return_for = None;
+                        Screen::MainMenu { selected: 0 }
+                    }
+                    _ => screen,
+                }
+            }
 
             Screen::MainMenu { mut selected } => {
                 let menu_len = self.menu_items().len();
@@ -1006,6 +1130,12 @@ impl App {
                         }
                     }
                     InputEvent::Confirm => return self.menu_select(selected),
+                    InputEvent::Back => {
+                        return Screen::ModeSelect {
+                            selected: 0,
+                            shown_at: std::time::Instant::now(),
+                        };
+                    }
                     _ => {}
                 }
                 Screen::MainMenu { selected }
@@ -1085,12 +1215,21 @@ impl App {
         let items = self.menu_items();
         let action = items.get(selected).copied().unwrap_or(usize::MAX);
         match action {
-            0 => Screen::CreateWordCount { selected: 0 },
-            1 => Screen::LoadMethod { selected: 0 },
-            2 => Screen::SignScanTx,
-            3 => Screen::SettingsMenu { selected: 0 },
+            0 => self.maybe_help(HelpTopic::CreateWallet, Screen::CreateWordCount { selected: 0 }),
+            1 => self.maybe_help(HelpTopic::LoadWallet, Screen::LoadMethod { selected: 0 }),
+            2 => self.maybe_help(HelpTopic::SignTx, Screen::SignScanTx),
+            3 => self.maybe_help(HelpTopic::WalletData, Screen::SettingsMenu { selected: 0 }),
             4 => Screen::SettingsAbout,
             _ => Screen::MainMenu { selected },
+        }
+    }
+
+    pub(crate) fn maybe_help(&mut self, topic: HelpTopic, next: Screen) -> Screen {
+        if self.guided {
+            self.pending_screen = Some(next);
+            Screen::Help { topic }
+        } else {
+            next
         }
     }
 

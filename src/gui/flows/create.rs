@@ -1,7 +1,7 @@
 //! Create wallet flow.
 
 use crate::crypto::bip39;
-use crate::gui::app::{App, CharGrid, InputEvent, Screen};
+use crate::gui::app::{App, CharGrid, HelpTopic, InputEvent, Screen};
 use zeroize::Zeroize;
 
 pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
@@ -13,10 +13,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 }
                 InputEvent::Confirm => {
                     let word_count = if selected == 0 { 12 } else { 24 };
-                    return Screen::CreateMethod {
-                        word_count,
-                        selected: 0,
-                    };
+                    return app.maybe_help(
+                        HelpTopic::ChooseEntropyMethod,
+                        Screen::CreateMethod { word_count, selected: 0 },
+                    );
                 }
                 InputEvent::Back => return Screen::MainMenu { selected: 0 },
                 _ => {}
@@ -263,7 +263,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     }
                 }
                 InputEvent::Confirm => {
-                    if selected == 1 {
+                    if selected == 0 {
                         return Screen::CreateShowWords {
                             mnemonic,
                             page: 0,
@@ -310,7 +310,8 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 }
                 InputEvent::Confirm => {
                     if page + 1 == total_pages {
-                        return start_verification(mnemonic, word_count);
+                        let verify = start_verification(mnemonic, word_count);
+                        return app.maybe_help(HelpTopic::VerifyWords, verify);
                     } else {
                         page += 1;
                     }
@@ -348,10 +349,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     if selected == correct_idx {
                         let next = current + 1;
                         if next >= checks.len() {
-                            return Screen::CreatePassphrasePrompt {
+                            let next_screen = Screen::CreatePassphrasePrompt {
                                 mnemonic,
                                 selected: 0,
                             };
+                            return app.maybe_help(HelpTopic::Passphrase, next_screen);
                         } else {
                             return build_verify_screen(mnemonic, checks, next);
                         }
@@ -496,11 +498,12 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(&mnemonic)
                             .unwrap_or_default();
                         app.load_wallet(mnemonic, passphrase);
-                        return Screen::ExportSeedQrMenu {
+                        let next = Screen::ExportSeedQrMenu {
                             compact_data,
                             selected: 0,
                             from_settings: false,
                         };
+                        return app.maybe_help(HelpTopic::BackupSeed, next);
                     } else {
                         return Screen::MainMenu { selected: 0 };
                     }
