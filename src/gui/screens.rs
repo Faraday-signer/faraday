@@ -36,7 +36,7 @@ const MENU_ITEMS: [MenuItem; 5] = [
     },
     MenuItem {
         label: "WALLET DATA",
-        subtitle: "keys and addresses",
+        subtitle: "addresses & backup",
     },
     MenuItem {
         label: "ABOUT",
