@@ -233,7 +233,6 @@ pub enum Screen {
     DerivationError,
 
     // Sign TX flow
-    SignNoWallet,
     SignScanTx,
     SignReview {
         tx_bytes: Vec<u8>,
@@ -771,7 +770,8 @@ impl App {
     }
 
     pub fn enter_main_menu(&mut self) {
-        self.screen = Screen::MainMenu { selected: 0 };
+        let initial = if self.wallet.is_some() { 2 } else { 0 };
+        self.screen = Screen::MainMenu { selected: initial };
     }
 
     pub fn handle_input(&mut self, event: InputEvent) {
@@ -995,19 +995,30 @@ impl App {
             Screen::Splash => Screen::MainMenu { selected: 0 },
 
             Screen::MainMenu { mut selected } => {
-                // Vertical list: Up/Down move one item at a time; Left/Right
-                // behave like Up/Down for joystick ergonomics.
                 const MAIN_MENU_LEN: usize = 4;
+                let disabled = self.menu_disabled();
                 match event {
                     InputEvent::Up | InputEvent::Left => {
-                        selected = selected.saturating_sub(1);
-                    }
-                    InputEvent::Down | InputEvent::Right => {
-                        if selected + 1 < MAIN_MENU_LEN {
-                            selected += 1;
+                        let mut s = selected;
+                        loop {
+                            if s == 0 { break; }
+                            s -= 1;
+                            if !disabled[s] { selected = s; break; }
                         }
                     }
-                    InputEvent::Confirm => return self.menu_select(selected),
+                    InputEvent::Down | InputEvent::Right => {
+                        let mut s = selected;
+                        loop {
+                            if s + 1 >= MAIN_MENU_LEN { break; }
+                            s += 1;
+                            if !disabled[s] { selected = s; break; }
+                        }
+                    }
+                    InputEvent::Confirm => {
+                        if !disabled[selected] {
+                            return self.menu_select(selected);
+                        }
+                    }
                     _ => {}
                 }
                 Screen::MainMenu { selected }
@@ -1049,8 +1060,7 @@ impl App {
 
             Screen::DerivationError => Screen::MainMenu { selected: 0 },
 
-            s @ (Screen::SignNoWallet
-            | Screen::SignScanTx
+            s @ (Screen::SignScanTx
             | Screen::SignReview { .. }
             | Screen::SignShowQr { .. }
             | Screen::SignMessageInput { .. }
@@ -1073,17 +1083,16 @@ impl App {
         }
     }
 
+    fn menu_disabled(&self) -> [bool; 4] {
+        let has_wallet = self.wallet.is_some();
+        [has_wallet, has_wallet, !has_wallet, false]
+    }
+
     fn menu_select(&mut self, selected: usize) -> Screen {
         match selected {
             0 => Screen::CreateWordCount { selected: 0 },
             1 => Screen::LoadMethod { selected: 0 },
-            2 => {
-                if self.wallet.is_some() {
-                    Screen::SignScanTx
-                } else {
-                    Screen::SignNoWallet
-                }
-            }
+            2 => Screen::SignScanTx,
             3 => Screen::SettingsMenu { selected: 0 },
             _ => Screen::MainMenu { selected },
         }

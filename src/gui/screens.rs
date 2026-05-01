@@ -223,7 +223,6 @@ impl App {
             Screen::DerivationError => draw_derivation_error(display),
 
             // Sign TX flow
-            Screen::SignNoWallet => draw_sign_no_wallet(display),
             Screen::SignScanTx => {
                 #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                 {
@@ -439,7 +438,7 @@ fn triangle(t_ms: u64, min: i32, max: i32, speed_pps: u64) -> i32 {
 fn draw_main_menu<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     selected: usize,
-    _seed_loaded: bool,
+    seed_loaded: bool,
     address: Option<&str>,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
@@ -449,12 +448,13 @@ fn draw_main_menu<D: DrawTarget<Color = Rgb565>>(
     let total = MENU_ITEMS.len();
     let sel = selected.min(total - 1);
 
-    let rows: [ListRow; 4] = [
-        ListRow::with_subtitle(MENU_ITEMS[0].label, MENU_ITEMS[0].subtitle),
-        ListRow::with_subtitle(MENU_ITEMS[1].label, MENU_ITEMS[1].subtitle),
-        ListRow::with_subtitle(MENU_ITEMS[2].label, MENU_ITEMS[2].subtitle),
-        ListRow::with_subtitle(MENU_ITEMS[3].label, MENU_ITEMS[3].subtitle),
-    ];
+    let row = |i: usize| ListRow::with_subtitle(MENU_ITEMS[i].label, MENU_ITEMS[i].subtitle);
+
+    let rows: [ListRow; 4] = if seed_loaded {
+        [row(0).disabled(), row(1).disabled(), row(2), row(3)]
+    } else {
+        [row(0), row(1), row(2).disabled(), row(3)]
+    };
 
     // `first4…last4` of the loaded wallet, shown as a chip in the header's
     // top-right slot so users can see which key is mounted at a glance.
@@ -1064,6 +1064,7 @@ fn draw_accounts_list<D: DrawTarget<Color = Rgb565>>(
             prefix: Some(&nums[i]),
             label: &shorts[i],
             subtitle: Some(&accounts[i].0),
+            disabled: false,
         })
         .collect();
 
@@ -2427,10 +2428,6 @@ fn draw_word_committed<D: DrawTarget<Color = Rgb565>>(
 }
 
 /// "Load a wallet first" — user hit SIGN on the main menu without a seed.
-fn draw_sign_no_wallet<D: DrawTarget<Color = Rgb565>>(display: &mut D) -> Result<(), D::Error> {
-    draw_no_wallet_alert(display, "SIGN", "Create or load a", "wallet to sign.")
-}
-
 /// Shared "no wallet" alert — chunky exclamation sigil + danger-coloured
 /// "NO WALLET" title + two short body lines. Used by SIGN and ADDRESS
 /// when the user reaches a wallet-required screen with no seed loaded.

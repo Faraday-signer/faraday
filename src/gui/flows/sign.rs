@@ -8,14 +8,6 @@ use crate::qr::decode_qr;
 
 pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
     match screen {
-        Screen::SignNoWallet => {
-            match event {
-                InputEvent::Confirm | InputEvent::Back => return Screen::MainMenu { selected: 2 },
-                _ => {}
-            }
-            Screen::SignNoWallet
-        }
-
         Screen::SignScanTx => {
             match event {
                 InputEvent::Confirm => {
