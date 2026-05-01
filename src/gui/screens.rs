@@ -2894,6 +2894,10 @@ fn draw_entropy_picker<D: DrawTarget<Color = Rgb565>>(
 
     let (header_rect, rest) = split_top(screen, theme.header_h as i32);
     let (body_rect, footer_rect) = split_bottom(rest, theme.footer_h as i32);
+    let body_rect = Rectangle::new(
+        body_rect.top_left,
+        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),
+    );
 
     Header {
         kind: HeaderKind::Title(title),
