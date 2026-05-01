@@ -6,6 +6,7 @@ import { explainBroadcastError } from "@/lib/broadcast-errors";
 import { sendRuntimeMessage } from "@/lib/runtime";
 import { useNavigation, useRouteOf } from "@/lib/router";
 import { broadcastSignedTx, buildSolTransfer, explorerTxUrl } from "@/lib/sol-transfer";
+import { recordRecipient } from "@/lib/recipient-history";
 import { colors, fontFamily, font, letterSpacing, space } from "@/lib/theme";
 import type { CreateSignSessionResult, GetSignResult } from "@/lib/types";
 import { useWallet } from "@/lib/use-wallet";
@@ -178,6 +179,10 @@ export function SendSignScreen() {
       const { signature: sig } = await broadcastSignedTx(signedTxBase64);
       setSignature(sig);
       setPhase("done");
+      // Record the recipient so the lookalike-destination detector can flag
+      // future near-duplicates of this address. Best-effort — never fail
+      // the success state because storage misbehaved.
+      void recordRecipient(draft.recipient).catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setPhase("error");
