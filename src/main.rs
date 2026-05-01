@@ -58,9 +58,8 @@ fn run_simulator() {
     window.set_key_repeat_delay(0.3);
     window.set_key_repeat_rate(0.1);
 
-    // Splash. Keep pumping the window for 2 seconds rather than sleeping —
-    // a bare sleep lets key presses queue up, and the first one gets consumed
-    // without action on the first iteration of the main loop.
+    // Splash. Pump the window until any key is pressed (or 2s elapses as a
+    // fallback so an unattended device still boots through).
     if let Err(e) = app.draw(&mut fb) {
         eprintln!("draw: {e:?}");
     }
@@ -69,6 +68,9 @@ fn run_simulator() {
     while window.is_open() && splash_start.elapsed() < Duration::from_secs(2) {
         if let Err(e) = window.update_with_buffer(&buf, 240, 240) {
             eprintln!("update_with_buffer: {e:?}");
+        }
+        if !window.get_keys().is_empty() {
+            break;
         }
     }
     app.enter_main_menu();
@@ -191,10 +193,15 @@ fn run_pi() {
 
     let mut app = App::new();
 
-    // Splash — draw errors intentionally ignored to avoid crashing the device.
+    // Splash — dismiss on any button press (2s fallback for unattended boot).
     let _ = app.draw(&mut display);
     display.flush();
-    std::thread::sleep(Duration::from_secs(2));
+    let splash_start = std::time::Instant::now();
+    while splash_start.elapsed() < Duration::from_secs(2) {
+        if buttons.wait_for_press(Duration::from_millis(33)).is_some() {
+            break;
+        }
+    }
     app.enter_main_menu();
     // Reset idle timer so splash doesn't count toward blanking.
     app.last_activity = std::time::Instant::now();
