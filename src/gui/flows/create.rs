@@ -143,7 +143,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         } => {
             let total_flips = if word_count == 12 { 128 } else { 256 };
             match event {
-                InputEvent::Left | InputEvent::Right => {
+                InputEvent::Left | InputEvent::Right | InputEvent::Up | InputEvent::Down => {
                     selected = 1 - selected;
                 }
                 InputEvent::Confirm => {

@@ -2828,7 +2828,7 @@ fn draw_coin_flips<D: DrawTarget<Color = Rgb565>>(
         &recent,
         &["HEADS", "TAILS"],
         selected,
-        PickerLayout::Row,
+        PickerLayout::Grid { cols: 1, rows: 2 },
     )
 }
 
