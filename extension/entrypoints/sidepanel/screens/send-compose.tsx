@@ -119,6 +119,23 @@ const pairFirstStyle: CSSProperties = {
 
 const LAMPORTS_PER_SOL = 1_000_000_000n;
 
+/**
+ * Format a lamport count as a UI-precise SOL string with no rounding.
+ * Going through `Number(lamports) / Number(LAMPORTS_PER_SOL)` then
+ * `.toFixed(9)` can round *up* by 1 lamport on certain values, which
+ * makes the resulting "Max" string parse back to a higher amount than
+ * the wallet actually has — cue an "exceeds balance" failure on a
+ * button labeled "Max." Stay in BigInt territory all the way through.
+ */
+function lamportsToExactSolString(lamports: bigint): string {
+  if (lamports === 0n) return "0";
+  const whole = lamports / LAMPORTS_PER_SOL;
+  const frac = lamports % LAMPORTS_PER_SOL;
+  if (frac === 0n) return whole.toString();
+  const fracStr = frac.toString().padStart(9, "0").replace(/0+$/, "");
+  return `${whole}.${fracStr}`;
+}
+
 export function SendComposeScreen() {
   const nav = useNavigation();
   const wallet = useWallet();
@@ -201,8 +218,7 @@ export function SendComposeScreen() {
       balanceLamports > FEE_RESERVE_LAMPORTS
         ? balanceLamports - FEE_RESERVE_LAMPORTS
         : 0n;
-    const ui = Number(spendable) / Number(LAMPORTS_PER_SOL);
-    setAmount(ui.toFixed(9).replace(/\.?0+$/, "") || "0");
+    setAmount(lamportsToExactSolString(spendable));
   }
 
   function advance() {

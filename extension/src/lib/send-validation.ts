@@ -28,8 +28,15 @@ import {
 import { isValidSolanaAddress } from "./solana";
 import { solanaRpc } from "./sol-client";
 
-/** One signature's base fee. SOL only. */
-export const FEE_RESERVE_LAMPORTS = 5000n;
+/**
+ * Lamports to leave in the wallet on a "Max" send so the resulting tx
+ * has enough SOL to cover its own fees. Sized at 2× the base signature
+ * fee (5_000) to absorb a typical priority-fee surcharge on a simple
+ * transfer — modern wallets routinely add `setComputeUnitPrice` ixs
+ * that push the total above the base. A few thousand extra lamports
+ * left behind is much better than a failed broadcast.
+ */
+export const FEE_RESERVE_LAMPORTS = 10_000n;
 
 /**
  * Rent-exempt minimum for a fresh system-owned account (size 0). Sending
