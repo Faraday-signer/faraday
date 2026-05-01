@@ -5,11 +5,14 @@ import { BrowserQRCodeReader } from "@zxing/browser";
 import { QRCodeSVG } from "qrcode.react";
 
 import { AnimatedQr } from "@/components/animated-qr";
+import { RiskProceedButton } from "@/components/risk-proceed-button";
+import { RiskReportView } from "@/components/risk-report-view";
+import { WhatWillHappen } from "@/components/what-will-happen";
 import { FaradayLogo } from "@/lib/brand";
 import { sendRuntimeMessage } from "@/lib/runtime";
 import { FARADAY_SIG_PREFIX, spliceFaradaySignature } from "@/lib/solana";
 import { colors, fontFamily, font, radius, space } from "@/lib/theme";
-import { type TxRiskReport, type TxRiskWarning } from "@/lib/tx-risk";
+import { type TxRiskReport } from "@/lib/tx-risk";
 import type { GetSignSessionResult } from "@/lib/types";
 import { encodeTxForQr } from "@/lib/ur-encode";
 
@@ -274,71 +277,6 @@ const riskScrollStyle: CSSProperties = {
   paddingBottom: space.md,
 };
 
-const riskBannerStyle = (color: string): CSSProperties => ({
-  padding: space.sm,
-  borderRadius: radius.md,
-  background: `${color}14`,
-  border: `1px solid ${color}`,
-  display: "flex",
-  flexDirection: "column",
-  gap: 4,
-});
-
-const riskWarningStyle = (color: string): CSSProperties => ({
-  padding: space.sm,
-  borderRadius: radius.md,
-  background: `${color}0d`,
-  border: `1px solid ${color}`,
-  display: "flex",
-  flexDirection: "column",
-  gap: 4,
-});
-
-function WarningItem({ warning }: { warning: TxRiskWarning }) {
-  const color = warning.severity === "critical" ? colors.error : colors.warning;
-  return (
-    <div style={riskWarningStyle(color)}>
-      <span style={{ fontFamily: fontFamily.mono, fontSize: font.xs, color, letterSpacing: 0.6 }}>
-        {warning.title}
-      </span>
-      <span style={{ fontFamily: fontFamily.mono, fontSize: font.xs, color: colors.textMuted, lineHeight: 1.5 }}>
-        {warning.description}
-      </span>
-    </div>
-  );
-}
-
-function formatAmount(amount: number): string {
-  const abs = Math.abs(amount);
-  const sign = amount >= 0 ? "+" : "-";
-  if (abs < 0.000001) return `${sign}0`;
-  if (abs >= 1000) return `${sign}${abs.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
-  return `${sign}${abs.toFixed(abs < 0.01 ? 6 : abs < 1 ? 4 : 2)}`;
-}
-
-function BalanceChanges({ report }: { report: TxRiskReport }) {
-  const allChanges = report.tokenChanges.slice();
-  const hasSolInChanges = allChanges.some((c) => c.symbol === "SOL");
-  if (!hasSolInChanges && report.solChangeSol !== null && !report.simulationFailed) {
-    allChanges.push({ mint: "SOL", symbol: "SOL", amount: report.solChangeSol });
-  }
-  if (allChanges.length === 0) return null;
-  return (
-    <div style={{ padding: space.sm, borderRadius: radius.md, background: colors.panel, border: `1px solid ${colors.borderStrong}`, display: "flex", flexDirection: "column", gap: 6 }}>
-      <span style={{ fontFamily: fontFamily.mono, fontSize: font.xs, color: colors.textDim, letterSpacing: 0.8, textTransform: "uppercase" }}>
-        Balance changes
-      </span>
-      {allChanges.map((c) => (
-        <div key={c.mint} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <span style={{ fontFamily: fontFamily.mono, fontSize: font.xs, color: colors.textMuted }}>{c.symbol}</span>
-          <span style={{ fontFamily: fontFamily.mono, fontSize: font.sm, color: c.amount >= 0 ? colors.success : colors.error }}>
-            {formatAmount(c.amount)}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function RiskScreen({
   session,
@@ -351,21 +289,6 @@ function RiskScreen({
   onProceed: () => void;
   onCancel: () => void;
 }) {
-  const levelColor =
-    report.level === "SAFE" ? colors.success :
-    report.level === "WARNING" ? colors.warning :
-    colors.error;
-
-  const levelLabel =
-    report.level === "SAFE" ? "Transaction looks safe" :
-    report.level === "WARNING" ? "Review warnings before signing" :
-    "Potential fraud detected";
-
-  const proceedLabel =
-    report.level === "SAFE" ? "Proceed to QR" :
-    report.level === "WARNING" ? "Proceed with caution" :
-    "Sign anyway — I accept the risk";
-
   return (
     <div style={riskScrollStyle}>
       <div style={{ textAlign: "center" }}>
@@ -375,44 +298,15 @@ function RiskScreen({
         </p>
       </div>
 
-      <div style={riskBannerStyle(levelColor)}>
-        <span style={{
-          fontFamily: fontFamily.mono,
-          fontSize: font.xs,
-          color: levelColor,
-          letterSpacing: 0.8,
-          textTransform: "uppercase",
-        }}>
-          {report.level} — {levelLabel}
-        </span>
-      </div>
-
-      <BalanceChanges report={report} />
-
-      {report.warnings.map((w, i) => (
-        <WarningItem key={i} warning={w} />
-      ))}
+      <WhatWillHappen report={report} />
+      <RiskReportView report={report} />
 
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: space.sm, marginTop: space.xs }}>
-        <button
-          type="button"
+        <RiskProceedButton
+          level={report.level}
           onClick={onProceed}
-          style={{
-            background: levelColor,
-            color: colors.bg,
-            border: "none",
-            borderRadius: radius.pill,
-            padding: `${space.sm}px ${space.xl}px`,
-            fontFamily: fontFamily.display,
-            fontSize: font.sm,
-            letterSpacing: 0.6,
-            cursor: "pointer",
-            width: "100%",
-            maxWidth: 280,
-          }}
-        >
-          {proceedLabel}
-        </button>
+          label={report.level === "SAFE" ? "Proceed to QR" : undefined}
+        />
         <button type="button" onClick={onCancel} style={secondaryLinkStyle}>
           Cancel
         </button>
@@ -776,9 +670,15 @@ export function SignApp() {
         origin: response.data.origin
       });
       setSession(response.data);
-      // Risk report comes pre-computed from background. For sign-message or
-      // sessions without a report, go straight to the QR display screen.
-      setStep(response.data.kind === "tx" && response.data.riskReport ? "risk" : "display");
+      // Risk report comes pre-computed from background. Show the risk
+      // step only when the analyzer flagged the tx as WARNING or DANGER —
+      // for SAFE (or sign-message / no-report sessions) skip straight to
+      // the QR display so the user doesn't pay an extra click on the
+      // common path.
+      const report = response.data.riskReport;
+      const needsRiskReview =
+        response.data.kind === "tx" && !!report && report.level !== "SAFE";
+      setStep(needsRiskReview ? "risk" : "display");
     })();
 
     return () => {
