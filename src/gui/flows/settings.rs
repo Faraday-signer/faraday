@@ -1,12 +1,13 @@
-//! Settings flow.
+//! Settings / wallet data flow.
 
 use crate::crypto::derivation;
 use crate::gui::app::{App, InputEvent, Screen};
 
+const WALLET_DATA_ITEMS: usize = 5;
+
 pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
     match screen {
         Screen::SettingsMenu { mut selected } => {
-            let item_count = if app.wallet.is_some() { 6 } else { 2 };
             match event {
                 InputEvent::Up => {
                     if selected > 0 {
@@ -14,39 +15,33 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     }
                 }
                 InputEvent::Down => {
-                    if selected + 1 < item_count {
+                    if selected + 1 < WALLET_DATA_ITEMS {
                         selected += 1;
                     }
                 }
                 InputEvent::Confirm => {
-                    if app.wallet.is_some() {
-                        return match selected {
-                            0 => Screen::SettingsShowAddress,
-                            1 => Screen::ExportSeedWarning {
+                    return match selected {
+                        0 => Screen::SettingsShowAddress,
+                        1 => Screen::ExportSeedWarning {
+                            selected: 0,
+                            from_settings: true,
+                        },
+                        2 => {
+                            let accounts = build_accounts_list(app);
+                            Screen::SettingsAccounts {
+                                accounts,
                                 selected: 0,
-                                from_settings: true,
-                            },
-                            2 => {
-                                let accounts = build_accounts_list(app);
-                                Screen::SettingsAccounts {
-                                    accounts,
-                                    selected: 0,
-                                }
                             }
-                            3 => Screen::SettingsVerifyAddressScan,
-                            4 => Screen::SettingsAbout,
-                            5 => Screen::SettingsPowerOff { selected: 0 },
-                            _ => Screen::SettingsMenu { selected },
-                        };
-                    } else {
-                        return match selected {
-                            0 => Screen::SettingsAbout,
-                            1 => Screen::SettingsPowerOff { selected: 0 },
-                            _ => Screen::SettingsMenu { selected },
-                        };
-                    }
+                        }
+                        3 => Screen::SettingsVerifyAddressScan,
+                        4 => Screen::SettingsPowerOff { selected: 0 },
+                        _ => Screen::SettingsMenu { selected },
+                    };
                 }
-                InputEvent::Back => return Screen::MainMenu { selected: 3 },
+                InputEvent::Back => {
+                    let idx = app.menu_index_of(3);
+                    return Screen::MainMenu { selected: idx };
+                }
                 _ => {}
             }
             Screen::SettingsMenu { selected }
@@ -92,8 +87,6 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         Some(w) => w,
                         None => return Screen::SettingsMenu { selected: 3 },
                     };
-                    // Only advance on a real scan. The dev fallback used to
-                    // auto-succeed by using the wallet's own address.
                     let raw: String = match app
                         .scanned_qr
                         .take()
@@ -136,8 +129,8 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         Screen::SettingsAbout => {
             match event {
                 InputEvent::Confirm | InputEvent::Back => {
-                    let idx = if app.wallet.is_some() { 4 } else { 0 };
-                    return Screen::SettingsMenu { selected: idx };
+                    let idx = app.menu_index_of(4);
+                    return Screen::MainMenu { selected: idx };
                 }
                 _ => {}
             }
@@ -155,20 +148,13 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 }
                 InputEvent::Confirm => {
                     if selected == 1 {
-                        // YES — wipe the wallet from RAM and power off.
                         app.wallet = None;
-                        #[cfg(target_os = "linux")]
-                        {
-                            let _ = std::process::Command::new("poweroff").status();
-                        }
-                        return Screen::Splash;
+                        return Screen::MainMenu { selected: 0 };
                     }
-                    let idx = if app.wallet.is_some() { 5 } else { 1 };
-                    return Screen::SettingsMenu { selected: idx };
+                    return Screen::SettingsMenu { selected: 4 };
                 }
                 InputEvent::Back => {
-                    let idx = if app.wallet.is_some() { 5 } else { 1 };
-                    return Screen::SettingsMenu { selected: idx };
+                    return Screen::SettingsMenu { selected: 4 };
                 }
                 _ => {}
             }

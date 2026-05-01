@@ -568,7 +568,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         return if from_settings {
                             Screen::SettingsMenu { selected: 0 }
                         } else {
-                            Screen::MainMenu { selected: 2 }
+                            Screen::MainMenu { selected: app.menu_index_of(2) }
                         };
                     }
                 },
@@ -576,7 +576,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     return if from_settings {
                         Screen::SettingsMenu { selected: 0 }
                     } else {
-                        Screen::MainMenu { selected: 2 }
+                        Screen::MainMenu { selected: app.menu_index_of(2) }
                     };
                 }
                 _ => {}
@@ -749,14 +749,14 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     return if from_settings {
                         Screen::SettingsMenu { selected: 0 }
                     } else {
-                        Screen::MainMenu { selected: 2 }
+                        Screen::MainMenu { selected: app.menu_index_of(2) }
                     };
                 }
                 InputEvent::Back => {
                     return if from_settings {
                         Screen::SettingsMenu { selected: 0 }
                     } else {
-                        Screen::MainMenu { selected: 2 }
+                        Screen::MainMenu { selected: app.menu_index_of(2) }
                     };
                 }
                 _ => {}

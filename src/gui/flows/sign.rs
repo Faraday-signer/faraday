@@ -66,7 +66,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         grid: CharGrid::new(),
                     }
                 }
-                InputEvent::Back => return Screen::MainMenu { selected: 2 },
+                InputEvent::Back => return Screen::MainMenu { selected: app.menu_index_of(2) },
                 _ => {}
             }
             Screen::SignScanTx
@@ -141,9 +141,9 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             can_sign,
                         };
                     }
-                    return Screen::MainMenu { selected: 2 };
+                    return Screen::MainMenu { selected: app.menu_index_of(2) };
                 }
-                InputEvent::Back => return Screen::MainMenu { selected: 2 },
+                InputEvent::Back => return Screen::MainMenu { selected: app.menu_index_of(2) },
                 _ => {}
             }
             Screen::SignReview {
@@ -158,7 +158,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
 
         Screen::SignShowQr { data } => {
             match event {
-                InputEvent::Confirm | InputEvent::Back => return Screen::MainMenu { selected: 2 },
+                InputEvent::Confirm | InputEvent::Back => return Screen::MainMenu { selected: app.menu_index_of(2) },
                 InputEvent::Secondary => return Screen::SignScanTx,
                 _ => {}
             }
@@ -187,9 +187,9 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         let signature_hex = hex::encode(&sig);
                         return Screen::SignMessageResult { signature_hex };
                     }
-                    return Screen::MainMenu { selected: 2 };
+                    return Screen::MainMenu { selected: app.menu_index_of(2) };
                 }
-                InputEvent::Back => return Screen::MainMenu { selected: 2 },
+                InputEvent::Back => return Screen::MainMenu { selected: app.menu_index_of(2) },
                 _ => {}
             }
             Screen::SignMessageReview {
@@ -218,7 +218,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
 
         Screen::SignMessageResult { signature_hex } => {
             match event {
-                InputEvent::Confirm | InputEvent::Back => return Screen::MainMenu { selected: 2 },
+                InputEvent::Confirm | InputEvent::Back => return Screen::MainMenu { selected: app.menu_index_of(2) },
                 _ => {}
             }
             Screen::SignMessageResult { signature_hex }

@@ -28,7 +28,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     let wallet = match app.wallet.as_ref() {
                         Some(w) => w,
                         // No wallet loaded — nothing to verify against. Bail.
-                        None => return Screen::MainMenu { selected: 2 },
+                        None => return Screen::MainMenu { selected: app.menu_index_of(2) },
                     };
 
                     if scanned_mn != wallet.mnemonic {
@@ -48,7 +48,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     // cancel-to-MainMenu. User can re-select VERIFY from
                     // there, or navigate elsewhere in the backup flow.
                     let Some(wallet) = app.wallet.as_ref() else {
-                        return Screen::MainMenu { selected: 2 };
+                        return Screen::MainMenu { selected: app.menu_index_of(2) };
                     };
                     let compact_data =
                         crate::qr::encode_qr::encode_compact_seed_qr(&wallet.mnemonic)
@@ -68,7 +68,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             // walkthrough (block 1 of 9) so they can correct their paper.
             InputEvent::Confirm => {
                 let Some(wallet) = app.wallet.as_ref() else {
-                    return Screen::MainMenu { selected: 2 };
+                    return Screen::MainMenu { selected: app.menu_index_of(2) };
                 };
                 let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(&wallet.mnemonic)
                     .unwrap_or_default();
@@ -88,11 +88,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             let done = grid.handle_input(event);
             if done {
                 if grid.text.is_empty() && event == InputEvent::Back {
-                    return Screen::MainMenu { selected: 2 };
+                    return Screen::MainMenu { selected: app.menu_index_of(2) };
                 }
                 let wallet = match app.wallet.as_ref() {
                     Some(w) => w,
-                    None => return Screen::MainMenu { selected: 2 },
+                    None => return Screen::MainMenu { selected: app.menu_index_of(2) },
                 };
                 let derived = match app.derive_address(&wallet.mnemonic, &grid.text) {
                     Some(a) => a,
@@ -120,7 +120,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         },
 
         Screen::VerifyBackupSuccess => match event {
-            InputEvent::Confirm | InputEvent::Back => Screen::MainMenu { selected: 2 },
+            InputEvent::Confirm | InputEvent::Back => Screen::MainMenu { selected: app.menu_index_of(2) },
             _ => Screen::VerifyBackupSuccess,
         },
 

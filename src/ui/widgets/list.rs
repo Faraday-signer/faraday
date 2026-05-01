@@ -23,7 +23,6 @@ pub struct ListRow<'a> {
     /// Optional short prefix rendered in a fixed-width column on the left —
     /// typically a number or tag (e.g. `"01"`, `"02"` for seed words).
     pub prefix: Option<&'a str>,
-    pub disabled: bool,
 }
 
 impl<'a> ListRow<'a> {
@@ -32,7 +31,6 @@ impl<'a> ListRow<'a> {
             label,
             subtitle: None,
             prefix: None,
-            disabled: false,
         }
     }
 
@@ -41,7 +39,6 @@ impl<'a> ListRow<'a> {
             label,
             subtitle: Some(subtitle),
             prefix: None,
-            disabled: false,
         }
     }
 
@@ -50,13 +47,7 @@ impl<'a> ListRow<'a> {
             label,
             subtitle: None,
             prefix: Some(prefix),
-            disabled: false,
         }
-    }
-
-    pub const fn disabled(mut self) -> Self {
-        self.disabled = true;
-        self
     }
 }
 
@@ -180,20 +171,14 @@ impl<'a> List<'a> {
         reserve_subtitle: bool,
         reserve_prefix: bool,
     ) -> Result<(), D::Error> {
-        let selected = selected && !row.disabled;
-
         if selected {
             rect.into_styled(PrimitiveStyle::with_fill(theme.accent))
                 .draw(display)?;
         }
 
-        let (label_color, subtitle_color, prefix_color) = if row.disabled {
-            (theme.dim, theme.dim, theme.dim)
-        } else if selected {
-            (theme.bg, theme.bg, theme.bg)
-        } else {
-            (theme.text, theme.muted, theme.dim)
-        };
+        let label_color = if selected { theme.bg } else { theme.text };
+        let subtitle_color = if selected { theme.bg } else { theme.muted };
+        let prefix_color = if selected { theme.bg } else { theme.dim };
 
         let left = rect.top_left.x + theme.space_md;
         // When any row has a prefix, reserve a fixed column for it so labels

@@ -18,7 +18,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         return Screen::LoadWordCount { selected: 0 };
                     }
                 }
-                InputEvent::Back => return Screen::MainMenu { selected: 1 },
+                InputEvent::Back => return Screen::MainMenu { selected: app.menu_index_of(1) },
                 _ => {}
             }
             Screen::LoadMethod { selected }
@@ -189,7 +189,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     if selected == 0 {
                         // DONE — load wallet with no passphrase and go home.
                         app.load_wallet(mnemonic, String::new());
-                        return Screen::MainMenu { selected: 2 };
+                        return Screen::MainMenu { selected: app.menu_index_of(2) };
                     }
                     // ADD PASSPHRASE — jump straight into the char grid.
                     return Screen::LoadPassphraseInput {
@@ -313,7 +313,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 InputEvent::Confirm => {
                     if selected == 0 {
                         app.load_wallet(mnemonic, passphrase);
-                        return Screen::MainMenu { selected: 2 };
+                        return Screen::MainMenu { selected: app.menu_index_of(2) };
                     }
                     return Screen::MainMenu { selected: 0 };
                 }

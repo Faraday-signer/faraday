@@ -21,7 +21,7 @@ struct MenuItem {
     subtitle: &'static str,
 }
 
-const MENU_ITEMS: [MenuItem; 4] = [
+const MENU_ITEMS: [MenuItem; 5] = [
     MenuItem {
         label: "CREATE",
         subtitle: "new wallet",
@@ -35,8 +35,12 @@ const MENU_ITEMS: [MenuItem; 4] = [
         subtitle: "transaction",
     },
     MenuItem {
-        label: "SETTINGS",
-        subtitle: "and device info",
+        label: "WALLET DATA",
+        subtitle: "keys and addresses",
+    },
+    MenuItem {
+        label: "ABOUT",
+        subtitle: "about faraday",
     },
 ];
 
@@ -281,7 +285,7 @@ impl App {
 
             // Settings
             Screen::SettingsMenu { selected } => {
-                draw_settings_menu(display, *selected, self.seed_loaded())
+                draw_settings_menu(display, *selected)
             }
             Screen::SettingsAccounts { accounts, selected } => {
                 draw_accounts_list(display, accounts, *selected)
@@ -316,7 +320,7 @@ impl App {
                 draw_verify_address_result_card(display, address, result)
             }
             Screen::SettingsAbout => draw_about(display, self.seed_loaded()),
-            Screen::SettingsPowerOff { selected } => draw_power_off(display, *selected),
+            Screen::SettingsPowerOff { selected } => draw_reset_wallet(display, *selected),
 
             // Verify backup flow
             Screen::VerifyBackupScan => {
@@ -445,16 +449,16 @@ fn draw_main_menu<D: DrawTarget<Color = Rgb565>>(
     use crate::ui::{screens::ListScreen, Theme};
 
     let theme = Theme::faraday_240();
-    let total = MENU_ITEMS.len();
-    let sel = selected.min(total - 1);
 
     let row = |i: usize| ListRow::with_subtitle(MENU_ITEMS[i].label, MENU_ITEMS[i].subtitle);
 
-    let rows: [ListRow; 4] = if seed_loaded {
-        [row(0).disabled(), row(1).disabled(), row(2), row(3)]
+    let visible: &[usize] = if seed_loaded {
+        &[2, 3, 4] // SIGN, WALLET DATA, ABOUT
     } else {
-        [row(0), row(1), row(2).disabled(), row(3)]
+        &[0, 1, 4] // CREATE, LOAD, ABOUT
     };
+    let rows: Vec<ListRow> = visible.iter().map(|&i| row(i)).collect();
+    let sel = selected.min(rows.len() - 1);
 
     // `first4…last4` of the loaded wallet, shown as a chip in the header's
     // top-right slot so users can see which key is mounted at a glance.
@@ -1064,7 +1068,6 @@ fn draw_accounts_list<D: DrawTarget<Color = Rgb565>>(
             prefix: Some(&nums[i]),
             label: &shorts[i],
             subtitle: Some(&accounts[i].0),
-            disabled: false,
         })
         .collect();
 
@@ -1088,32 +1091,27 @@ fn draw_accounts_list<D: DrawTarget<Color = Rgb565>>(
 fn draw_settings_menu<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     selected: usize,
-    seed_loaded: bool,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
     use crate::ui::{screens::ListScreen, Theme};
 
     let theme = Theme::faraday_240();
 
-    let loaded: [ListRow; 6] = [
+    let items: [ListRow; 5] = [
         ListRow::new("ADDRESS"),
         ListRow::new("EXPORT QR"),
         ListRow::new("ACCOUNTS"),
         ListRow::new("VERIFY"),
-        ListRow::new("ABOUT"),
-        ListRow::new("POWER OFF"),
+        ListRow::new("RESET WALLET"),
     ];
-    let empty: [ListRow; 2] = [ListRow::new("ABOUT"), ListRow::new("POWER OFF")];
-    let items: &[ListRow] = if seed_loaded { &loaded } else { &empty };
-    let total = items.len();
-    let sel = selected.min(total - 1);
+    let sel = selected.min(items.len() - 1);
 
     ListScreen {
-        header: HeaderKind::Title("SETTINGS"),
+        header: HeaderKind::Title("WALLET DATA"),
         counter: None,
         right_label: None,
         description: None,
-        items,
+        items: &items,
         selected: sel,
         max_visible: 3,
         selectable: true,
@@ -2251,7 +2249,7 @@ fn draw_export_seed_warning<D: DrawTarget<Color = Rgb565>>(
 
 /// Power-off confirmation. List register with the destructive consequence
 /// exposed as the subtitle on the YES row. Default selection is NO.
-fn draw_power_off<D: DrawTarget<Color = Rgb565>>(
+fn draw_reset_wallet<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     selected: usize,
 ) -> Result<(), D::Error> {
@@ -2260,13 +2258,13 @@ fn draw_power_off<D: DrawTarget<Color = Rgb565>>(
 
     let theme = Theme::faraday_240();
     let rows: [ListRow; 2] = [
-        ListRow::with_subtitle("NO", "Back to settings"),
+        ListRow::with_subtitle("NO", "Back to wallet data"),
         ListRow::with_subtitle("YES", "Wipes wallet from RAM"),
     ];
     let sel = selected.min(1);
 
     ListScreen {
-        header: HeaderKind::Title("POWER OFF"),
+        header: HeaderKind::Title("RESET WALLET"),
         counter: None,
         right_label: None,
         description: None,
