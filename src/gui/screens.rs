@@ -1,7 +1,7 @@
 //! Screen layouts — all UI pages.
 
 use embedded_graphics::{
-    mono_font::{ascii::FONT_10X20, ascii::FONT_6X10, ascii::FONT_9X15, MonoTextStyle},
+    mono_font::{ascii::FONT_6X10, ascii::FONT_9X15, MonoTextStyle},
     pixelcolor::Rgb565,
     prelude::*,
     primitives::{PrimitiveStyle, PrimitiveStyleBuilder, Rectangle},
@@ -291,37 +291,11 @@ impl App {
             Screen::SettingsMenu { selected } => {
                 draw_settings_menu(display, *selected)
             }
-            Screen::SettingsAccounts { accounts, selected } => {
-                draw_accounts_list(display, accounts, *selected)
-            }
             Screen::SettingsShowAddress => {
                 draw_show_address(display, self.wallet.as_ref().map(|w| w.address.as_str()))
             }
-            Screen::SettingsVerifyAddressScan => {
-                #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
-                {
-                    draw_scan_overlay(
-                        display,
-                        "Verify Address",
-                        "Point camera at address QR",
-                        self.seed_loaded(),
-                        self.has_camera_frame(),
-                        self.camera_error_str(),
-                        self.scan_diag,
-                    )
-                }
-                #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
-                {
-                    draw_message(
-                        display,
-                        "Verify Address",
-                        "Scan address QR\nto verify it's yours",
-                        self.seed_loaded(),
-                    )
-                }
-            }
-            Screen::SettingsVerifyAddressResult { address, result } => {
-                draw_verify_address_result_card(display, address, result)
+            Screen::SettingsShowAddressText => {
+                draw_show_address_text(display, self.wallet.as_ref().map(|w| w.address.as_str()))
             }
             Screen::SettingsAbout => draw_about(display, self.seed_loaded()),
             Screen::SettingsPowerOff { selected } => draw_reset_wallet(display, *selected),
@@ -450,11 +424,16 @@ fn draw_mode_select<D: DrawTarget<Color = Rgb565>>(
     use crate::ui::{screens::ListScreen, Theme};
 
     let theme = Theme::faraday_240();
-    let rows: [ListRow; 2] = [
-        ListRow::with_subtitle("EXPERT", "I know Faraday"),
-        ListRow::with_subtitle("GUIDED", "Show me how"),
+    // Three rows aligned with the K1/K2/K3 button cluster: row 0 is the
+    // question prompt (non-selectable info), rows 1–2 are the YES/NO
+    // answers. The transition handler clamps `selected` to [1, 2] so the
+    // highlight never lands on the prompt row.
+    let rows: [ListRow; 3] = [
+        ListRow::with_subtitle("KNOW FARADAY?", "Pick one below"),
+        ListRow::with_subtitle("YES", "Skip the help screens"),
+        ListRow::with_subtitle("NO", "Show me how it works"),
     ];
-    let sel = selected.min(1);
+    let sel = selected.clamp(1, 2);
 
     ListScreen {
         header: HeaderKind::Brand,
@@ -463,36 +442,90 @@ fn draw_mode_select<D: DrawTarget<Color = Rgb565>>(
         description: None,
         items: &rows,
         selected: sel,
-        max_visible: 2,
+        max_visible: 3,
         selectable: true,
         edge_hints: EdgeHints::new().k1(EdgeIcon::Check),
     }
     .draw(display, &theme)
 }
 
+/// Help interstitial. Bigger body font (profont22) than the default card so
+/// the copy is comfortably readable from arm's length; lines are wrapped with
+/// `wrap_line_for_width` so no word is ever cut. The body width is sized so a
+/// 22-character word still fits — long words simply move to the next line
+/// rather than truncating.
 fn draw_help<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     topic: crate::gui::app::HelpTopic,
 ) -> Result<(), D::Error> {
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind};
-    use crate::ui::{screens::CardScreen, Theme};
+    use crate::ui::layout::split_top;
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::Theme;
 
     let theme = Theme::faraday_240();
-    let raw_body = topic.body();
-    let lines: Vec<&str> = raw_body.lines().collect();
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
+    display.fill_solid(&screen, theme.bg)?;
 
-    CardScreen {
-        header: HeaderKind::Title(topic.title()),
+    let (header_rect, body_rect) = split_top(screen, theme.header_h as i32);
+    Header {
+        kind: HeaderKind::Title(topic.title()),
         counter: None,
         right_label: None,
-        title: None,
-        subtitle: None,
-        body_lines: &lines,
-        rows: &[],
-        title_danger: false,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
-    .draw(display, &theme)
+    .draw(display, &theme, header_rect)?;
+
+    // Body sits left of the right-edge gutter where the K1/K3 hints render.
+    let body_inner = Rectangle::new(
+        body_rect.top_left,
+        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),
+    );
+    let left_x = body_inner.top_left.x + theme.space_md;
+    let usable_w = body_inner.size.width as i32 - 2 * theme.space_md;
+
+    // profont22 is ~12 px wide. Pick the largest char count that fits the
+    // usable width with a small safety margin so descenders / wider glyphs
+    // never bleed past the gutter.
+    let approx_char_w = 12i32;
+    let max_chars = ((usable_w - 4) / approx_char_w).max(8) as usize;
+
+    let mut wrapped: Vec<String> = Vec::new();
+    for raw_line in topic.body().split('\n') {
+        if raw_line.trim().is_empty() {
+            wrapped.push(String::new());
+            continue;
+        }
+        wrapped.extend(wrap_line_for_width(raw_line, max_chars));
+    }
+
+    // Center the block vertically within the body so short copies don't sit
+    // glued to the top edge, and long copies still have breathing room.
+    let line_h = 26i32;
+    let block_h = wrapped.len() as i32 * line_h;
+    let body_h = body_inner.size.height as i32;
+    let top_padding = ((body_h - block_h) / 2).max(theme.space_md);
+    let mut cursor_y = body_inner.top_left.y + top_padding + 18;
+
+    for line in &wrapped {
+        Text::with_alignment(
+            line,
+            Point::new(left_x, cursor_y),
+            theme.style_md(theme.text),
+            Alignment::Left,
+        )
+        .draw(display)?;
+        cursor_y += line_h;
+    }
+
+    let gutter = Rectangle::new(
+        Point::new(theme.width as i32 - GUTTER_W as i32, theme.header_h as i32),
+        Size::new(GUTTER_W, theme.height - theme.header_h),
+    );
+    EdgeHints::new()
+        .k1(EdgeIcon::Check)
+        .k3(EdgeIcon::ArrowLeft)
+        .draw(display, &theme, gutter)?;
+
+    Ok(())
 }
 
 /// Main menu: list register (Header + List + right-edge hints) via `src/ui/`.
@@ -1079,71 +1112,6 @@ fn draw_create_method<D: DrawTarget<Color = Rgb565>>(
 
 /// Settings menu: list register with Title header. Items depend on whether
 /// a wallet is loaded.
-/// Derived-accounts list. Each row: numbered prefix (01/02/…) + short
-/// address label + full derivation path as subtitle. Read-cursor only —
-/// Confirm/Back both exit back to Settings (state-machine decides).
-fn draw_accounts_list<D: DrawTarget<Color = Rgb565>>(
-    display: &mut D,
-    accounts: &[(String, String)],
-    selected: usize,
-) -> Result<(), D::Error> {
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
-    use crate::ui::{screens::ListScreen, Theme};
-
-    let theme = Theme::faraday_240();
-
-    if accounts.is_empty() {
-        // Degenerate — settings flow normally populates at least one entry,
-        // but guard against the empty case rather than indexing into nothing.
-        let rows: [ListRow; 1] = [ListRow::new("(no accounts)")];
-        return ListScreen {
-            header: HeaderKind::Title("ACCOUNTS"),
-            counter: None,
-            right_label: None,
-            description: None,
-            items: &rows,
-            selected: 0,
-            max_visible: 1,
-            selectable: false,
-            // Nothing selectable — only K3 (back) is meaningful.
-            edge_hints: EdgeHints::new().k3(EdgeIcon::ArrowLeft),
-        }
-        .draw(display, &theme);
-    }
-
-    // Own the formatted strings so ListRow borrows survive past this closure.
-    let nums: Vec<String> = (1..=accounts.len())
-        .map(|i| alloc::format!("{:02}", i))
-        .collect();
-    let shorts: Vec<String> = accounts
-        .iter()
-        .map(|(_, addr)| shorten_address(addr))
-        .collect();
-    let rows: Vec<ListRow> = (0..accounts.len())
-        .map(|i| ListRow {
-            prefix: Some(&nums[i]),
-            label: &shorts[i],
-            subtitle: Some(&accounts[i].0),
-        })
-        .collect();
-
-    let total = accounts.len();
-    let sel = selected.min(total - 1);
-
-    ListScreen {
-        header: HeaderKind::Title("ACCOUNTS"),
-        counter: None,
-        right_label: None,
-        description: None,
-        items: &rows,
-        selected: sel,
-        max_visible: 3,
-        selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
-    }
-    .draw(display, &theme)
-}
-
 fn draw_settings_menu<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     selected: usize,
@@ -1153,12 +1121,11 @@ fn draw_settings_menu<D: DrawTarget<Color = Rgb565>>(
 
     let theme = Theme::faraday_240();
 
-    let items: [ListRow; 5] = [
-        ListRow::with_subtitle("ADDRESS", "to receive payments"),
-        ListRow::with_subtitle("BACKUP", "of your wallet"),
-        ListRow::new("ACCOUNTS"),
-        ListRow::with_subtitle("VERIFY", "an address"),
-        ListRow::with_subtitle("RESET WALLET", "wipe memory"),
+    let items: [ListRow; 4] = [
+        ListRow::with_subtitle("ADDRESS", "Read or write down"),
+        ListRow::with_subtitle("ADDRESS QR", "Scan to receive"),
+        ListRow::with_subtitle("BACKUP", "Save your seed"),
+        ListRow::with_subtitle("RESET WALLET", "Wipe from memory"),
     ];
     let sel = selected.min(items.len() - 1);
 
@@ -1956,104 +1923,81 @@ fn draw_message_review<D: DrawTarget<Color = Rgb565>>(
     Ok(())
 }
 
-/// Address verification result screen: shows the scanned address with full
-/// characters and whether it belongs to the loaded seed.
-fn draw_verify_address_result<D: DrawTarget<Color = Rgb565>>(
+/// Show the wallet's public address as wrapped text — for users who need to
+/// read or copy it by hand, character by character. Splits the 32–44 char
+/// base58 string into fixed-width chunks so the eye can track each row, but
+/// the chunking never breaks a "word" (the address itself is one token, so
+/// chunk boundaries are pure visual aids — no spaces are inserted that would
+/// alter the address). Rendered with the same big body font used by help
+/// screens.
+fn draw_show_address_text<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
-    address: &str,
-    result: &crate::crypto::derivation::AddressMatch,
-    seed_loaded: bool,
+    address: Option<&str>,
 ) -> Result<(), D::Error> {
-    use crate::crypto::derivation::AddressMatch;
-    display.clear(colors::BG_DARK)?;
-    draw_status_bar(display, "Verify Address", seed_loaded)?;
+    use crate::ui::layout::split_top;
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::Theme;
 
-    let label = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    let addr_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
+    let theme = Theme::faraday_240();
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
+    display.fill_solid(&screen, theme.bg)?;
 
-    Text::new("Scanned:", Point::new(8, 34), label).draw(display)?;
-    let mut y = 46i32;
-    for chunk in address.as_bytes().chunks(22) {
-        let s = std::str::from_utf8(chunk).unwrap_or("");
-        Text::new(s, Point::new(12, y), addr_style).draw(display)?;
-        y += 12;
+    let (header_rect, body_rect) = split_top(screen, theme.header_h as i32);
+    Header {
+        kind: HeaderKind::Title("ADDRESS"),
+        counter: None,
+        right_label: None,
     }
+    .draw(display, &theme, header_rect)?;
 
-    // Big result banner.
-    let banner_y = 110i32;
-    let (banner_text, banner_color) = match result {
-        AddressMatch::Standard { .. } => ("MATCH", colors::SUCCESS),
-        AddressMatch::NotFound => ("NOT YOURS", colors::DANGER),
-        AddressMatch::InvalidFormat => ("INVALID", colors::WARNING),
-    };
-    Rectangle::new(Point::new(0, banner_y), Size::new(240, 30))
-        .into_styled(PrimitiveStyle::with_fill(colors::BG_CARD))
-        .draw(display)?;
-    let banner_style = MonoTextStyle::new(&FONT_10X20, banner_color);
-    Text::with_alignment(
-        banner_text,
-        Point::new(120, banner_y + 22),
-        banner_style,
-        Alignment::Center,
-    )
-    .draw(display)?;
+    let body_inner = Rectangle::new(
+        body_rect.top_left,
+        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),
+    );
+    let center_x = body_inner.top_left.x + body_inner.size.width as i32 / 2;
 
-    // Detail line: path / not-derived / not-an-address explanation.
-    let detail_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
-    let sub = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    match result {
-        AddressMatch::Standard { .. } => {
-            let path = result.path_str();
-            Text::with_alignment(
-                &alloc::format!("Path: {}", path),
-                Point::new(120, 160),
-                detail_style,
-                Alignment::Center,
-            )
-            .draw(display)?;
+    match address {
+        Some(addr) => {
+            // Chunk size picked so the longest possible Solana address (44
+            // chars) lays out as four equal rows of 11 — even visual rhythm,
+            // and the row width fits comfortably with the big font.
+            let chunk_size = 11usize;
+            let chunks: Vec<&str> = addr
+                .as_bytes()
+                .chunks(chunk_size)
+                .map(|b| core::str::from_utf8(b).unwrap_or(""))
+                .collect();
+
+            let line_h = 26i32;
+            let block_h = chunks.len() as i32 * line_h;
+            let body_h = body_inner.size.height as i32;
+            let top_padding = ((body_h - block_h) / 2).max(theme.space_md);
+            let mut cursor_y = body_inner.top_left.y + top_padding + 18;
+
+            for chunk in &chunks {
+                Text::with_alignment(
+                    chunk,
+                    Point::new(center_x, cursor_y),
+                    theme.style_md(theme.text),
+                    Alignment::Center,
+                )
+                .draw(display)?;
+                cursor_y += line_h;
+            }
         }
-        AddressMatch::NotFound => {
-            Text::with_alignment(
-                "Not derived from this seed",
-                Point::new(120, 158),
-                detail_style,
-                Alignment::Center,
-            )
-            .draw(display)?;
-            Text::with_alignment(
-                "(checked 10 std + CLI paths)",
-                Point::new(120, 172),
-                sub,
-                Alignment::Center,
-            )
-            .draw(display)?;
-        }
-        AddressMatch::InvalidFormat => {
-            Text::with_alignment(
-                "Not a Solana address",
-                Point::new(120, 158),
-                detail_style,
-                Alignment::Center,
-            )
-            .draw(display)?;
-            Text::with_alignment(
-                "Scan a plain address QR",
-                Point::new(120, 172),
-                sub,
-                Alignment::Center,
-            )
-            .draw(display)?;
+        None => {
+            return draw_no_wallet_alert(display, "ADDRESS", "Create or load a", "wallet to view.");
         }
     }
 
-    let hint = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    Text::with_alignment(
-        "Press any key to return",
-        Point::new(120, 230),
-        hint,
-        Alignment::Center,
-    )
-    .draw(display)?;
+    let gutter = Rectangle::new(
+        Point::new(theme.width as i32 - GUTTER_W as i32, theme.header_h as i32),
+        Size::new(GUTTER_W, theme.height - theme.header_h),
+    );
+    EdgeHints::new()
+        .k1(EdgeIcon::Check)
+        .k3(EdgeIcon::ArrowLeft)
+        .draw(display, &theme, gutter)?;
 
     Ok(())
 }
@@ -2569,50 +2513,6 @@ fn draw_no_wallet_alert<D: DrawTarget<Color = Rgb565>>(
     Ok(())
 }
 
-/// Address-verification result. Shows whether the scanned address was
-/// derived from the loaded seed and, if so, at which account index.
-fn draw_verify_address_result_card<D: DrawTarget<Color = Rgb565>>(
-    display: &mut D,
-    address: &str,
-    result: &crate::crypto::derivation::AddressMatch,
-) -> Result<(), D::Error> {
-    use crate::crypto::derivation::AddressMatch;
-    use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
-    use crate::ui::{screens::CardScreen, Theme};
-
-    let theme = Theme::faraday_240();
-    let short = shorten_address(address);
-    let body = [short.as_str()];
-
-    let (title, subtitle, account_line) = match result {
-        AddressMatch::Standard { account } => {
-            let line = alloc::format!("Account {}", account);
-            ("MATCH", "Derived from your seed", Some(line))
-        }
-        AddressMatch::NotFound => ("NOT YOURS", "Not derivable from your seed", None),
-        AddressMatch::InvalidFormat => ("INVALID", "Not a Solana address", None),
-    };
-
-    // Account row only on matches — no point showing "Account —" otherwise.
-    let account_rows: Vec<CardRow> = account_line
-        .as_deref()
-        .map(|v| vec![CardRow::new("ACCOUNT", v)])
-        .unwrap_or_default();
-
-    CardScreen {
-        header: HeaderKind::Title("VERIFY ADDRESS"),
-        counter: None,
-        right_label: None,
-        title: Some(title),
-        subtitle: Some(subtitle),
-        body_lines: &body,
-        rows: &account_rows,
-        title_danger: false,
-        edge_hints: EdgeHints::new().k3(EdgeIcon::ArrowLeft),
-    }
-    .draw(display, &theme)
-}
-
 /// Paper-seed didn't decode to the currently-loaded wallet's mnemonic.
 fn draw_verify_backup_seed_mismatch<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
@@ -3014,72 +2914,6 @@ fn draw_entropy_picker<D: DrawTarget<Color = Rgb565>>(
                 Size::new(GUTTER_W, theme.height - theme.header_h),
             ),
         )?;
-
-    Ok(())
-}
-
-/// Accounts / derivation paths screen.
-fn draw_accounts<D: DrawTarget<Color = Rgb565>>(
-    display: &mut D,
-    accounts: &[(String, String)],
-    selected: usize,
-    seed_loaded: bool,
-) -> Result<(), D::Error> {
-    display.clear(colors::BG_DARK)?;
-    draw_status_bar(display, "Accounts", seed_loaded)?;
-
-    let path_style = MonoTextStyle::new(&FONT_6X10, colors::SOLANA_TEAL);
-    let addr_style_normal = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
-    let addr_style_selected = MonoTextStyle::new(&FONT_6X10, colors::SOLANA_GREEN);
-
-    for (i, (path, addr)) in accounts.iter().enumerate() {
-        let y = 35 + i as i32 * 42;
-        let is_selected = i == selected;
-
-        let (bg, border) = if is_selected {
-            (colors::BG_CARD_SELECTED, colors::BORDER_SELECTED)
-        } else {
-            (colors::BG_CARD, colors::BORDER_DEFAULT)
-        };
-
-        let style = embedded_graphics::primitives::PrimitiveStyleBuilder::new()
-            .fill_color(bg)
-            .stroke_color(border)
-            .stroke_width(1)
-            .build();
-
-        embedded_graphics::primitives::RoundedRectangle::with_equal_corners(
-            Rectangle::new(Point::new(8, y), Size::new(224, 36)),
-            Size::new(4, 4),
-        )
-        .into_styled(style)
-        .draw(display)?;
-
-        // Derivation path
-        Text::new(path, Point::new(14, y + 13), path_style).draw(display)?;
-
-        // Truncated address
-        let truncated = if addr.len() > 30 {
-            alloc::format!("{}...{}", &addr[..12], &addr[addr.len() - 8..])
-        } else {
-            addr.clone()
-        };
-        let a_style = if is_selected {
-            addr_style_selected
-        } else {
-            addr_style_normal
-        };
-        Text::new(&truncated, Point::new(14, y + 28), a_style).draw(display)?;
-    }
-
-    let hint = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    Text::with_alignment(
-        "Press any key to return",
-        Point::new(120, 232),
-        hint,
-        Alignment::Center,
-    )
-    .draw(display)?;
 
     Ok(())
 }

@@ -66,17 +66,17 @@ impl HelpTopic {
 
     pub fn body(self) -> &'static str {
         match self {
-            Self::Welcome => "Guided mode shows\nhelpful hints before\neach step. Start by\ncreating or loading\na wallet.",
-            Self::CreateWallet => "Generate a brand new\nwallet from random\nentropy. You will back\nit up on paper.",
-            Self::LoadWallet => "Restore a wallet you\nalready backed up, by\nscanning its QR or\ntyping the words.",
-            Self::SignTx => "Scan a transaction QR\nfrom your computer,\nreview it, and sign\nwith your loaded key.",
-            Self::WalletData => "Show your address,\nbackup your seed,\nlist accounts, or\nverify an address.",
-            Self::ChooseEntropyMethod => "Pick how randomness\nis generated: auto,\ncamera noise, coin\nflips, or dice rolls.",
-            Self::ScanSeedQr => "Point the camera at\nyour paper SeedQR.\nIt will be decoded\nautomatically.",
-            Self::TypeWords => "Enter each BIP39 word\nusing the grid. Words\nauto-complete after a\nfew letters.",
-            Self::BackupSeed => "Your seed is the ONLY\nway to recover funds.\nWrite it on paper or\nmetal. Keep it safe.",
-            Self::VerifyWords => "We will now check\nthat you wrote the\nwords correctly. A\nfew will be asked.",
-            Self::Passphrase => "A passphrase adds\nextra security. If\nyou skip it, the seed\nalone unlocks funds.",
+            Self::Welcome => "Faraday is an offline signer for Solana. It never touches the internet. Create or load a wallet to start.",
+            Self::CreateWallet => "Generate a brand new wallet from random entropy. You will back it up on paper.",
+            Self::LoadWallet => "Restore a wallet you already backed up, by scanning its QR or typing the words.",
+            Self::SignTx => "Scan a transaction QR from your computer, review it, and sign with your loaded key.",
+            Self::WalletData => "View your address as text or QR, or back up your seed.",
+            Self::ChooseEntropyMethod => "Pick how randomness is generated: auto, camera noise, coin flips, or dice rolls.",
+            Self::ScanSeedQr => "Point the camera at your paper SeedQR. It will be decoded automatically.",
+            Self::TypeWords => "Enter each BIP39 word using the grid. Words auto-complete after a few letters.",
+            Self::BackupSeed => "Your seed is the ONLY way to recover funds. Write it on paper or metal. Keep it safe.",
+            Self::VerifyWords => "We will now check that you wrote the words correctly. A few will be asked.",
+            Self::Passphrase => "DONE keeps the wallet seed-only. ENCRYPT adds a passphrase that is required every time. A passphrase adds security but is your responsibility: if you forget it, your funds are gone forever.",
         }
     }
 }
@@ -320,16 +320,12 @@ pub enum Screen {
         selected: usize,
     },
     SettingsShowAddress,
-    SettingsAccounts {
-        accounts: Vec<(String, String)>,
-        selected: usize,
-    },
-    SettingsVerifyAddressScan,
-    SettingsVerifyAddressResult {
-        address: String,
-        result: crate::crypto::derivation::AddressMatch,
-    },
+    /// Address rendered as wrapped text so the user can read it digit-by-digit
+    /// or transcribe it onto paper.
+    SettingsShowAddressText,
     SettingsAbout,
+    /// Wipe-in-memory-wallet confirm. Reachable only via the long-press Back
+    /// shortcut; not exposed in the wallet-data menu.
     SettingsPowerOff {
         selected: usize,
     },
@@ -836,7 +832,7 @@ impl App {
 
     pub fn enter_main_menu(&mut self) {
         self.screen = Screen::ModeSelect {
-            selected: 0,
+            selected: 1,
             shown_at: std::time::Instant::now(),
         };
     }
@@ -913,7 +909,6 @@ impl App {
             Screen::LoadScanQr
                 | Screen::SignScanTx
                 | Screen::CreateCameraEntropy { .. }
-                | Screen::SettingsVerifyAddressScan
                 | Screen::VerifyBackupScan
         )
     }
@@ -1012,10 +1007,7 @@ impl App {
 
         let is_scan_screen = matches!(
             self.screen,
-            Screen::LoadScanQr
-                | Screen::SignScanTx
-                | Screen::SettingsVerifyAddressScan
-                | Screen::VerifyBackupScan
+            Screen::LoadScanQr | Screen::SignScanTx | Screen::VerifyBackupScan
         );
         // Seed / address / backup scans only ever see small QRs (CompactSeedQR
         // V1/V3, address V≤5). Hint the decoder to downsample aggressively so
@@ -1024,7 +1016,7 @@ impl App {
         // V20+ where every module pixel matters.
         let small_qr_scan = matches!(
             self.screen,
-            Screen::LoadScanQr | Screen::SettingsVerifyAddressScan | Screen::VerifyBackupScan
+            Screen::LoadScanQr | Screen::VerifyBackupScan
         );
         let pending_qr = if let Some(cam) = &self.camera {
             cam.set_decode_enabled(is_scan_screen);
@@ -1054,10 +1046,7 @@ impl App {
         if let Some(data) = pending_qr {
             if matches!(
                 self.screen,
-                Screen::LoadScanQr
-                    | Screen::SignScanTx
-                    | Screen::SettingsVerifyAddressScan
-                    | Screen::VerifyBackupScan
+                Screen::LoadScanQr | Screen::SignScanTx | Screen::VerifyBackupScan
             ) {
                 self.scanned_qr = Some(data);
                 self.handle_input(InputEvent::Confirm);
@@ -1085,22 +1074,28 @@ impl App {
 
         match screen {
             Screen::Splash => Screen::ModeSelect {
-                selected: 0,
+                selected: 1,
                 shown_at: std::time::Instant::now(),
             },
 
             Screen::ModeSelect { mut selected, .. } => {
+                // Row 0 is the prompt ("KNOW FARADAY?") and is not selectable.
+                // The selectable answers live at rows 1 (YES) and 2 (NO);
+                // `guided` is true for the NO branch.
                 match event {
-                    InputEvent::Up | InputEvent::Down => {
-                        selected = 1 - selected;
-                    }
+                    InputEvent::Up => selected = 1,
+                    InputEvent::Down => selected = 2,
                     InputEvent::Confirm => {
-                        self.guided = selected == 1;
+                        let sel = selected.clamp(1, 2);
+                        self.guided = sel == 2;
                         return self.maybe_help(HelpTopic::Welcome, Screen::MainMenu { selected: 0 });
                     }
                     _ => {}
                 }
-                Screen::ModeSelect { selected, shown_at: std::time::Instant::now() }
+                Screen::ModeSelect {
+                    selected: selected.clamp(1, 2),
+                    shown_at: std::time::Instant::now(),
+                }
             }
 
             Screen::Help { topic } => {
@@ -1117,7 +1112,7 @@ impl App {
                         self.help_return_for = None;
                         if topic == HelpTopic::Welcome {
                             Screen::ModeSelect {
-                                selected: 0,
+                                selected: 1,
                                 shown_at: std::time::Instant::now(),
                             }
                         } else {
@@ -1142,7 +1137,7 @@ impl App {
                     InputEvent::Confirm => return self.menu_select(selected),
                     InputEvent::Back => {
                         return Screen::ModeSelect {
-                            selected: 0,
+                            selected: 1,
                             shown_at: std::time::Instant::now(),
                         };
                     }
@@ -1196,9 +1191,7 @@ impl App {
 
             s @ (Screen::SettingsMenu { .. }
             | Screen::SettingsShowAddress
-            | Screen::SettingsAccounts { .. }
-            | Screen::SettingsVerifyAddressScan
-            | Screen::SettingsVerifyAddressResult { .. }
+            | Screen::SettingsShowAddressText
             | Screen::SettingsAbout
             | Screen::SettingsPowerOff { .. }) => flows::settings::handle(self, s, event),
 

@@ -69,6 +69,13 @@ impl Theme {
         U8g2TextStyle::new(fonts::u8g2_font_profont29_mr, color)
     }
 
+    /// Body copy that needs to be readable from arm's length (help screens,
+    /// long instructions). One step up from `style_sm` — fewer chars per
+    /// line but easier to read.
+    pub fn style_md(&self, color: Rgb565) -> U8g2TextStyle<Rgb565> {
+        U8g2TextStyle::new(fonts::u8g2_font_profont22_mr, color)
+    }
+
     /// Secondary text (list row subtitle, header title, footer legend, counters).
     /// On a 240x240 this is the smallest size that still reads well — `profont17`.
     pub fn style_sm(&self, color: Rgb565) -> U8g2TextStyle<Rgb565> {
