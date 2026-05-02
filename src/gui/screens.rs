@@ -430,7 +430,7 @@ fn draw_mode_select<D: DrawTarget<Color = Rgb565>>(
     // chosen so the first-time-user default (GUIDED) is the top row.
     let rows: [ListRow; 2] = [
         ListRow::with_subtitle("GUIDED MODE", "Help between steps"),
-        ListRow::with_subtitle("EXPERT MODE", "Skip the help"),
+        ListRow::with_subtitle("QUICK MODE", "Skip the help screens"),
     ];
     let sel = selected.clamp(0, 1);
 
