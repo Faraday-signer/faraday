@@ -46,7 +46,17 @@ impl SimCamera {
         let (init_tx, init_rx) = std::sync::mpsc::channel::<Result<(), String>>();
 
         let handle = thread::spawn(move || {
-            let index = CameraIndex::Index(0);
+            // Camera selection — defaults to the system's first camera (the
+            // built-in webcam on a MacBook). Override via `FARADAY_CAMERA_INDEX=N`
+            // to pick another device — useful for Continuity Camera (iPhone),
+            // an external USB cam, or any AVFoundation source. Try indices
+            // 0/1/2 to find which slot the OS gave your iPhone.
+            let index_n = std::env::var("FARADAY_CAMERA_INDEX")
+                .ok()
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(0);
+            eprintln!("[sim_camera] opening camera index {}", index_n);
+            let index = CameraIndex::Index(index_n);
             let requested =
                 RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestFrameRate);
             let mut camera = match Camera::new(index, requested) {
