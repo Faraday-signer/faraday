@@ -50,6 +50,10 @@ impl App {
         match &self.screen {
             Screen::Splash => draw_boot_splash(display),
 
+            Screen::ModeSelect { selected, .. } => draw_mode_select(display, *selected),
+
+            Screen::Help { topic } => draw_help(display, *topic),
+
             Screen::MainMenu { selected } => {
                 let addr = self.wallet.as_ref().map(|w| w.address.as_str());
                 draw_main_menu(display, *selected, self.seed_loaded(), addr)
@@ -124,7 +128,7 @@ impl App {
                 ..
             } => {
                 let wc = mnemonic.split_whitespace().count();
-                draw_wallet_confirm(display, "NEW WALLET", address, !passphrase.is_empty(), wc)
+                draw_wallet_confirm(display, "NEW WALLET CONFIRMATION", address, !passphrase.is_empty(), wc)
             }
             Screen::ExportSeedWarning { selected, .. } => {
                 draw_export_seed_warning(display, *selected)
@@ -438,6 +442,59 @@ fn triangle(t_ms: u64, min: i32, max: i32, speed_pps: u64) -> i32 {
     min + offset as i32
 }
 
+fn draw_mode_select<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    selected: usize,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
+    use crate::ui::{screens::ListScreen, Theme};
+
+    let theme = Theme::faraday_240();
+    let rows: [ListRow; 2] = [
+        ListRow::with_subtitle("EXPERT", "I know Faraday"),
+        ListRow::with_subtitle("GUIDED", "Show me how"),
+    ];
+    let sel = selected.min(1);
+
+    ListScreen {
+        header: HeaderKind::Brand,
+        counter: None,
+        right_label: Some("5s"),
+        description: None,
+        items: &rows,
+        selected: sel,
+        max_visible: 2,
+        selectable: true,
+        edge_hints: EdgeHints::new().k1(EdgeIcon::Check),
+    }
+    .draw(display, &theme)
+}
+
+fn draw_help<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    topic: crate::gui::app::HelpTopic,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind};
+    use crate::ui::{screens::CardScreen, Theme};
+
+    let theme = Theme::faraday_240();
+    let raw_body = topic.body();
+    let lines: Vec<&str> = raw_body.lines().collect();
+
+    CardScreen {
+        header: HeaderKind::Title(topic.title()),
+        counter: None,
+        right_label: None,
+        title: None,
+        subtitle: None,
+        body_lines: &lines,
+        rows: &[],
+        title_danger: false,
+        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+    }
+    .draw(display, &theme)
+}
+
 /// Main menu: list register (Header + List + right-edge hints) via `src/ui/`.
 fn draw_main_menu<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
@@ -473,8 +530,7 @@ fn draw_main_menu<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        // Root screen — K3 has no "back" target, so only K1 (select) shows.
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check),
+        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -750,7 +806,7 @@ fn draw_export_seed_qr_menu<D: DrawTarget<Color = Rgb565>>(
     let theme = Theme::faraday_240();
     let rows: [ListRow; 3] = [
         ListRow::with_subtitle("PAPER BACKUP", "Transcribe QR blocks"),
-        ListRow::with_subtitle("SHOW WORDS", "Read the seed aloud"),
+        ListRow::with_subtitle("SHOW WORDS", "to write them down"),
         ListRow::with_subtitle("BACK", "Return to menu"),
     ];
     let sel = selected.min(2);
@@ -916,7 +972,7 @@ fn draw_wallet_confirm<D: DrawTarget<Color = Rgb565>>(
     } else {
         "12 WORDS"
     };
-    let rows: [CardRow; 1] = [CardRow::new("SEED", length)];
+    let rows: [CardRow; 1] = [CardRow::new("SEED:", length)];
 
     CardScreen {
         header: HeaderKind::Title(title),
@@ -1098,11 +1154,11 @@ fn draw_settings_menu<D: DrawTarget<Color = Rgb565>>(
     let theme = Theme::faraday_240();
 
     let items: [ListRow; 5] = [
-        ListRow::new("ADDRESS"),
-        ListRow::new("EXPORT QR"),
+        ListRow::with_subtitle("ADDRESS", "to receive payments"),
+        ListRow::with_subtitle("BACKUP", "of your wallet"),
         ListRow::new("ACCOUNTS"),
-        ListRow::new("VERIFY"),
-        ListRow::new("RESET WALLET"),
+        ListRow::with_subtitle("VERIFY", "an address"),
+        ListRow::with_subtitle("RESET WALLET", "wipe memory"),
     ];
     let sel = selected.min(items.len() - 1);
 
@@ -2180,7 +2236,7 @@ fn draw_create_backup_warning<D: DrawTarget<Color = Rgb565>>(
 
     let left_x = text_rect.top_left.x + theme.space_md;
     let mut y = text_rect.top_left.y + 18;
-    for line in &["You need pen and", "paper to write the", "following words."] {
+    for line in &["Prepare pen and paper", "to write the words", "down."] {
         Text::with_alignment(
             line,
             Point::new(left_x, y),
@@ -2193,8 +2249,8 @@ fn draw_create_backup_warning<D: DrawTarget<Color = Rgb565>>(
 
     // Bottom two thirds: binary choice.
     let rows: [ListRow; 2] = [
+        ListRow::with_subtitle("I AM READY", "Show the words"),
         ListRow::with_subtitle("CANCEL", "Go back"),
-        ListRow::with_subtitle("I UNDERSTAND", "Show the words"),
     ];
     List {
         items: &rows,
@@ -2237,7 +2293,7 @@ fn draw_export_seed_warning<D: DrawTarget<Color = Rgb565>>(
         header: HeaderKind::Title("EXPORT SEED"),
         counter: None,
         right_label: None,
-        description: Some("Reveals your seed"),
+        description: Some("Display your seed?"),
         items: &rows,
         selected: sel,
         max_visible: 3,

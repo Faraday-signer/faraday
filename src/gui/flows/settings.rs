@@ -1,7 +1,7 @@
 //! Settings / wallet data flow.
 
 use crate::crypto::derivation;
-use crate::gui::app::{App, InputEvent, Screen};
+use crate::gui::app::{App, HelpTopic, InputEvent, Screen};
 
 const WALLET_DATA_ITEMS: usize = 5;
 
@@ -22,10 +22,26 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 InputEvent::Confirm => {
                     return match selected {
                         0 => Screen::SettingsShowAddress,
-                        1 => Screen::ExportSeedWarning {
-                            selected: 0,
-                            from_settings: true,
-                        },
+                        1 => {
+                            if app.guided {
+                                let mnemonic = app.wallet.as_ref()
+                                    .map(|w| w.mnemonic.clone())
+                                    .unwrap_or_default();
+                                let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(&mnemonic)
+                                    .unwrap_or_default();
+                                let next = Screen::ExportSeedQrMenu {
+                                    compact_data,
+                                    selected: 0,
+                                    from_settings: true,
+                                };
+                                app.maybe_help(HelpTopic::BackupSeed, next)
+                            } else {
+                                Screen::ExportSeedWarning {
+                                    selected: 0,
+                                    from_settings: true,
+                                }
+                            }
+                        }
                         2 => {
                             let accounts = build_accounts_list(app);
                             Screen::SettingsAccounts {

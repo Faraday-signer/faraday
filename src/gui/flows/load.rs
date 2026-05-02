@@ -1,7 +1,7 @@
 //! Load wallet flow.
 
 use crate::crypto::bip39;
-use crate::gui::app::{App, CharGrid, InputEvent, Screen, WordPicker};
+use crate::gui::app::{App, CharGrid, HelpTopic, InputEvent, Screen, WordPicker};
 use crate::qr::decode_qr;
 
 pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
@@ -13,9 +13,9 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 }
                 InputEvent::Confirm => {
                     if selected == 0 {
-                        return Screen::LoadScanQr;
+                        return app.maybe_help(HelpTopic::ScanSeedQr, Screen::LoadScanQr);
                     } else {
-                        return Screen::LoadWordCount { selected: 0 };
+                        return app.maybe_help(HelpTopic::TypeWords, Screen::LoadWordCount { selected: 0 });
                     }
                 }
                 InputEvent::Back => return Screen::MainMenu { selected: app.menu_index_of(1) },

@@ -121,7 +121,7 @@ impl<'a> Card<'a> {
                 Text::with_alignment(
                     row.label,
                     Point::new(left_x, baseline),
-                    theme.style_sm(theme.dim),
+                    theme.style_sm(theme.text),
                     Alignment::Left,
                 )
                 .draw(display)?;
