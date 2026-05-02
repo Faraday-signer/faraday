@@ -295,6 +295,20 @@ pub enum Screen {
         tx_bytes: Vec<u8>,
         tx_base64: String,
         info_lines: Vec<String>,
+        /// Structured parse of `tx_bytes`. Carried alongside `info_lines` so
+        /// detail pages (metadata / instruction list / per-instruction / raw)
+        /// can render directly from the parsed instructions instead of
+        /// re-parsing or re-flattening. Boxed because `ParsedTransaction` is
+        /// large and `Screen` is moved on every input event.
+        parsed: Box<crate::parser::ParsedTransaction>,
+        /// Which review page is currently shown. K2 advances; the renderer
+        /// dispatches on this index. Wraps after the last page.
+        // Page 0 = Summary (hero + first chunk of details);
+        // Page 1 = Tx metadata; Page 2 = Instructions overview;
+        // Pages 3..3+N-1 = one per instruction; Page 3+N = Raw bytes.
+        page: usize,
+        // Scroll position within page 0's detail block. Reset to 0 on
+        // page change. Pages 1..K don't scroll — they fit in one screen.
         scroll: usize,
         selected: usize,
         /// False when the loaded wallet's pubkey is not in the tx's required
@@ -1261,7 +1275,10 @@ impl App {
 ///
 /// Delegates to the unified parser (`crate::parser`) which supports both
 /// legacy and v0 transactions.
-pub fn build_review_lines(tx_bytes: &[u8], wallet_pubkey: &[u8; 32]) -> (Vec<String>, bool) {
+pub fn build_review_lines(
+    tx_bytes: &[u8],
+    wallet_pubkey: &[u8; 32],
+) -> (Vec<String>, bool, crate::parser::ParsedTransaction) {
     crate::parser::build_review_lines(tx_bytes, wallet_pubkey)
 }
 
@@ -1348,7 +1365,7 @@ mod review_lines_tests {
     fn matching_wallet_allows_signing() {
         let kp = loaded_keypair();
         let tx = build_tx_for(&kp.public_key);
-        let (lines, can_sign) = build_review_lines(&tx, &kp.public_key);
+        let (lines, can_sign, _parsed) = build_review_lines(&tx, &kp.public_key);
         assert!(can_sign);
         assert!(lines.iter().any(|l| l.contains("SOL Transfer")));
         assert!(!lines.iter().any(|l| l.starts_with('!')));
@@ -1361,7 +1378,7 @@ mod review_lines_tests {
         assert_ne!(kp.public_key, other_pubkey);
 
         let tx = build_tx_for(&other_pubkey);
-        let (lines, can_sign) = build_review_lines(&tx, &kp.public_key);
+        let (lines, can_sign, _parsed) = build_review_lines(&tx, &kp.public_key);
 
         assert!(!can_sign, "sign must be blocked on mismatch");
         // Warning banner present.
@@ -1380,7 +1397,7 @@ mod review_lines_tests {
     fn unparseable_tx_blocks_signing() {
         let kp = loaded_keypair();
         let garbage = vec![0xFFu8; 10];
-        let (lines, can_sign) = build_review_lines(&garbage, &kp.public_key);
+        let (lines, can_sign, _parsed) = build_review_lines(&garbage, &kp.public_key);
         assert!(!can_sign);
         assert!(lines.iter().any(|l| l.contains("Failed to parse")));
     }
@@ -1392,7 +1409,7 @@ mod review_lines_tests {
         let tx_b64 = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAEDywkoNI1j+nah055+LRl/5r74IARS0MSvHfPPW5usTeAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACbZKN5QkVXQQH+5BYJje2PQK9UFAivDK+ncn3rilJV8BAgIAAQwCAAAAgJaYAAAAAAA=";
         let tx = B64.decode(tx_b64).unwrap();
         let kp = loaded_keypair();
-        let (lines, can_sign) = build_review_lines(&tx, &kp.public_key);
+        let (lines, can_sign, _parsed) = build_review_lines(&tx, &kp.public_key);
         assert!(
             !can_sign,
             "abandon-abandon wallet should not match EfZr signer"

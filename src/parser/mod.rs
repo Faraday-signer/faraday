@@ -22,6 +22,7 @@ pub(crate) mod bytes;
 pub(crate) mod token_registry;
 
 // dApp parsers
+mod dflow;
 mod jupiter;
 mod raydium;
 
@@ -109,11 +110,13 @@ pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
     let priority = ((cu_price_micro as u128) * (cu_limit as u128) / 1_000_000u128) as u64;
     let fee_lamports = base_fee.saturating_add(priority);
 
-    // Build ATA map for offline token resolution (only when Jupiter is present)
+    // Build ATA map for offline token resolution (only when an aggregator
+    // / AMM is present — these parsers resolve mints by intersecting
+    // instruction accounts against the wallet's known token accounts).
     let needs_ata = all_accounts.iter().any(|acct| {
         matches!(
             programs::identify(acct).as_ref().map(|p| p.name),
-            Some("Jupiter" | "Raydium AMM" | "Raydium CLMM" | "Raydium CPMM")
+            Some("Jupiter" | "DFlow" | "Raydium AMM" | "Raydium CLMM" | "Raydium CPMM")
         )
     });
     let mut ata_map = if needs_ata {
@@ -214,11 +217,17 @@ pub fn to_lines(tx: &ParsedTransaction) -> Vec<String> {
     lines
 }
 
-/// Build review lines for the Sign screen, including a `can_sign` check.
+/// Build review lines for the Sign screen, including a `can_sign` check
+/// and the structured `ParsedTransaction` (so detail-page renderers can
+/// read instructions / accounts directly without re-parsing).
 ///
-/// The output starts with a conservative pre-sign classification, then includes
-/// full decoded transaction details so the user can verify every instruction.
-pub fn build_review_lines(tx_bytes: &[u8], wallet_pubkey: &[u8; 32]) -> (Vec<String>, bool) {
+/// The flat lines start with a conservative pre-sign classification, then
+/// include full decoded transaction details so the user can verify every
+/// instruction on the page-0 summary.
+pub fn build_review_lines(
+    tx_bytes: &[u8],
+    wallet_pubkey: &[u8; 32],
+) -> (Vec<String>, bool, ParsedTransaction) {
     let parsed = parse(tx_bytes);
     let can_sign = parsed.signers.iter().any(|s| s == wallet_pubkey);
     let mut lines = Vec::new();
@@ -275,7 +284,7 @@ pub fn build_review_lines(tx_bytes: &[u8], wallet_pubkey: &[u8; 32]) -> (Vec<Str
         }
     }
 
-    (lines, can_sign)
+    (lines, can_sign, parsed)
 }
 
 fn primary_instruction(parsed: &ParsedTransaction) -> Option<&ParsedInstruction> {
@@ -418,8 +427,17 @@ fn add_hero_action_lines(
         return;
     }
 
+    // ATA-creation txs (AssocToken Create) often arrive on their own — a
+    // wallet sends a one-shot setup tx before the actual swap/transfer.
+    // The generic "ACTION / Create Token Account" copy left the user with
+    // no idea what they were actually approving. Use a dedicated SETUP
+    // hero so this kind of preflight is visually distinct from a real
+    // action, and the `parse_assoc_token` enriched header tells them
+    // *which token* the account is for.
     let tag = if ix.program.starts_with("Unknown") {
         "@H1 UNKNOWN"
+    } else if ix.program == "AssocToken" {
+        "@H1 SETUP"
     } else {
         "@H1 ACTION"
     };
@@ -429,6 +447,11 @@ fn add_hero_action_lines(
     } else {
         lines.push(tag.to_string());
         lines.push(format!("@H2 {}", ix.program));
+    }
+    // For SETUP, add a small hint so the user knows they may need to sign
+    // a follow-up tx (the actual swap/transfer this account was set up for).
+    if ix.program == "AssocToken" {
+        lines.push("@HM One-time setup".to_string());
     }
 }
 
@@ -649,6 +672,7 @@ fn dispatch(
         Some("Memo") => parse_memo(&ix.data),
         Some("ComputeBudget") => parse_compute_budget(&ix.data),
         Some("Jupiter") => jupiter::parse(&ix.data, &ix.account_indices, all_accounts, ata_map),
+        Some("DFlow") => dflow::parse(&ix.data, &ix.account_indices, all_accounts, ata_map),
         Some("Raydium AMM") => {
             raydium::amm_v4::parse(&ix.data, &ix.account_indices, all_accounts, ata_map)
         }
@@ -675,21 +699,39 @@ fn parse_assoc_token(
         .first()
         .map(pubkey_short)
         .unwrap_or_else(|| "?".into());
-    let mint = accounts
-        .get(2)
-        .map(pubkey_short)
+    // Resolve the mint twice: as full bytes for the offline registry
+    // lookup (so the header reads "Setup USDC account" instead of the
+    // bare "Create Token Account"), and as a shortened display string
+    // for the Mint review row.
+    let mint_bytes = accounts.get(2).copied();
+    let mint_display = mint_bytes
+        .as_ref()
+        .map(|b| pubkey_short(b))
         .unwrap_or_else(|| "?".into());
+    let symbol = mint_bytes
+        .as_ref()
+        .and_then(|b| token_registry::lookup(b))
+        .map(|info| info.symbol);
+
+    // Header drives the @H2 hero line. With a known mint we can name the
+    // account the user is setting up; without one we keep it generic but
+    // friendlier than "Create Token Account."
+    let header = match symbol {
+        Some(sym) => format!("Setup {} account", sym),
+        None => "Token account setup".to_string(),
+    };
+
     ParsedInstruction {
         program: "AssocToken".into(),
         items: vec![
-            ReviewItem::Header("Create Token Account".into()),
+            ReviewItem::Header(header),
             ReviewItem::Field {
                 label: "Wallet".into(),
                 value: wallet,
             },
             ReviewItem::Field {
                 label: "Mint".into(),
-                value: mint,
+                value: mint_display,
             },
         ],
     }
@@ -965,7 +1007,7 @@ mod tests {
             tx.extend_from_slice(&1_000_000_000u64.to_le_bytes());
         }
 
-        let (lines, can_sign) = build_review_lines(&tx, &[0x01u8; 32]);
+        let (lines, can_sign, _parsed) = build_review_lines(&tx, &[0x01u8; 32]);
         assert!(can_sign);
         assert!(lines.iter().any(|line| line == "@H1 TRANSFER"));
         assert!(lines.iter().any(|line| line == "@H2 1 SOL"));
@@ -1008,7 +1050,7 @@ mod tests {
         tx.push(3);
         tx.extend_from_slice(&[6u8, 2u8, 0u8]);
 
-        let (lines, can_sign) = build_review_lines(&tx, &wallet);
+        let (lines, can_sign, _parsed) = build_review_lines(&tx, &wallet);
         assert!(can_sign);
         assert!(lines
             .iter()
@@ -1173,7 +1215,7 @@ mod tests {
     #[test]
     fn test_build_review_lines_includes_message_hash_line() {
         let tx = system_transfer_tx([0x01; 32], 1_000_000_000);
-        let (lines, _) = build_review_lines(&tx, &[0x01; 32]);
+        let (lines, _, _) = build_review_lines(&tx, &[0x01; 32]);
         // Hash moved to the end of details + relabelled so it's not
         // confused with the decoded message content. The signing-hash
         // label sits one line above the raw hex on its own line.
@@ -1281,7 +1323,7 @@ mod tests {
     /// for an opt-in development tool).
     fn apply_expected(name: &str, tx_bytes: &[u8], parsed: &ParsedTransaction, raw: &str) {
         let primary = primary_instruction(parsed);
-        let (lines, _) = build_review_lines(tx_bytes, &[0u8; 32]);
+        let (lines, _, _) = build_review_lines(tx_bytes, &[0u8; 32]);
         let hero_title = lines
             .iter()
             .find_map(|l| l.strip_prefix("@H1 ").map(str::to_string));

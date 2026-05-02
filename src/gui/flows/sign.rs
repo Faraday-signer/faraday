@@ -49,12 +49,14 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         };
 
                         let tx_base64 = BASE64.encode(&tx_bytes);
-                        let (info_lines, can_sign) =
+                        let (info_lines, can_sign, parsed) =
                             build_review_lines(&tx_bytes, &wallet.keypair.public_key);
                         return Screen::SignReview {
                             tx_bytes,
                             tx_base64,
                             info_lines,
+                            parsed: Box::new(parsed),
+                            page: 0,
                             scroll: 0,
                             selected: if can_sign { 0 } else { 1 },
                             can_sign,
@@ -76,24 +78,34 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             tx_bytes,
             tx_base64,
             info_lines,
+            parsed,
+            mut page,
             mut scroll,
             mut selected,
             can_sign,
         } => {
+            // Total pages: page 0 is the summary, page 1 is tx metadata,
+            // page 2 is the instruction overview, then one per instruction,
+            // then the raw-bytes preview at the end.
+            let total_pages = 3 + parsed.instructions.len() + 1;
+
             match event {
-                // Jump one "chunk" per key press instead of one line.
-                // Chunks are delimited by blank rows in `info_lines` (the
-                // parser inserts `String::new()` between sections), so we
-                // advance past the next blank (Down) or retreat past the
-                // previous blank (Up) and land at the start of that chunk.
-                // Falls back to single-line stepping when no blank is
-                // found before the end / beginning.
-                InputEvent::Up => {
-                    scroll = prev_chunk(&info_lines, scroll);
-                }
+                // K2 (Down) advances to the next page, wrapping back to the
+                // summary after the last page. Replaces the old detail-row
+                // chunk-scroll: long content moves to dedicated pages instead
+                // of scrolling within a single screen. Up/Left/Right are
+                // no-ops on detail pages so the navigation model stays
+                // "K1 = sign, K2 = next, K3 = cancel" everywhere.
                 InputEvent::Down => {
-                    let max_scroll = info_lines.len().saturating_sub(8);
-                    scroll = next_chunk(&info_lines, scroll).min(max_scroll);
+                    page = (page + 1) % total_pages;
+                    scroll = 0;
+                }
+                InputEvent::Up => {
+                    // Step backward through pages — symmetric with Down so
+                    // the user can correct a misclick without cycling all
+                    // the way around. Wraps to the last page from page 0.
+                    page = if page == 0 { total_pages - 1 } else { page - 1 };
+                    scroll = 0;
                 }
                 InputEvent::Left | InputEvent::Right => {
                     if can_sign {
@@ -136,6 +148,8 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             tx_bytes,
                             tx_base64,
                             info_lines,
+                            parsed,
+                            page,
                             scroll,
                             selected: 1,
                             can_sign,
@@ -150,6 +164,8 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 tx_bytes,
                 tx_base64,
                 info_lines,
+                parsed,
+                page,
                 scroll,
                 selected,
                 can_sign,
