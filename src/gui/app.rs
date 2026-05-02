@@ -66,7 +66,7 @@ impl HelpTopic {
 
     pub fn body(self) -> &'static str {
         match self {
-            Self::Welcome => "Faraday is an offline signer for Solana. It never touches the internet. Create or load a wallet to start.",
+            Self::Welcome => "Faraday is an offline Solana signer. Create or load a wallet to start.",
             Self::CreateWallet => "Generate a brand new wallet from random entropy. You will back it up on paper.",
             Self::LoadWallet => "Restore a wallet you already backed up, by scanning its QR or typing the words.",
             Self::SignTx => "Scan a transaction QR from your computer, review it, and sign with your loaded key.",
@@ -76,7 +76,7 @@ impl HelpTopic {
             Self::TypeWords => "Enter each BIP39 word using the grid. Words auto-complete after a few letters.",
             Self::BackupSeed => "Your seed is the ONLY way to recover funds. Write it on paper or metal. Keep it safe.",
             Self::VerifyWords => "We will now check that you wrote the words correctly. A few will be asked.",
-            Self::Passphrase => "DONE keeps the wallet seed-only. ENCRYPT adds a passphrase that is required every time. A passphrase adds security but is your responsibility: if you forget it, your funds are gone forever.",
+            Self::Passphrase => "DONE: no passphrase. ENCRYPT adds one you must enter every time. Forget it and the funds are gone.",
         }
     }
 }
@@ -832,7 +832,7 @@ impl App {
 
     pub fn enter_main_menu(&mut self) {
         self.screen = Screen::ModeSelect {
-            selected: 1,
+            selected: 0,
             shown_at: std::time::Instant::now(),
         };
     }
@@ -1079,21 +1079,21 @@ impl App {
             },
 
             Screen::ModeSelect { mut selected, .. } => {
-                // Row 0 is the prompt ("KNOW FARADAY?") and is not selectable.
-                // The selectable answers live at rows 1 (YES) and 2 (NO);
-                // `guided` is true for the NO branch.
+                // Row 0 = GUIDED MODE (walk through help screens), row 1 =
+                // EXPERT MODE (skip help, straight to main menu). `guided`
+                // is true when the user picks GUIDED.
                 match event {
-                    InputEvent::Up => selected = 1,
-                    InputEvent::Down => selected = 2,
+                    InputEvent::Up => selected = 0,
+                    InputEvent::Down => selected = 1,
                     InputEvent::Confirm => {
-                        let sel = selected.clamp(1, 2);
-                        self.guided = sel == 2;
+                        let sel = selected.clamp(0, 1);
+                        self.guided = sel == 0;
                         return self.maybe_help(HelpTopic::Welcome, Screen::MainMenu { selected: 0 });
                     }
                     _ => {}
                 }
                 Screen::ModeSelect {
-                    selected: selected.clamp(1, 2),
+                    selected: selected.clamp(0, 1),
                     shown_at: std::time::Instant::now(),
                 }
             }
@@ -1112,7 +1112,7 @@ impl App {
                         self.help_return_for = None;
                         if topic == HelpTopic::Welcome {
                             Screen::ModeSelect {
-                                selected: 1,
+                                selected: 0,
                                 shown_at: std::time::Instant::now(),
                             }
                         } else {
@@ -1137,7 +1137,7 @@ impl App {
                     InputEvent::Confirm => return self.menu_select(selected),
                     InputEvent::Back => {
                         return Screen::ModeSelect {
-                            selected: 1,
+                            selected: 0,
                             shown_at: std::time::Instant::now(),
                         };
                     }

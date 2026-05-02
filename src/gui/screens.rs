@@ -424,16 +424,15 @@ fn draw_mode_select<D: DrawTarget<Color = Rgb565>>(
     use crate::ui::{screens::ListScreen, Theme};
 
     let theme = Theme::faraday_240();
-    // Three rows aligned with the K1/K2/K3 button cluster: row 0 is the
-    // question prompt (non-selectable info), rows 1–2 are the YES/NO
-    // answers. The transition handler clamps `selected` to [1, 2] so the
-    // highlight never lands on the prompt row.
-    let rows: [ListRow; 3] = [
-        ListRow::with_subtitle("KNOW FARADAY?", "Pick one below"),
-        ListRow::with_subtitle("YES", "Skip the help screens"),
-        ListRow::with_subtitle("NO", "Show me how it works"),
+    // Mode-named rows so the screen reads at a glance — no question to
+    // parse, no YES/NO ambiguity. The brand logo header keeps the
+    // welcome feeling without competing for the eye. Row order is
+    // chosen so the first-time-user default (GUIDED) is the top row.
+    let rows: [ListRow; 2] = [
+        ListRow::with_subtitle("GUIDED MODE", "Help between steps"),
+        ListRow::with_subtitle("EXPERT MODE", "Skip the help"),
     ];
-    let sel = selected.clamp(1, 2);
+    let sel = selected.clamp(0, 1);
 
     ListScreen {
         header: HeaderKind::Brand,
@@ -442,7 +441,7 @@ fn draw_mode_select<D: DrawTarget<Color = Rgb565>>(
         description: None,
         items: &rows,
         selected: sel,
-        max_visible: 3,
+        max_visible: 2,
         selectable: true,
         edge_hints: EdgeHints::new().k1(EdgeIcon::Check),
     }
