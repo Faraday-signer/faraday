@@ -530,8 +530,7 @@ fn draw_main_menu<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        // Root screen — K3 has no "back" target, so only K1 (select) shows.
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check),
+        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }

@@ -316,7 +316,16 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         page += 1;
                     }
                 }
-                InputEvent::Back => return Screen::CreateWordCount { selected: 0 },
+                InputEvent::Back => {
+                    if page == 0 {
+                        return Screen::CreateBackupWarning {
+                            mnemonic,
+                            word_count,
+                            selected: 0,
+                        };
+                    }
+                    page -= 1;
+                }
                 _ => {}
             }
             Screen::CreateShowWords {
@@ -369,9 +378,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 }
                 InputEvent::Back => {
                     let word_count = mnemonic.split_whitespace().count();
+                    let last_page = (word_count + 3) / 4 - 1;
                     return Screen::CreateShowWords {
                         mnemonic,
-                        page: 0,
+                        page: last_page,
                         word_count,
                     };
                 }

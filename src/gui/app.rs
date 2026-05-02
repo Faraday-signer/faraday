@@ -34,6 +34,7 @@ pub enum InputEvent {
 /// Topics for the guided-mode interstitial help screens.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HelpTopic {
+    Welcome,
     CreateWallet,
     LoadWallet,
     SignTx,
@@ -49,6 +50,7 @@ pub enum HelpTopic {
 impl HelpTopic {
     pub fn title(self) -> &'static str {
         match self {
+            Self::Welcome => "WELCOME",
             Self::CreateWallet => "CREATE WALLET",
             Self::LoadWallet => "LOAD WALLET",
             Self::SignTx => "SIGN",
@@ -64,6 +66,7 @@ impl HelpTopic {
 
     pub fn body(self) -> &'static str {
         match self {
+            Self::Welcome => "Guided mode shows\nhelpful hints before\neach step. Start by\ncreating or loading\na wallet.",
             Self::CreateWallet => "Generate a brand new\nwallet from random\nentropy. You will back\nit up on paper.",
             Self::LoadWallet => "Restore a wallet you\nalready backed up, by\nscanning its QR or\ntyping the words.",
             Self::SignTx => "Scan a transaction QR\nfrom your computer,\nreview it, and sign\nwith your loaded key.",
@@ -1086,18 +1089,18 @@ impl App {
                 shown_at: std::time::Instant::now(),
             },
 
-            Screen::ModeSelect { mut selected, shown_at } => {
+            Screen::ModeSelect { mut selected, .. } => {
                 match event {
                     InputEvent::Up | InputEvent::Down => {
                         selected = 1 - selected;
                     }
                     InputEvent::Confirm => {
                         self.guided = selected == 1;
-                        return Screen::MainMenu { selected: 0 };
+                        return self.maybe_help(HelpTopic::Welcome, Screen::MainMenu { selected: 0 });
                     }
                     _ => {}
                 }
-                Screen::ModeSelect { selected, shown_at }
+                Screen::ModeSelect { selected, shown_at: std::time::Instant::now() }
             }
 
             Screen::Help { topic } => {
@@ -1112,7 +1115,14 @@ impl App {
                         self.pending_screen = None;
                         self.help_return = None;
                         self.help_return_for = None;
-                        Screen::MainMenu { selected: 0 }
+                        if topic == HelpTopic::Welcome {
+                            Screen::ModeSelect {
+                                selected: 0,
+                                shown_at: std::time::Instant::now(),
+                            }
+                        } else {
+                            Screen::MainMenu { selected: 0 }
+                        }
                     }
                     _ => screen,
                 }
