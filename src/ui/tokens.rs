@@ -19,7 +19,6 @@ pub struct Theme {
 
     // Colors.
     pub bg: Rgb565,
-    pub surface: Rgb565,
     pub text: Rgb565,
     pub muted: Rgb565,
     pub dim: Rgb565,
@@ -28,13 +27,8 @@ pub struct Theme {
     pub danger: Rgb565,
 
     // Spacing scale.
-    pub space_xs: i32,
     pub space_sm: i32,
     pub space_md: i32,
-    pub space_lg: i32,
-
-    // Radius for cards / highlights.
-    pub radius: u32,
 }
 
 impl Theme {
@@ -47,7 +41,6 @@ impl Theme {
             footer_h: 26,
 
             bg: Rgb565::new(0, 5, 4),        // #001721
-            surface: Rgb565::new(0, 9, 7),   // #002536
             text: Rgb565::new(28, 57, 28),   // #E7E7E7
             muted: Rgb565::new(17, 39, 21),  // #8C9CA8
             dim: Rgb565::new(11, 28, 16),    // #5E7180
@@ -55,12 +48,8 @@ impl Theme {
             border: Rgb565::new(2, 16, 11),  // #114358
             danger: Rgb565::new(31, 13, 13), // #FF6B6B
 
-            space_xs: 4,
             space_sm: 8,
             space_md: 12,
-            space_lg: 20,
-
-            radius: 6,
         }
     }
 

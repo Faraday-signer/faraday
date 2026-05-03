@@ -9,47 +9,6 @@ use embedded_graphics::{
     primitives::{PrimitiveStyle, Rectangle},
 };
 
-pub const MARK_SIZE: u32 = 8;
-
-#[rustfmt::skip]
-const MARK: [u32; 8] = [
-    0b1111_0011,
-    0b1111_0011,
-    0b1111_0000,
-    0b1111_0000,
-    0b0000_1111,
-    0b0000_1111,
-    0b1100_1111,
-    0b1100_1111,
-];
-
-/// Draw the Faraday mark at (x, y) with integer scale.
-/// Scale 1 = 8px, 2 = 16px, 4 = 32px, 8 = 64px.
-pub fn draw_mark<D: DrawTarget<Color = Rgb565>>(
-    display: &mut D,
-    x: i32,
-    y: i32,
-    scale: u32,
-    color: Rgb565,
-) -> Result<(), D::Error> {
-    let s = scale as i32;
-    let style = PrimitiveStyle::with_fill(color);
-    let last = (MARK_SIZE - 1) as i32;
-    for (row, &bits) in MARK.iter().enumerate() {
-        for col in 0..MARK_SIZE as i32 {
-            if (bits >> (last - col)) & 1 == 1 {
-                Rectangle::new(
-                    Point::new(x + col * s, y + row as i32 * s),
-                    Size::new(scale, scale),
-                )
-                .into_styled(style)
-                .draw(display)?;
-            }
-        }
-    }
-    Ok(())
-}
-
 // =====================================================================
 // Full logo (mark + wordmark). Decoded from the SVG path geometry at
 // the native 60x10 grid (unit = 12.836). Each cell is sampled at its

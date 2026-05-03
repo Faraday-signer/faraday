@@ -377,13 +377,16 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     };
                 }
                 InputEvent::Back => {
-                    let word_count = mnemonic.split_whitespace().count();
-                    let last_page = (word_count + 3) / 4 - 1;
-                    return Screen::CreateShowWords {
-                        mnemonic,
-                        page: last_page,
-                        word_count,
-                    };
+                    if current == 0 {
+                        let word_count = mnemonic.split_whitespace().count();
+                        let last_page = (word_count + 3) / 4 - 1;
+                        return Screen::CreateShowWords {
+                            mnemonic,
+                            page: last_page,
+                            word_count,
+                        };
+                    }
+                    return build_verify_screen(mnemonic, checks, current - 1);
                 }
                 _ => {}
             }

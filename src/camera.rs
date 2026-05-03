@@ -40,6 +40,7 @@ pub struct ScanDiagnostics {
 }
 
 /// Convert interleaved RGB to 8-bit grayscale (BT.601 luma).
+#[cfg(feature = "_desktop_sim")]
 pub fn rgb_to_gray(rgb: &[u8], width: u32, height: u32) -> Vec<u8> {
     let mut out = Vec::with_capacity((width * height) as usize);
     for px in rgb.chunks_exact(3) {
@@ -127,18 +128,7 @@ fn downsample_center_square(frame: &Frame, factor: u32) -> (u32, u32, Vec<u8>) {
     (out_side, out_side, out)
 }
 
-/// Try to decode a QR from the frame and feed it to the UR accumulator.
-/// Returns the fully reconstructed payload when all fountain parts are received,
-/// or a single-frame payload if the QR is not UR-encoded.
-pub fn try_decode_qr_ur(
-    frame: &Frame,
-    accumulator: &mut crate::qr::ur_decoder::UrAccumulator,
-    mode: ScanMode,
-) -> Option<Vec<u8>> {
-    try_decode_qr_ur_diag(frame, accumulator, mode).0
-}
-
-/// Same as `try_decode_qr_ur` but also reports whether the decoder saw
+/// Same as `try_decode_qr` but also reports whether the decoder saw
 /// *any* QR this call (even a fragment or a format we didn't finish
 /// reassembling). Camera backends use the extra signal to drive the scan-
 /// screen heartbeat so the user can distinguish "camera sees nothing"

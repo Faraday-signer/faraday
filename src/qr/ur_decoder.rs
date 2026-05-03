@@ -83,16 +83,6 @@ impl UrAccumulator {
         self.decoder.message().ok().flatten()
     }
 
-    /// Whether at least one frame has been received.
-    pub fn started(&self) -> bool {
-        self.started
-    }
-
-    /// Returns true when enough frames have been accumulated.
-    pub fn complete(&self) -> bool {
-        self.decoder.complete()
-    }
-
     /// Live scan progress: `(received, total)` — number of distinct
     /// fragment seq values accepted by the decoder, and the total count
     /// from the UR header. `None` until the first fragment arrives.
@@ -136,10 +126,8 @@ mod tests {
 
         assert!(UrAccumulator::is_ur(&part));
         let mut acc = UrAccumulator::new();
-        assert!(!acc.started());
         let done = acc.receive(&part).unwrap();
         assert!(done);
-        assert!(acc.started());
         assert_eq!(acc.message().unwrap(), data);
     }
 
@@ -157,7 +145,6 @@ mod tests {
                 break;
             }
         }
-        assert!(acc.complete());
         assert_eq!(acc.message().unwrap(), data);
     }
 
@@ -169,11 +156,8 @@ mod tests {
 
         let mut acc = UrAccumulator::new();
         acc.receive(&part).unwrap();
-        assert!(acc.complete());
 
         acc.reset();
-        assert!(!acc.started());
-        assert!(!acc.complete());
         assert!(acc.progress().is_none());
     }
 
@@ -299,7 +283,6 @@ mod tests {
                     break;
                 }
             }
-            assert!(acc.complete());
             assert_eq!(acc.message().unwrap(), original);
         }
     }
@@ -328,7 +311,6 @@ mod tests {
         for frame in frames {
             acc.receive(frame).expect("valid fixture frame");
         }
-        assert!(acc.complete());
         assert_eq!(acc.message().unwrap(), expected);
     }
 }
