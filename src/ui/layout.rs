@@ -9,43 +9,6 @@ use embedded_graphics::{
     primitives::Rectangle,
 };
 
-#[derive(Debug, Clone, Copy)]
-pub struct Insets {
-    pub top: i32,
-    pub right: i32,
-    pub bottom: i32,
-    pub left: i32,
-}
-
-impl Insets {
-    pub const fn all(v: i32) -> Self {
-        Self {
-            top: v,
-            right: v,
-            bottom: v,
-            left: v,
-        }
-    }
-
-    pub const fn symmetric(v: i32, h: i32) -> Self {
-        Self {
-            top: v,
-            right: h,
-            bottom: v,
-            left: h,
-        }
-    }
-}
-
-/// Shrink a rectangle by insets.
-pub fn inset(rect: Rectangle, insets: Insets) -> Rectangle {
-    let x = rect.top_left.x + insets.left;
-    let y = rect.top_left.y + insets.top;
-    let w = (rect.size.width as i32 - insets.left - insets.right).max(0) as u32;
-    let h = (rect.size.height as i32 - insets.top - insets.bottom).max(0) as u32;
-    Rectangle::new(Point::new(x, y), Size::new(w, h))
-}
-
 /// Carve a fixed-height band off the top. Returns (top, rest).
 pub fn split_top(rect: Rectangle, top_h: i32) -> (Rectangle, Rectangle) {
     let top_h = top_h.max(0);
@@ -78,37 +41,6 @@ mod tests {
 
     fn rect(x: i32, y: i32, w: u32, h: u32) -> Rectangle {
         Rectangle::new(Point::new(x, y), Size::new(w, h))
-    }
-
-    #[test]
-    fn inset_shrinks_from_all_sides() {
-        let r = rect(10, 10, 100, 100);
-        let out = inset(r, Insets::all(5));
-        assert_eq!(out.top_left, Point::new(15, 15));
-        assert_eq!(out.size, Size::new(90, 90));
-    }
-
-    #[test]
-    fn inset_asymmetric() {
-        let r = rect(0, 0, 100, 100);
-        let out = inset(
-            r,
-            Insets {
-                top: 2,
-                right: 4,
-                bottom: 6,
-                left: 8,
-            },
-        );
-        assert_eq!(out.top_left, Point::new(8, 2));
-        assert_eq!(out.size, Size::new(100 - 8 - 4, 100 - 2 - 6));
-    }
-
-    #[test]
-    fn inset_clamps_to_zero() {
-        let r = rect(0, 0, 10, 10);
-        let out = inset(r, Insets::all(20));
-        assert_eq!(out.size, Size::new(0, 0));
     }
 
     #[test]

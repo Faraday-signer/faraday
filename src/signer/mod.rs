@@ -17,14 +17,16 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 
 /// Result of signing a transaction.
 pub struct SignedTransaction {
+    #[cfg(any(test, feature = "_desktop_sim"))]
     pub signed_bytes: Vec<u8>,
-    pub signed_base64: String,
     /// `faraday:sig:<base64(v || pubkey || sig)>` — the compact return
     /// payload shown on the Pi's `SignShowQr` screen so the reader can
     /// read a tiny QR instead of a dense one. See
     /// `crate::qr::encode_qr::encode_signature_envelope`.
     pub signature_envelope: String,
+    #[cfg(any(test, feature = "_desktop_sim"))]
     pub signature: [u8; 64],
+    #[cfg(any(test, feature = "_desktop_sim"))]
     pub signer_pubkey: String,
 }
 
@@ -92,17 +94,17 @@ pub fn sign_transaction_bytes(
     let sig_offset = 1 + signer_index * 64;
     signed[sig_offset..sig_offset + 64].copy_from_slice(&sig_bytes);
 
-    let signer_pubkey = bs58::encode(public_key).into_string();
-    let signed_base64 = crate::qr::encode_qr::encode_signed_tx(&signed);
     let signature_envelope =
         crate::qr::encode_qr::encode_signature_envelope(&sig_bytes, public_key);
 
     Ok(SignedTransaction {
+        #[cfg(any(test, feature = "_desktop_sim"))]
         signed_bytes: signed,
-        signed_base64,
         signature_envelope,
+        #[cfg(any(test, feature = "_desktop_sim"))]
         signature: sig_bytes,
-        signer_pubkey,
+        #[cfg(any(test, feature = "_desktop_sim"))]
+        signer_pubkey: bs58::encode(public_key).into_string(),
     })
 }
 

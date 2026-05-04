@@ -6,7 +6,6 @@ pub mod file_camera;
 mod flows;
 #[cfg(feature = "_desktop_sim")]
 pub mod framebuffer;
-pub mod icons;
 pub mod logo;
 pub mod screens;
 #[cfg(feature = "simulator")]

@@ -5,10 +5,6 @@
 
 const UNRESOLVED: [u8; 32] = [0xFF; 32];
 
-pub fn is_unresolved(key: &[u8; 32]) -> bool {
-    *key == UNRESOLVED
-}
-
 /// Expands a v0 transaction's static account list with resolved ALT entries.
 ///
 /// Follows the Solana v0 account ordering:
@@ -504,14 +500,14 @@ mod tests {
         let unknown = [0x42u8; 32];
         let table = find_table(&unknown);
         assert!(table.is_none());
-        assert!(is_unresolved(&resolve_entry(table, 0)));
+        assert_eq!(resolve_entry(table, 0), UNRESOLVED);
     }
 
     #[test]
     fn test_resolve_out_of_bounds_returns_unresolved() {
         let alt = pubkey_from_b58("3oy9ojnsDzqmMNi87Gs7Hn5v3MPVqnWjG9k8BmzKR7yW");
         let table = find_table(&alt);
-        assert!(is_unresolved(&resolve_entry(table, 255)));
+        assert_eq!(resolve_entry(table, 255), UNRESOLVED);
     }
 
     #[test]
