@@ -200,7 +200,6 @@ impl App {
             Screen::LoadInvalidMnemonic { word_count } => {
                 draw_invalid_mnemonic(display, *word_count)
             }
-            Screen::LoadSeedLoaded { .. } => draw_load_seed_loaded(display),
             Screen::LoadFinalize { preview_address, selected, .. } => {
                 draw_load_finalize(display, preview_address, *selected)
             }
@@ -891,52 +890,6 @@ fn draw_export_seed_qr_menu<D: DrawTarget<Color = Rgb565>>(
     .draw(display, &theme)
 }
 
-/// Transient "seed loaded" splash. No chrome, no prompts — a big
-/// brand-coloured "SEED LOADED ✓" centered on the screen. `tick()`
-/// auto-advances to the passphrase decision after a short beat so
-/// the user never has to press anything to dismiss it.
-fn draw_load_seed_loaded<D: DrawTarget<Color = Rgb565>>(
-    display: &mut D,
-) -> Result<(), D::Error> {
-    use crate::ui::Theme;
-    use embedded_graphics::{
-        primitives::{PrimitiveStyle, Line},
-        text::{Alignment, Text},
-    };
-
-    let theme = Theme::faraday_240();
-
-    let screen = Rectangle::new(
-        Point::zero(),
-        Size::new(theme.width, theme.height),
-    );
-    display.fill_solid(&screen, theme.bg)?;
-
-    let cx = theme.width as i32 / 2;
-    let cy = theme.height as i32 / 2;
-
-    // Tick glyph, drawn as two lines so it scales cleanly on the 240 px
-    // panel. The profont glyphs don't include a standalone check, so
-    // hand-rolling keeps it big and unambiguous.
-    let tick_color = theme.accent;
-    let tick_stroke = PrimitiveStyle::with_stroke(tick_color, 4);
-    let short_start = Point::new(cx - 34, cy - 30);
-    let pivot = Point::new(cx - 10, cy - 6);
-    let long_end = Point::new(cx + 36, cy - 56);
-    Line::new(short_start, pivot).into_styled(tick_stroke).draw(display)?;
-    Line::new(pivot, long_end).into_styled(tick_stroke).draw(display)?;
-
-    Text::with_alignment(
-        "SEED LOADED",
-        Point::new(cx, cy + 40),
-        theme.style_lg(theme.accent),
-        Alignment::Center,
-    )
-    .draw(display)?;
-
-    Ok(())
-}
-
 fn draw_load_finalize<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     preview_address: &str,
@@ -1223,27 +1176,6 @@ fn draw_show_words<D: DrawTarget<Color = Rgb565>>(
             .k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
-}
-
-/// Format `n` as a zero-padded 2-digit string in a stack buffer.
-fn fmt_num(buf: &mut [u8; 4], n: usize) -> &str {
-    use core::fmt::Write;
-    struct W<'a> {
-        buf: &'a mut [u8; 4],
-        pos: usize,
-    }
-    impl core::fmt::Write for W<'_> {
-        fn write_str(&mut self, s: &str) -> core::fmt::Result {
-            let b = s.as_bytes();
-            let n = b.len().min(self.buf.len() - self.pos);
-            self.buf[self.pos..self.pos + n].copy_from_slice(&b[..n]);
-            self.pos += n;
-            Ok(())
-        }
-    }
-    let mut w = W { buf, pos: 0 };
-    let _ = write!(&mut w, "{:02}", n);
-    core::str::from_utf8(&w.buf[..w.pos]).unwrap_or("")
 }
 
 /// Word verification quiz. List register — the question is the header title
@@ -3602,8 +3534,6 @@ fn draw_dice_rolls<D: DrawTarget<Color = Rgb565>>(
 /// How the picker cells are arranged inside the body.
 #[derive(Clone, Copy)]
 enum PickerLayout {
-    /// Single row of `choices.len()` equal-width cells.
-    Row,
     /// `cols × rows` grid. `cols * rows` must be >= choices.len().
     Grid { cols: usize, rows: usize },
 }
@@ -3665,7 +3595,6 @@ fn draw_entropy_picker<D: DrawTarget<Color = Rgb565>>(
     // Picker cells: full-bleed cyan for selected, with inverted text.
     // Layout chooses whether to line them up or grid them.
     let (cols, rows) = match layout {
-        PickerLayout::Row => (choices.len(), 1),
         PickerLayout::Grid { cols, rows } => (cols, rows),
     };
     if cols > 0 && rows > 0 {

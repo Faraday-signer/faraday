@@ -36,7 +36,6 @@ use sha2::Digest;
 pub struct ParsedTransaction {
     pub version: TransactionVersion,
     pub fee_payer: String,
-    pub num_signers: u8,
     pub signers: Vec<[u8; 32]>,
     pub instructions: Vec<ParsedInstruction>,
     pub fee_lamports: u64,
@@ -61,7 +60,6 @@ pub enum ReviewItem {
     Header(String),
     Field { label: String, value: String },
     Warning(String),
-    Separator,
 }
 
 /// Structured summary of the dominant action in a transaction, used by the
@@ -645,7 +643,6 @@ pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
             return ParsedTransaction {
                 version: TransactionVersion::Legacy,
                 fee_payer: "?".into(),
-                num_signers: 0,
                 signers: Vec::new(),
                 instructions: vec![ParsedInstruction {
                     program: "Error".into(),
@@ -716,7 +713,6 @@ pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
     ParsedTransaction {
         version,
         fee_payer,
-        num_signers: msg.num_required_signers,
         signers,
         instructions,
         fee_lamports,
@@ -774,7 +770,6 @@ pub fn to_lines(tx: &ParsedTransaction) -> Vec<String> {
                     }
                 }
                 ReviewItem::Warning(s) => lines.push(format!("! {}", s)),
-                ReviewItem::Separator => lines.push(String::new()),
             }
         }
         if multi && i + 1 < tx.instructions.len() {
@@ -1173,14 +1168,10 @@ fn augment_ata_map_from_ixs(
         if map.contains_key(&account) {
             return;
         }
-        if let Some(info) = token_registry::lookup(&mint) {
+        if token_registry::lookup(&mint).is_some() {
             map.insert(
                 account,
-                token_registry::AtaEntry {
-                    mint,
-                    symbol: info.symbol,
-                    decimals: info.decimals,
-                },
+                token_registry::AtaEntry { mint },
             );
         }
     };
@@ -1686,7 +1677,7 @@ mod tests {
         let parsed = ParsedTransaction {
             version: TransactionVersion::Legacy,
             fee_payer: "payer".to_string(),
-            num_signers: 1,
+
             signers: vec![[0u8; 32]],
             instructions: vec![
                 ParsedInstruction {
@@ -1728,7 +1719,7 @@ mod tests {
         let parsed = ParsedTransaction {
             version: TransactionVersion::Legacy,
             fee_payer: "payer".to_string(),
-            num_signers: 1,
+
             signers: vec![[0u8; 32]],
             instructions: vec![
                 // Side-effect: ATA creation for the dest token.
@@ -1764,7 +1755,7 @@ mod tests {
             let parsed = ParsedTransaction {
                 version: TransactionVersion::Legacy,
                 fee_payer: "payer".to_string(),
-                num_signers: 1,
+    
                 signers: vec![[0u8; 32]],
                 instructions: vec![
                     ParsedInstruction {
@@ -1793,7 +1784,7 @@ mod tests {
         let parsed = ParsedTransaction {
             version: TransactionVersion::Legacy,
             fee_payer: "payer".to_string(),
-            num_signers: 1,
+
             signers: vec![[0u8; 32]],
             instructions: vec![ParsedInstruction {
                 program: "AssocToken".to_string(),

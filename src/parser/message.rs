@@ -36,7 +36,6 @@ pub struct ParsedMessage {
     pub version: MessageVersion,
     pub num_required_signers: u8,
     pub accounts: Vec<[u8; 32]>,
-    pub recent_blockhash: [u8; 32],
     pub instructions: Vec<RawInstruction>,
     /// Only populated for v0 transactions.
     pub address_table_lookups: Vec<AddressTableLookup>,
@@ -78,8 +77,8 @@ pub fn deserialize(tx_bytes: &[u8]) -> Result<ParsedMessage, &'static str> {
         accounts.push(cur.read_pubkey()?);
     }
 
-    // Recent blockhash
-    let recent_blockhash = cur.read_pubkey()?;
+    // Recent blockhash (skip — not needed for parsing)
+    let _recent_blockhash = cur.read_pubkey()?;
 
     // Instructions
     let num_instructions = cur.read_compact_u16()?;
@@ -134,7 +133,6 @@ pub fn deserialize(tx_bytes: &[u8]) -> Result<ParsedMessage, &'static str> {
         version,
         num_required_signers,
         accounts,
-        recent_blockhash,
         instructions,
         address_table_lookups,
     })
@@ -279,7 +277,6 @@ mod tests {
         assert_eq!(msg.accounts.len(), 2);
         assert_eq!(msg.accounts[0], [0x01u8; 32]);
         assert_eq!(msg.accounts[1], [0x00u8; 32]);
-        assert_eq!(msg.recent_blockhash, [0xABu8; 32]);
         assert_eq!(msg.instructions.len(), 1);
         assert_eq!(msg.address_table_lookups.len(), 0);
     }
