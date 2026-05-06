@@ -14,7 +14,8 @@ interface Row {
 }
 
 const ROWS: Row[] = [
-  { key: "Network", label: "Network", hint: "RPC endpoint and cluster" },
+  { key: "Device", label: "Device", hint: "Paired pubkey and unpair" },
+  { key: "Network", label: "Network", hint: "RPC endpoint and tokens" },
   { key: "About", label: "About", hint: "Version and source" }
 ];
 

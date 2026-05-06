@@ -2,16 +2,26 @@ import type { ComponentProps } from "react";
 import { Text } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { DarkTheme, NavigationContainer, type Theme } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
-import { WalletScreen } from "../screens/wallet";
+import { PairPasteScreen } from "../screens/pair-paste";
+import { PairScanScreen } from "../screens/pair-scan";
 import { SettingsNavigator } from "./settings";
+import { WalletScreen } from "../screens/wallet";
 import { colors, letterSpacing } from "../lib/theme";
+
+export type RootStackParamList = {
+  WalletHome: undefined;
+  PairScan: undefined;
+  PairPaste: undefined;
+};
 
 export type RootTabParamList = {
   Wallet: undefined;
   Settings: undefined;
 };
 
+const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<RootTabParamList>();
 
 const navTheme: Theme = {
@@ -44,6 +54,23 @@ function tabLabel(label: string) {
   );
 }
 
+function WalletNavigator() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.bg },
+        headerTintColor: colors.text,
+        headerTitleStyle: { color: colors.text },
+        contentStyle: { backgroundColor: colors.bg }
+      }}
+    >
+      <Stack.Screen name="WalletHome" component={WalletScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="PairScan" component={PairScanScreen} options={{ title: "" }} />
+      <Stack.Screen name="PairPaste" component={PairPasteScreen} options={{ title: "" }} />
+    </Stack.Navigator>
+  );
+}
+
 export function RootNavigator() {
   return (
     <NavigationContainer theme={navTheme}>
@@ -59,7 +86,7 @@ export function RootNavigator() {
       >
         <Tab.Screen
           name="Wallet"
-          component={WalletScreen}
+          component={WalletNavigator}
           options={{ tabBarLabel: tabLabel("Wallet") }}
         />
         <Tab.Screen
