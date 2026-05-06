@@ -4,7 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
-import { FaradayLogo, FaradayMark } from "../lib/brand";
+import { FaradayLogo } from "../lib/brand";
 import { TokensSection } from "../components/tokens-section";
 import { CLUSTER_LABEL } from "../lib/sol-client";
 import { formatSol, formatTokenUsd, shortAddress } from "../lib/token-format";
@@ -42,7 +42,7 @@ export function WalletScreen({ navigation }: Props) {
     return (
       <SafeAreaView style={styles.root} edges={["top", "left", "right"]}>
         <View style={styles.emptyWrap}>
-          <FaradayMark size={56} />
+          <FaradayLogo height={40} />
           <Text style={styles.emptyTitle}>No device paired</Text>
           <Text style={styles.emptyBody}>
             Pair your Faraday signer to view balances and send tokens.
