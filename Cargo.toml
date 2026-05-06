@@ -60,7 +60,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 
 # Desktop simulator (optional)
 minifb = { version = "0.27", optional = true }
-nokhwa = { version = "0.10", default-features = false, features = ["input-avfoundation"], optional = true }
+nokhwa = { version = "0.10", default-features = false, optional = true }
 rfd = { version = "0.17", optional = true, default-features = false, features = ["xdg-portal"] }
 
 # Printable template generator (optional, dev-only). Cross-compile builds for
@@ -72,6 +72,13 @@ pdf-writer = { version = "0.14", optional = true }
 # deliver frames on this firmware.
 [target.'cfg(target_os = "linux")'.dependencies]
 rppal = "0.22"
+nokhwa = { version = "0.10", features = ["input-v4l"], optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nokhwa = { version = "0.10", features = ["input-avfoundation"], optional = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+nokhwa = { version = "0.10", features = ["input-msmf"], optional = true }
 
 [profile.release]
 opt-level = "s"
