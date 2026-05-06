@@ -131,23 +131,33 @@ export async function fetchJupiterPrices(mints: string[]): Promise<Map<string, n
   return out;
 }
 
+export interface VerifiedTokenMeta {
+  symbol: string;
+  name: string;
+  logoURI: string | null;
+}
+
 interface CachedVerified {
-  set: Set<string>;
+  meta: Map<string, VerifiedTokenMeta>;
   fetchedAt: number;
 }
 
 let verifiedCache: CachedVerified | null = null;
-let verifiedInflight: Promise<Set<string>> | null = null;
+let verifiedInflight: Promise<Map<string, VerifiedTokenMeta>> | null = null;
 
 interface JupiterVerifiedItem {
   id?: string;
   address?: string;
+  symbol?: string;
+  name?: string;
+  logoURI?: string;
+  icon?: string;
 }
 
-export async function fetchJupiterVerifiedSet(): Promise<Set<string>> {
+export async function fetchJupiterVerifiedMeta(): Promise<Map<string, VerifiedTokenMeta>> {
   const now = Date.now();
   if (verifiedCache && now - verifiedCache.fetchedAt < VERIFIED_SET_TTL_MS) {
-    return verifiedCache.set;
+    return verifiedCache.meta;
   }
   if (verifiedInflight) return verifiedInflight;
 
@@ -157,16 +167,21 @@ export async function fetchJupiterVerifiedSet(): Promise<Set<string>> {
       if (!res.ok) throw new Error(`Jupiter verified HTTP ${res.status}`);
       const json = (await res.json()) as JupiterVerifiedItem[] | { items?: JupiterVerifiedItem[] };
       const list: JupiterVerifiedItem[] = Array.isArray(json) ? json : (json.items ?? []);
-      const set = new Set<string>();
+      const meta = new Map<string, VerifiedTokenMeta>();
       for (const item of list) {
         const mint = item.id ?? item.address;
-        if (typeof mint === "string" && mint.length > 0) set.add(mint);
+        if (typeof mint !== "string" || mint.length === 0) continue;
+        meta.set(mint, {
+          symbol: item.symbol ?? "",
+          name: item.name ?? "",
+          logoURI: item.logoURI ?? item.icon ?? null
+        });
       }
-      verifiedCache = { set, fetchedAt: Date.now() };
-      return set;
+      verifiedCache = { meta, fetchedAt: Date.now() };
+      return meta;
     } catch {
-      const empty = new Set<string>();
-      verifiedCache = { set: empty, fetchedAt: Date.now() };
+      const empty = new Map<string, VerifiedTokenMeta>();
+      verifiedCache = { meta: empty, fetchedAt: Date.now() };
       return empty;
     } finally {
       verifiedInflight = null;
@@ -174,6 +189,12 @@ export async function fetchJupiterVerifiedSet(): Promise<Set<string>> {
   })();
 
   return verifiedInflight;
+}
+
+/** Backwards-compatible Set-of-mints view, since the rest of the code still asks for "is this verified?". */
+export async function fetchJupiterVerifiedSet(): Promise<Set<string>> {
+  const meta = await fetchJupiterVerifiedMeta();
+  return new Set(meta.keys());
 }
 
 interface RpcParsedTokenAccount {
@@ -248,48 +269,59 @@ async function fetchOwnedTokensFallback(owner: string): Promise<Token[]> {
 export async function fetchOwnedTokens(owner: string): Promise<Token[]> {
   toAddress(owner);
 
-  let assets: HeliusAsset[];
+  let tokens: Token[];
   try {
-    assets = await fetchHeliusAssets(owner);
+    const assets = await fetchHeliusAssets(owner);
+    tokens = [];
+    for (const a of assets) {
+      if (!a.id) continue;
+      const decimals = a.token_info?.decimals ?? 0;
+      const raw = bigintFromBalance(a.token_info?.balance);
+      if (raw === 0n) continue;
+
+      tokens.push({
+        mint: a.id,
+        programId: programFromHelius(a.token_info?.token_program),
+        symbol: a.content?.metadata?.symbol ?? a.token_info?.symbol ?? "",
+        name: a.content?.metadata?.name ?? "",
+        logoUrl: pickLogoUrl(a),
+        decimals,
+        amountRaw: raw,
+        amountUi: Number(raw) / 10 ** decimals,
+        usdValue: null,
+        pricePerToken: null,
+        verified: false
+      });
+    }
   } catch {
-    return fetchOwnedTokensFallback(owner);
-  }
-
-  const tokens: Token[] = [];
-  for (const a of assets) {
-    if (!a.id) continue;
-    const decimals = a.token_info?.decimals ?? 0;
-    const raw = bigintFromBalance(a.token_info?.balance);
-    if (raw === 0n) continue;
-
-    tokens.push({
-      mint: a.id,
-      programId: programFromHelius(a.token_info?.token_program),
-      symbol: a.content?.metadata?.symbol ?? a.token_info?.symbol ?? "",
-      name: a.content?.metadata?.name ?? "",
-      logoUrl: pickLogoUrl(a),
-      decimals,
-      amountRaw: raw,
-      amountUi: Number(raw) / 10 ** decimals,
-      usdValue: null,
-      pricePerToken: null,
-      verified: false
-    });
+    // Public RPC doesn't expose `getAssetsByOwner` — fall back to the standard
+    // JSON-RPC token-accounts call, which gives us mint + balance + decimals
+    // but no symbol/logo. We backfill those below from the Jupiter verified
+    // metadata so well-known tokens (USDC, USDT, JUP, …) still render right.
+    tokens = await fetchOwnedTokensFallback(owner);
   }
 
   const mints = tokens.map((t) => t.mint);
   const [prices, verified] = await Promise.all([
     fetchJupiterPrices(mints).catch(() => new Map<string, number>()),
-    fetchJupiterVerifiedSet()
+    fetchJupiterVerifiedMeta()
   ]);
 
   for (const t of tokens) {
+    const meta = verified.get(t.mint);
+    if (meta) {
+      t.verified = true;
+      // Don't trample DAS-supplied symbol/name — only fill what's missing.
+      if (!t.symbol) t.symbol = meta.symbol;
+      if (!t.name) t.name = meta.name;
+      if (!t.logoUrl && meta.logoURI) t.logoUrl = meta.logoURI;
+    }
+
     const price = prices.get(t.mint);
     if (price !== undefined) {
       t.pricePerToken = price;
       t.usdValue = price * t.amountUi;
     }
-    t.verified = verified.has(t.mint);
   }
 
   return tokens;
