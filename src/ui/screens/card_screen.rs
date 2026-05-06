@@ -10,7 +10,7 @@ use embedded_graphics::{
     primitives::Rectangle,
 };
 
-use crate::ui::layout::{split_bottom, split_top};
+use crate::ui::layout::split_top;
 use crate::ui::widgets::{Card, CardRow, EdgeHints, Header, HeaderKind, GUTTER_W};
 use crate::ui::Theme;
 

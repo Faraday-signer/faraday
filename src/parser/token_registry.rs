@@ -17,8 +17,6 @@ pub struct TokenInfo {
 
 pub struct AtaEntry {
     pub mint: [u8; 32],
-    pub symbol: &'static str,
-    pub decimals: u8,
 }
 
 /// Map from ATA address → token info for offline mint resolution.
@@ -115,7 +113,7 @@ pub fn build_ata_map(signers: &[[u8; 32]]) -> AtaMap {
     let mut map = AtaMap::new();
 
     for signer in signers {
-        for &(mint_str, symbol, decimals) in KNOWN_TOKENS {
+        for &(mint_str, _symbol, _decimals) in KNOWN_TOKENS {
             let mint = pubkey_from_b58(mint_str);
             if let Some((ata, _bump)) = pda::find_program_address(
                 &[signer.as_ref(), token_prog.as_ref(), mint.as_ref()],
@@ -123,11 +121,7 @@ pub fn build_ata_map(signers: &[[u8; 32]]) -> AtaMap {
             ) {
                 map.insert(
                     ata,
-                    AtaEntry {
-                        mint,
-                        symbol,
-                        decimals,
-                    },
+                    AtaEntry { mint },
                 );
             }
         }
@@ -284,7 +278,6 @@ mod tests {
         for (key, entry_a) in &a {
             let entry_b = b.get(key).unwrap();
             assert_eq!(entry_a.mint, entry_b.mint);
-            assert_eq!(entry_a.symbol, entry_b.symbol);
         }
     }
 

@@ -1,6 +1,5 @@
 //! Load wallet flow.
 
-use crate::crypto::bip39;
 use crate::gui::app::{App, CharGrid, HelpTopic, InputEvent, Screen, WordPicker};
 use crate::qr::decode_qr;
 
@@ -163,14 +162,6 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 _ => {}
             }
             Screen::LoadInvalidMnemonic { word_count }
-        }
-
-        Screen::LoadSeedLoaded { mnemonic, preview_address, shown_at } => {
-            // Splash auto-dismisses from `tick()`. Any button press here is
-            // a no-op — the user shouldn't have to acknowledge; the screen
-            // just fades itself out to the passphrase decision.
-            let _ = event;
-            Screen::LoadSeedLoaded { mnemonic, preview_address, shown_at }
         }
 
         Screen::LoadFinalize { mnemonic, preview_address, mut selected } => {

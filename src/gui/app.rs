@@ -245,16 +245,6 @@ pub enum Screen {
         word_count: usize,
         shown_at: std::time::Instant,
     },
-    /// Transient "seed loaded" splash shown right after a successful
-    /// scan / word entry. Auto-dismisses after ~1.2s in `tick()` and
-    /// advances to the passphrase decision. The `shown_at` timestamp
-    /// is the wall-clock when the splash was entered; the render
-    /// ignores it (only tick reads it) so drop order doesn't matter.
-    LoadSeedLoaded {
-        mnemonic: String,
-        preview_address: String,
-        shown_at: std::time::Instant,
-    },
     /// Passphrase decision: Done (no passphrase) / Add passphrase. Short
     /// address shown in the header chip so users keep visual continuity
     /// with the preceding confirmation.
@@ -938,27 +928,6 @@ impl App {
             }
         }
 
-        // Auto-dismiss the "seed loaded" splash after a short beat — the user
-        // shouldn't have to press anything; the screen just flashes and moves
-        // on to the passphrase decision.
-        if let Screen::LoadSeedLoaded { shown_at, .. } = &self.screen {
-            if shown_at.elapsed() >= std::time::Duration::from_millis(1800) {
-                let taken = std::mem::replace(&mut self.screen, Screen::Splash);
-                if let Screen::LoadSeedLoaded {
-                    mnemonic,
-                    preview_address,
-                    ..
-                } = taken
-                {
-                    self.screen = Screen::LoadFinalize {
-                        mnemonic,
-                        preview_address,
-                        selected: 0,
-                    };
-                }
-            }
-        }
-
         // Auto-dismiss the per-word commit flash. If this was the last word
         // we either advance to LoadFinalize (valid mnemonic), LoadInvalidMnemonic
         // (checksum failed), or DerivationError (HMAC failed). Otherwise we
@@ -1186,7 +1155,6 @@ impl App {
                 | Screen::LoadWordCount { .. }
                 | Screen::LoadEnterWords { .. }
                 | Screen::LoadWordCommitted { .. }
-                | Screen::LoadSeedLoaded { .. }
                 | Screen::LoadFinalize { .. }
                 | Screen::LoadPassphrasePrompt { .. }
                 | Screen::LoadPassphraseInput { .. }
