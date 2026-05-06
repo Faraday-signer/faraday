@@ -6,14 +6,34 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import { PairPasteScreen } from "../screens/pair-paste";
 import { PairScanScreen } from "../screens/pair-scan";
+import { SendComposeScreen } from "../screens/send-compose";
+import { SendReviewScreen } from "../screens/send-review";
+import { SendSignScreen } from "../screens/send-sign";
 import { SettingsNavigator } from "./settings";
 import { WalletScreen } from "../screens/wallet";
+import type { TokenProgram } from "../lib/tokens";
 import { colors, letterSpacing } from "../lib/theme";
 
 export type RootStackParamList = {
   WalletHome: undefined;
   PairScan: undefined;
   PairPaste: undefined;
+  SendCompose: undefined;
+  SendReview: {
+    tokenKind: "sol" | "spl";
+    mint: string | null;
+    programId: TokenProgram | null;
+    decimals: number;
+    symbol: string;
+    recipient: string;
+    amountStr: string;
+  };
+  SendSign: {
+    txBase64: string;
+    recipient: string;
+    amountStr: string;
+    symbol: string;
+  };
 };
 
 export type RootTabParamList = {
@@ -67,6 +87,9 @@ function WalletNavigator() {
       <Stack.Screen name="WalletHome" component={WalletScreen} options={{ headerShown: false }} />
       <Stack.Screen name="PairScan" component={PairScanScreen} options={{ title: "" }} />
       <Stack.Screen name="PairPaste" component={PairPasteScreen} options={{ title: "" }} />
+      <Stack.Screen name="SendCompose" component={SendComposeScreen} options={{ title: "" }} />
+      <Stack.Screen name="SendReview" component={SendReviewScreen} options={{ title: "" }} />
+      <Stack.Screen name="SendSign" component={SendSignScreen} options={{ title: "" }} />
     </Stack.Navigator>
   );
 }

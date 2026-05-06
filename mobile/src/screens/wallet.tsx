@@ -121,9 +121,12 @@ export function WalletScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.actionRow}>
-          <View style={[styles.actionButton, styles.actionDisabled]}>
-            <Text style={styles.actionLabel}>↗ Send (next)</Text>
-          </View>
+          <Pressable
+            onPress={() => navigation.navigate("SendCompose")}
+            style={({ pressed }) => [styles.actionButton, pressed && styles.actionPressed]}
+          >
+            <Text style={styles.actionLabel}>↗ Send</Text>
+          </Pressable>
           <View style={[styles.actionButton, styles.actionDisabled]}>
             <Text style={styles.actionLabel}>↙ Receive (next)</Text>
           </View>
@@ -310,6 +313,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.panel,
     alignItems: "center"
+  },
+  actionPressed: {
+    backgroundColor: colors.panelHi
   },
   actionDisabled: {
     opacity: 0.5
