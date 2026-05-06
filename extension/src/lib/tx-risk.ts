@@ -522,14 +522,14 @@ function tokenDisc(inst: ParsedInstruction): number {
   return inst.data.length > 0 ? inst.data[0] : -1;
 }
 
-function getComputeUnitPriceMicroLamports(parsed: ParsedTransaction): number {
+function getComputeUnitPriceMicroLamports(parsed: ParsedTransaction): bigint {
   for (const inst of parsed.instructions) {
     if (inst.programId !== COMPUTE_BUDGET_PROGRAM_ID) continue;
     if (inst.data[0] === SET_COMPUTE_UNIT_PRICE_DISCRIMINATOR && inst.data.length >= 9) {
-      return readU64LE(inst.data, 1);
+      return readU64LEBigInt(inst.data, 1);
     }
   }
-  return 0;
+  return 0n;
 }
 
 // --- Risk detectors ---
@@ -723,7 +723,8 @@ function detectDrainHeuristic(
 
 function detectOversizedPriorityFee(parsed: ParsedTransaction, unitsConsumed: number): TxRiskWarning[] {
   const microLamports = getComputeUnitPriceMicroLamports(parsed);
-  const prioritySol = Math.floor((microLamports * unitsConsumed) / 1_000_000) / LAMPORTS_PER_SOL;
+  const priorityLamports = (microLamports * BigInt(unitsConsumed)) / 1_000_000n;
+  const prioritySol = Number(priorityLamports) / LAMPORTS_PER_SOL;
   if (prioritySol >= OVERSIZED_PRIORITY_FEE_SOL) {
     return [{
       severity: "warning",

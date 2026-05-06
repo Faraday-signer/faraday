@@ -2,7 +2,7 @@
 //!
 //! Reference: https://docs.rs/solana-sdk/latest/solana_sdk/stake/instruction/enum.StakeInstruction.html
 
-use crate::parser::bytes::read_u64_le;
+use crate::parser::bytes::{pubkey_short, read_u64_le};
 use crate::parser::system::lamports_to_sol;
 use crate::parser::{ParsedInstruction, ReviewItem};
 
@@ -184,11 +184,6 @@ fn parse_merge(accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
             value: source,
         },
     ])
-}
-
-fn pubkey_short(key: &[u8; 32]) -> String {
-    let b58 = bs58::encode(key).into_string();
-    format!("{}..{}", &b58[..4], &b58[b58.len() - 4..])
 }
 
 #[cfg(test)]

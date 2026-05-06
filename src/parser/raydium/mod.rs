@@ -9,6 +9,7 @@ pub mod amm_v4;
 pub mod clmm;
 pub mod cpmm;
 
+use crate::parser::bytes::pubkey_short;
 use crate::parser::token_registry;
 use crate::parser::{ParsedInstruction, ReviewItem};
 
@@ -123,10 +124,7 @@ fn format_token_side(label: &str, mint: &Option<[u8; 32]>, amount: u64) -> Vec<R
     match mint {
         Some(m) => match token_registry::lookup(m) {
             Some(info) => {
-                // Hero @H2 row gets these values, so use the short formatter —
-                // very large balances would otherwise blow past the 240-px
-                // hero width and force wrapping into the detail zone.
-                let formatted = token_registry::format_amount_short(amount, info.decimals);
+                let formatted = token_registry::format_amount(amount, info.decimals);
                 items.push(ReviewItem::Field {
                     label: label.into(),
                     value: format!("{} {}", formatted, info.symbol),
@@ -156,14 +154,10 @@ fn format_token_side(label: &str, mint: &Option<[u8; 32]>, amount: u64) -> Vec<R
                 });
             }
             items.push(ReviewItem::Warning(
-                "Mint unresolved — in lookup table".into(),
+                "Mint unresolved — not in lookup table".into(),
             ));
         }
     }
     items
 }
 
-fn pubkey_short(key: &[u8; 32]) -> String {
-    let b58 = bs58::encode(key).into_string();
-    format!("{}..{}", &b58[..4], &b58[b58.len() - 4..])
-}

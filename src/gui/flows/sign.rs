@@ -84,10 +84,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             mut selected,
             can_sign,
         } => {
-            // Total pages: page 0 is the summary, page 1 is tx metadata,
-            // page 2 is the instruction overview, then one per instruction,
-            // then the raw-bytes preview at the end.
-            let total_pages = 3 + parsed.instructions.len() + 1;
+            // Page 0 = summary, 1 = metadata, 2 = ix overview, then one per
+            // *interesting* ix (ComputeBudget pages skipped), then raw bytes.
+            let interesting_count = crate::parser::interesting_ix_indices(parsed.as_ref()).len();
+            let total_pages = 3 + interesting_count + 1;
 
             match event {
                 // K2 (Down) advances to the next page, wrapping back to the
@@ -262,47 +262,6 @@ fn looks_like_solana_tx(data: &[u8]) -> bool {
     };
     let min_len = 1 + sigs * 64 + 3;
     data.len() >= min_len
-}
-
-/// Find the scroll index at the start of the next chunk, where "chunk"
-/// means "the line after the next blank line." Returns `current + 1` as a
-/// fallback when no blank line appears ahead — so single-line progress
-/// still works near the end of the list. Caller is expected to clamp
-/// against the end-of-list bound.
-fn next_chunk(lines: &[String], current: usize) -> usize {
-    let mut i = current;
-    // Step past the current chunk's body until we hit a blank row.
-    while i < lines.len() && !lines[i].is_empty() {
-        i += 1;
-    }
-    // Step past any run of consecutive blanks.
-    while i < lines.len() && lines[i].is_empty() {
-        i += 1;
-    }
-    if i == current {
-        current + 1
-    } else {
-        i
-    }
-}
-
-/// Mirror of `next_chunk` going backwards. Lands on the start of the
-/// previous chunk (the line after the blank that separates it from the
-/// current one). Returns 0 when there's no earlier chunk.
-fn prev_chunk(lines: &[String], current: usize) -> usize {
-    if current == 0 {
-        return 0;
-    }
-    let mut i = current.saturating_sub(1);
-    // Step past any blanks immediately above the current position.
-    while i > 0 && lines[i].is_empty() {
-        i -= 1;
-    }
-    // Rewind through the previous chunk's body.
-    while i > 0 && !lines[i - 1].is_empty() {
-        i -= 1;
-    }
-    i
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@
 //! Anchor discriminators (e.g. `shared_accounts_route`, not `sharedAccountsRoute`).
 
 use crate::parser::anchor;
-use crate::parser::bytes::read_disc8;
+use crate::parser::bytes::{pubkey_short, read_disc8, read_swap_footer};
 use crate::parser::token_registry::{self, AtaMap};
 use crate::parser::{ParsedInstruction, ReviewItem};
 
@@ -17,6 +17,9 @@ use crate::parser::{ParsedInstruction, ReviewItem};
 enum DataLayout {
     RoutePlanFirst,
     AmountsFirst,
+    /// shared_accounts_route_v2 / shared_accounts_exact_out_route_v2:
+    /// `[disc | id(u8) | in_amount(u64) | out_amount(u64) | slip(u16) | fee(u8) | route_plan…]`.
+    SharedAccountsAmountsFirst,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,10 +39,10 @@ enum JupiterInstruction {
 impl JupiterInstruction {
     fn data_layout(&self) -> DataLayout {
         match self {
-            Self::RouteV2
-            | Self::SharedAccountsRouteV2
-            | Self::ExactOutRouteV2
-            | Self::SharedAccountsExactOutRouteV2 => DataLayout::AmountsFirst,
+            Self::SharedAccountsRouteV2 | Self::SharedAccountsExactOutRouteV2 => {
+                DataLayout::SharedAccountsAmountsFirst
+            }
+            Self::RouteV2 | Self::ExactOutRouteV2 => DataLayout::AmountsFirst,
             _ => DataLayout::RoutePlanFirst,
         }
     }
@@ -126,96 +129,25 @@ fn is_known_non_swap(disc: &[u8; 8]) -> bool {
         "set_token_ledger",
         "create_token_account",
         "create_token_ledger",
-        "open_order_initialize",
-        "close_order",
+        "create_open_orders",
+        "create_program_open_orders",
     ];
     NON_SWAP
         .iter()
         .any(|name| anchor::discriminator(name) == *disc)
 }
 
-// ── Swap enum byte size calculator ───────────────────────────────────────────
-//
-// Jupiter's `Swap` enum encodes which AMM to use for each route step.
-// Jupiter keeps adding new AMMs, so unknown variants default to fieldless
-// (0 extra bytes) — the majority pattern for new integrations.
-
-fn swap_enum_byte_size(data: &[u8]) -> Result<usize, &'static str> {
-    if data.is_empty() {
-        return Err("Empty swap enum");
+/// `claim` / `claim_token` transfer accumulated referral / platform-fee
+/// output from a Jupiter escrow back to the user — they move funds and
+/// must be surfaced distinctly, not bundled with the no-op ix.
+fn claim_action(disc: &[u8; 8]) -> Option<&'static str> {
+    if anchor::discriminator("claim") == *disc {
+        Some("Jupiter: claim referral")
+    } else if anchor::discriminator("claim_token") == *disc {
+        Some("Jupiter: claim referral token")
+    } else {
+        None
     }
-    let extra: usize = match data[0] {
-        // Fieldless variants
-        0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 9 | 10 | 11 | 13 | 14 | 19 | 20 | 22 | 25 | 26 | 30
-        | 31 | 32 | 34 | 35 | 36 | 37 | 38 | 40 | 41 | 42 | 48 | 50 | 51 | 52 | 53 | 54 | 55
-        | 56 | 57 | 59 | 61 | 63 => 0,
-
-        // Single-field: bool or Side enum (1 byte)
-        8 | 12 | 15 | 16 | 17 | 18 | 21 | 23 | 24 | 27 | 28 | 39 | 60 | 62 => 1,
-
-        // Symmetry: fromTokenId(u64) + toTokenId(u64)
-        29 => 16,
-
-        // StakeDexSwapViaStake / StakeDexPrefundWithdrawStakeAndDepositStake: u32
-        33 | 43 => 4,
-
-        // Clone: poolIndex(u8) + quantityIsInput(bool) + quantityIsCollateral(bool)
-        44 => 3,
-
-        // SanctumS: u8 + u8 + u32 + u32
-        45 => 10,
-
-        // SanctumSAddLiquidity / SanctumSRemoveLiquidity: u8 + u32
-        46 | 47 => 5,
-
-        // WhirlpoolSwapV2: aToB(bool=1) + RemainingAccountsInfo{slices: Vec<{u8,u8}>}
-        49 => {
-            if data.len() < 6 {
-                return Err("WhirlpoolSwapV2 data too short");
-            }
-            let n = u32::from_le_bytes([data[2], data[3], data[4], data[5]]) as usize;
-            1 + 4 + n * 2
-        }
-
-        // StabbleStableSwap: Option<RemainingAccountsInfo>
-        58 => {
-            if data.len() < 2 {
-                return Err("StabbleStableSwap data too short");
-            }
-            match data[1] {
-                0 => 1,
-                1 => {
-                    if data.len() < 6 {
-                        return Err("StabbleStableSwap vec too short");
-                    }
-                    let n = u32::from_le_bytes([data[2], data[3], data[4], data[5]]) as usize;
-                    1 + 4 + n * 2
-                }
-                _ => return Err("Invalid StabbleStableSwap option tag"),
-            }
-        }
-
-        // Unknown variants: assume fieldless (most new AMM integrations are)
-        _ => 0,
-    };
-    Ok(1 + extra)
-}
-
-/// Advances past a Borsh-encoded `Vec<RoutePlanStep>`.
-fn skip_route_plan(data: &[u8]) -> Result<usize, &'static str> {
-    if data.len() < 4 {
-        return Err("Route plan too short");
-    }
-    let count = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
-    let mut pos = 4;
-    for _ in 0..count {
-        if pos >= data.len() {
-            return Err("Route plan truncated");
-        }
-        pos += swap_enum_byte_size(&data[pos..])?;
-        pos += 3; // percent(u8) + input_index(u8) + output_index(u8)
-    }
-    Ok(pos)
 }
 
 // ── Data readers ─────────────────────────────────────────────────────────────
@@ -242,10 +174,15 @@ fn get_account(account_indices: &[u8], idx: usize, all_accounts: &[[u8; 32]]) ->
 // ── Amount parsing ───────────────────────────────────────────────────────────
 
 fn parse_amounts(data: &[u8], layout: &DataLayout) -> Result<(u64, u64, u16, u8), &'static str> {
-    let mut pos = 8; // skip discriminator
-    if matches!(layout, DataLayout::RoutePlanFirst) {
-        pos += skip_route_plan(&data[pos..])?;
+    match layout {
+        DataLayout::RoutePlanFirst => read_swap_footer(data),
+        DataLayout::AmountsFirst => parse_leading_amounts(data, 8),
+        DataLayout::SharedAccountsAmountsFirst => parse_shared_accounts_v2_amounts(data),
     }
+}
+
+fn parse_leading_amounts(data: &[u8], start: usize) -> Result<(u64, u64, u16, u8), &'static str> {
+    let mut pos = start;
     let a1 = read_u64(data, pos)?;
     pos += 8;
     let a2 = read_u64(data, pos)?;
@@ -254,6 +191,22 @@ fn parse_amounts(data: &[u8], layout: &DataLayout) -> Result<(u64, u64, u16, u8)
     pos += 2;
     let fee = *data.get(pos).ok_or("Insufficient data for fee")?;
     Ok((a1, a2, slippage, fee))
+}
+
+fn parse_shared_accounts_v2_amounts(data: &[u8]) -> Result<(u64, u64, u16, u8), &'static str> {
+    parse_leading_amounts(data, 9)
+}
+
+/// `quoted * (10000 - slip) / 10000`, saturating. Min received on exact-in.
+fn apply_slippage_down(quoted: u64, slippage_bps: u16) -> u64 {
+    let factor = 10_000_u64.saturating_sub(slippage_bps as u64);
+    ((quoted as u128 * factor as u128) / 10_000) as u64
+}
+
+/// `quoted * (10000 + slip) / 10000`, saturating. Max spent on exact-out.
+fn apply_slippage_up(quoted: u64, slippage_bps: u16) -> u64 {
+    let factor = 10_000_u64 + slippage_bps as u64;
+    ((quoted as u128 * factor as u128) / 10_000) as u64
 }
 
 // ── Swap result ──────────────────────────────────────────────────────────────
@@ -277,30 +230,36 @@ fn build_swap_result(
     all_accounts: &[[u8; 32]],
     ix_type: &JupiterInstruction,
 ) -> SwapResult {
-    let (source_mint, dest_mint, source_ta, dest_ta) = if ix_type.is_shared_accounts() {
-        (
+    let (source_mint, dest_mint, source_ta, dest_ta) = match ix_type {
+        // shared_accounts_route_v2 / shared_accounts_exact_out_route_v2:
+        // input mint at slot 6, output mint at slot 7 (V1 used 7, 8). The
+        // user's TAs aren't in the named slots — Jupiter routes through
+        // program-owned TAs — so skip the source/dest TA hints entirely.
+        JupiterInstruction::SharedAccountsRouteV2
+        | JupiterInstruction::SharedAccountsExactOutRouteV2 => (
+            get_account(account_indices, 6, all_accounts),
+            get_account(account_indices, 7, all_accounts),
+            None,
+            None,
+        ),
+        t if t.is_shared_accounts() => (
             get_account(account_indices, 7, all_accounts),
             get_account(account_indices, 8, all_accounts),
             get_account(account_indices, 3, all_accounts),
             get_account(account_indices, 6, all_accounts),
-        )
-    } else if matches!(
-        ix_type,
-        JupiterInstruction::RouteV2 | JupiterInstruction::ExactOutRouteV2
-    ) {
-        (
+        ),
+        JupiterInstruction::RouteV2 | JupiterInstruction::ExactOutRouteV2 => (
             None,
             None,
             get_account(account_indices, 1, all_accounts),
             get_account(account_indices, 2, all_accounts),
-        )
-    } else {
-        (
+        ),
+        _ => (
             None,
             get_account(account_indices, 5, all_accounts),
             get_account(account_indices, 2, all_accounts),
             get_account(account_indices, 3, all_accounts),
-        )
+        ),
     };
 
     let (in_amount, out_amount, slippage_bps, platform_fee_bps, parse_error) =
@@ -315,6 +274,16 @@ fn build_swap_result(
             }
             Err(e) => (0, 0, 0, 0, Some(e.to_string())),
         };
+
+    // ALT entries we don't have hardcoded come back as `[0xFF; 32]`
+    // (`lookup_tables::UNRESOLVED`). The shared_accounts variants point
+    // source/dest mint slots into the ALT, and on aggregator swaps with
+    // a fresh per-trade ALT (the one we hit was `DttEs7CN...`) those
+    // resolve to UNRESOLVED — which our `format_token_side` then renders
+    // as a `JEKN..WxFG` "mint". Strip them to None so the downstream
+    // ATA-map / known-mint resolution paths get a chance to fill in.
+    let source_mint = source_mint.filter(|k| !crate::parser::lookup_tables::is_unresolved(k));
+    let dest_mint = dest_mint.filter(|k| !crate::parser::lookup_tables::is_unresolved(k));
 
     SwapResult {
         ix_type: ix_type.clone(),
@@ -407,9 +376,7 @@ fn format_token_side(label: &str, mint: &Option<[u8; 32]>, amount: u64) -> Vec<R
     match mint {
         Some(m) => match token_registry::lookup(m) {
             Some(info) => {
-                // Hero @H2 row consumer — short form so whale-sized balances
-                // don't overflow the hero line. See format_amount_short docs.
-                let formatted = token_registry::format_amount_short(amount, info.decimals);
+                let formatted = token_registry::format_amount(amount, info.decimals);
                 items.push(ReviewItem::Field {
                     label: label.into(),
                     value: format!("{} {}", formatted, info.symbol),
@@ -440,7 +407,7 @@ fn format_token_side(label: &str, mint: &Option<[u8; 32]>, amount: u64) -> Vec<R
                 });
             }
             items.push(ReviewItem::Warning(
-                "Mint unresolved — in lookup table".into(),
+                "Mint unresolved — not in lookup table".into(),
             ));
         }
     }
@@ -462,34 +429,29 @@ fn format_swap(result: &SwapResult) -> ParsedInstruction {
         },
     ];
 
-    items.extend(format_token_side(
-        "You spend",
-        &result.source_mint,
-        result.in_amount,
-    ));
-    items.extend(format_token_side(
-        if result.ix_type.is_exact_out() {
-            "You receive"
-        } else {
-            "You receive (min)"
-        },
-        &result.dest_mint,
-        result.out_amount,
-    ));
+    let (spend_label, spend_amount, recv_label, recv_amount) = if result.ix_type.is_exact_out() {
+        let max_in = apply_slippage_up(result.in_amount, result.slippage_bps);
+        ("You spend (max)", max_in, "You receive", result.out_amount)
+    } else {
+        let min_out = apply_slippage_down(result.out_amount, result.slippage_bps);
+        ("You spend", result.in_amount, "You receive (min)", min_out)
+    };
+    items.extend(format_token_side(spend_label, &result.source_mint, spend_amount));
+    items.extend(format_token_side(recv_label, &result.dest_mint, recv_amount));
 
     if result.parse_error.is_none() {
         items.push(ReviewItem::Field {
             label: "Slippage".into(),
-            value: format!(
-                "{} bps ({:.2}%)",
-                result.slippage_bps,
-                result.slippage_bps as f64 / 100.0
-            ),
+            value: format!("{:.2}%", result.slippage_bps as f64 / 100.0),
+        });
+        items.push(ReviewItem::Field {
+            label: "Slippage_bps".into(),
+            value: result.slippage_bps.to_string(),
         });
         if result.platform_fee_bps > 0 {
             items.push(ReviewItem::Field {
                 label: "Platform fee".into(),
-                value: format!("{} bps", result.platform_fee_bps),
+                value: format!("{:.2}%", result.platform_fee_bps as f64 / 100.0),
             });
         }
     }
@@ -530,6 +492,18 @@ pub fn parse(
     let ix_type = match identify_instruction(&disc) {
         Some(t) => t,
         None => {
+            if let Some(label) = claim_action(&disc) {
+                return ParsedInstruction {
+                    program: "Jupiter".into(),
+                    items: vec![
+                        ReviewItem::Header(label.into()),
+                        ReviewItem::Warning(
+                            "Pulls accumulated referral / fee output to your wallet. Verify on dApp."
+                                .into(),
+                        ),
+                    ],
+                };
+            }
             if is_known_non_swap(&disc) {
                 return ParsedInstruction {
                     program: "Jupiter".into(),
@@ -550,11 +524,6 @@ pub fn parse(
     resolve_mints_from_ata(&mut result, ata_map);
     resolve_mints_from_account_list(&mut result, all_accounts);
     format_swap(&result)
-}
-
-fn pubkey_short(key: &[u8; 32]) -> String {
-    let b58 = bs58::encode(key).into_string();
-    format!("{}..{}", &b58[..4], &b58[b58.len() - 4..])
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -580,6 +549,26 @@ mod tests {
         items
             .iter()
             .any(|item| matches!(item, ReviewItem::Header(h) if h == text))
+    }
+
+    #[test]
+    fn claim_emits_distinct_header_with_warning() {
+        let mut data = Vec::new();
+        data.extend_from_slice(&anchor::discriminator("claim"));
+        data.push(0); // id: u8
+        let ix = parse(&data, &[], &[], &AtaMap::new());
+        assert!(has_header(&ix.items, "Jupiter: claim referral"));
+        assert!(has_warning(&ix.items));
+    }
+
+    #[test]
+    fn claim_token_emits_distinct_header_with_warning() {
+        let mut data = Vec::new();
+        data.extend_from_slice(&anchor::discriminator("claim_token"));
+        data.push(0);
+        let ix = parse(&data, &[], &[], &AtaMap::new());
+        assert!(has_header(&ix.items, "Jupiter: claim referral token"));
+        assert!(has_warning(&ix.items));
     }
 
     fn usdc_mint() -> [u8; 32] {
@@ -670,9 +659,9 @@ mod tests {
         assert_eq!(field_value(&ix.items, "You spend"), Some("1.5 SOL"));
         assert_eq!(
             field_value(&ix.items, "You receive (min)"),
-            Some("150 USDC")
+            Some("149.25 USDC")
         );
-        assert_eq!(field_value(&ix.items, "Slippage"), Some("50 bps (0.50%)"));
+        assert_eq!(field_value(&ix.items, "Slippage"), Some("0.50%"));
         assert!(!has_warning(&ix.items));
     }
 
@@ -703,7 +692,7 @@ mod tests {
     fn test_v2_amounts_first_layout() {
         let mut data = Vec::new();
         data.extend_from_slice(&anchor::discriminator("shared_accounts_route_v2"));
-        // v2 layout: amounts immediately after discriminator
+        data.push(0x0c); // id
         data.extend_from_slice(&1_000_000_000u64.to_le_bytes()); // 1 SOL
         data.extend_from_slice(&50_000_000u64.to_le_bytes()); // 50 USDC
         data.extend_from_slice(&25u16.to_le_bytes());
@@ -712,14 +701,15 @@ mod tests {
         let sol = sol_mint();
         let usdc = usdc_mint();
         let dummy = [0xCC; 32];
+        // V2 IDL: source mint at slot 6, dest mint at slot 7.
         let accounts = [
-            dummy, dummy, dummy, dummy, dummy, dummy, dummy, sol, usdc, dummy,
+            dummy, dummy, dummy, dummy, dummy, dummy, sol, usdc, dummy, dummy,
         ];
         let account_indices: Vec<u8> = (0..10).collect();
 
         let ix = parse(&data, &account_indices, &accounts, &AtaMap::new());
         assert_eq!(field_value(&ix.items, "You spend"), Some("1 SOL"));
-        assert_eq!(field_value(&ix.items, "You receive (min)"), Some("50 USDC"));
+        assert_eq!(field_value(&ix.items, "You receive (min)"), Some("49.875 USDC"));
     }
 
     #[test]
@@ -750,7 +740,7 @@ mod tests {
         let account_indices: Vec<u8> = (0..13).collect();
 
         let ix = parse(&data, &account_indices, &accounts, &AtaMap::new());
-        assert_eq!(field_value(&ix.items, "Platform fee"), Some("5 bps"));
+        assert_eq!(field_value(&ix.items, "Platform fee"), Some("0.05%"));
     }
 
     #[test]
@@ -764,40 +754,4 @@ mod tests {
         assert!(field_value(&ix.items, "Platform fee").is_none());
     }
 
-    #[test]
-    fn test_skip_route_plan_empty() {
-        let data = [0, 0, 0, 0]; // count=0
-        assert_eq!(skip_route_plan(&data).unwrap(), 4);
-    }
-
-    #[test]
-    fn test_skip_route_plan_single_fieldless_step() {
-        // One step with swap variant 0 (Saber, fieldless) + 3 bytes
-        let data = [
-            1, 0, 0, 0,  // count=1
-            0,  // swap variant 0 (Saber): 1 byte
-            50, // percent
-            0,  // input_index
-            0,  // output_index
-        ];
-        assert_eq!(skip_route_plan(&data).unwrap(), 4 + 1 + 3);
-    }
-
-    #[test]
-    fn test_swap_enum_fieldless() {
-        assert_eq!(swap_enum_byte_size(&[0]).unwrap(), 1);
-        assert_eq!(swap_enum_byte_size(&[7]).unwrap(), 1);
-    }
-
-    #[test]
-    fn test_swap_enum_single_field() {
-        assert_eq!(swap_enum_byte_size(&[17, 1]).unwrap(), 2); // Whirlpool { aToB: bool }
-    }
-
-    #[test]
-    fn test_swap_enum_symmetry() {
-        let mut data = vec![29];
-        data.extend_from_slice(&[0u8; 16]); // fromTokenId + toTokenId
-        assert_eq!(swap_enum_byte_size(&data).unwrap(), 17);
-    }
 }

@@ -15,6 +15,7 @@ pub struct TokenInfo {
     pub decimals: u8,
 }
 
+#[derive(Clone, Copy)]
 pub struct AtaEntry {
     pub mint: [u8; 32],
 }
@@ -55,51 +56,6 @@ pub fn format_amount(amount: u64, decimals: u8) -> String {
     format!("{}.{}", whole, frac_str.trim_end_matches('0'))
 }
 
-/// Hero-friendly variant of `format_amount`. Below 1,000,000 whole units
-/// it returns the full-precision form (so normal dapp txs look exactly
-/// like before). Above that, it collapses to `<mantissa>.<cc><suffix>`
-/// with 2 decimal places and an SI suffix so huge balances like
-/// "1234567890.123456 USDC" don't overflow the 240-px hero line.
-///
-/// Used in swap parsers where the rendered value ends up on the pinned
-/// `@H2` hero row; plain SPL Token transfers still use `format_amount`
-/// because their value goes into a scrollable detail row and full
-/// precision is worth preserving there.
-pub fn format_amount_short(amount: u64, decimals: u8) -> String {
-    let full = format_amount(amount, decimals);
-    let (whole_str, frac_str) = match full.split_once('.') {
-        Some((w, f)) => (w, f),
-        None => (full.as_str(), ""),
-    };
-    if whole_str.len() <= 6 {
-        return full;
-    }
-
-    // Pick suffix by digit count of the whole part. u64 max fits in "Q".
-    //   7–9   → M (million,     10^6)
-    //   10–12 → B (billion,     10^9)
-    //   13–15 → T (trillion,    10^12)
-    //   16+   → Q (quadrillion, 10^15)
-    let (suffix, shift) = match whole_str.len() {
-        7..=9 => ("M", 6u32),
-        10..=12 => ("B", 9),
-        13..=15 => ("T", 12),
-        _ => ("Q", 15),
-    };
-
-    // u128 so scaling a 20-digit whole part can't overflow. Two decimal
-    // places of mantissa precision — enough to tell "1.23M" from "1.24M".
-    let whole_val: u128 = whole_str.parse().unwrap_or(0);
-    let scale = 10u128.pow(shift);
-    let mantissa_whole = whole_val / scale;
-    let mantissa_frac = (whole_val % scale) / 10u128.pow(shift - 2);
-    // If the caller had subunit fractional digits they'd live past the
-    // precision we keep; dropping them is fine because the mantissa
-    // precision dominates at this scale. Keep `frac_str` only for the
-    // sub-1M branch above.
-    let _ = frac_str;
-    format!("{}.{:02}{}", mantissa_whole, mantissa_frac, suffix)
-}
 
 // ── Offline ATA resolution ───────────────────────────────────────────────────
 
@@ -228,37 +184,10 @@ mod tests {
     }
 
     #[test]
-    fn test_format_amount_short_preserves_small_values() {
-        // 6 or fewer whole digits → identical to format_amount.
-        assert_eq!(format_amount_short(1_500_000, 6), "1.5");
-        assert_eq!(format_amount_short(999_999_000_000, 6), "999999");
-        assert_eq!(format_amount_short(123_456_789, 6), "123.456789");
-    }
-
-    #[test]
-    fn test_format_amount_short_collapses_millions() {
-        // 1M whole units (6 decimals) → 10^12 raw → 7 whole digits → "M"
-        assert_eq!(format_amount_short(1_000_000_000_000, 6), "1.00M");
-        // 1.23M USDC
-        assert_eq!(format_amount_short(1_234_567_000_000, 6), "1.23M");
-        // 999.99M USDC (just below the billion threshold)
-        assert_eq!(format_amount_short(999_990_000_000_000, 6), "999.99M");
-    }
-
-    #[test]
-    fn test_format_amount_short_collapses_billions_and_up() {
-        // 1B USDC (6 decimals): whole = 1e9 → 10 digits → "B"
-        assert_eq!(format_amount_short(1_000_000_000_000_000, 6), "1.00B");
-        // 1.5T USDC: whole = 1.5e12 → 13 digits → "T"
-        // Raw = 1.5e12 * 1e6 = 1.5e18 (fits in u64, max ~1.8e19)
-        assert_eq!(format_amount_short(1_500_000_000_000_000_000, 6), "1.50T");
-    }
-
-    #[test]
-    fn test_format_amount_short_handles_zero_decimals() {
-        // NFTs / integer-only tokens: same thresholds apply to the raw count.
-        assert_eq!(format_amount_short(1_000, 0), "1000");
-        assert_eq!(format_amount_short(1_000_000, 0), "1.00M");
+    fn test_format_amount_large_values() {
+        assert_eq!(format_amount(1_000_000_000_000, 6), "1000000");
+        assert_eq!(format_amount(1_000_000_000_000_000, 6), "1000000000");
+        assert_eq!(format_amount(1_000, 0), "1000");
     }
 
     #[test]

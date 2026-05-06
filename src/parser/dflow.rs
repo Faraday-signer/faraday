@@ -20,13 +20,15 @@
 //!      accounts referenced by this instruction whose ATAs match a known
 //!      mint, and label them as source/dest.
 //!
-//! Two other DFlow discriminators (`414b3f4ceb5b5b88`, `2f3e9bac83cd25c9`)
-//! observed in the wild aren't standard Anchor names — they're rendered as
-//! "DFlow: unknown action (<hex>)" so the user knows which slot they are
-//! without us guessing their semantics.
+//! Real DFlow program txs split the swap across two top-level
+//! instructions: a `prepare` (disc `2f3e9bac83cd25c9`, layout
+//! `[disc(8) | u64 in_amount]`, source ATA in the account list) and the
+//! main `swap` whose route-plan layout is not decoded. The prepare gives
+//! a verified spend amount + source mint; the swap's receive side is
+//! opaque without the IDL.
 
 use crate::parser::anchor;
-use crate::parser::bytes::{read_disc8, read_u64_le};
+use crate::parser::bytes::{pubkey_short, read_disc8, read_swap_footer, read_u64_le};
 use crate::parser::token_registry::{self, AtaMap};
 use crate::parser::{ParsedInstruction, ReviewItem};
 
@@ -34,6 +36,8 @@ use crate::parser::{ParsedInstruction, ReviewItem};
 fn swap_disc() -> [u8; 8] {
     anchor::discriminator("swap")
 }
+
+const PREPARE_DISC: [u8; 8] = [0x2f, 0x3e, 0x9b, 0xac, 0x83, 0xcd, 0x25, 0xc9];
 
 pub fn parse(
     data: &[u8],
@@ -50,10 +54,10 @@ pub fn parse(
         return parse_swap(data, account_indices, all_accounts, ata_map);
     }
 
-    // Unknown discriminator — surface the hex so the user (and us, on a
-    // future debug pass) can identify which DFlow flow this was. We treat
-    // it as a reviewable action rather than failing outright; the user can
-    // still drill into pages 2..K to verify the underlying Token transfers.
+    if disc == PREPARE_DISC {
+        return parse_prepare(data, account_indices, all_accounts, ata_map);
+    }
+
     ParsedInstruction {
         program: "DFlow".into(),
         items: vec![
@@ -66,6 +70,33 @@ pub fn parse(
                     .into(),
             ),
         ],
+    }
+}
+
+fn parse_prepare(
+    data: &[u8],
+    account_indices: &[u8],
+    all_accounts: &[[u8; 32]],
+    ata_map: &AtaMap,
+) -> ParsedInstruction {
+    let mut items: Vec<ReviewItem> = Vec::new();
+    items.push(ReviewItem::Header("DFlow swap".into()));
+
+    match read_u64_le(data, 8) {
+        Ok(amount) if amount > 0 && amount < PLAUSIBLE_AMOUNT_CAP => {
+            let (source_mint, _) = resolve_user_mints(account_indices, all_accounts, ata_map);
+            items.extend(format_token_side("You spend", source_mint, amount));
+        }
+        _ => {
+            items.push(ReviewItem::Warning(
+                "DFlow setup — amount not decoded.".into(),
+            ));
+        }
+    }
+
+    ParsedInstruction {
+        program: "DFlow".into(),
+        items,
     }
 }
 
@@ -85,6 +116,18 @@ fn error_ix(msg: &'static str) -> ParsedInstruction {
 /// land at different slots), so we lean on the wallet's ATA map instead:
 /// the user's spend-side ATA is in there, and so is their receive-side ATA
 /// (when the receiver is also their own ATA — i.e. nearly always).
+/// Reads the trailing 12 bytes as `(out_amount(u64), slip(u16), fee(u16))`.
+fn read_dflow_swap_footer(data: &[u8]) -> Option<(u64, u16, u16)> {
+    if data.len() < 12 {
+        return None;
+    }
+    let pos = data.len() - 12;
+    let out = u64::from_le_bytes(data[pos..pos + 8].try_into().ok()?);
+    let slip = u16::from_le_bytes(data[pos + 8..pos + 10].try_into().ok()?);
+    let fee = u16::from_le_bytes(data[pos + 10..pos + 12].try_into().ok()?);
+    Some((out, slip, fee))
+}
+
 fn resolve_user_mints(
     account_indices: &[u8],
     all_accounts: &[[u8; 32]],
@@ -112,24 +155,22 @@ fn resolve_user_mints(
 /// `swap` data, mirroring Jupiter's `RoutePlanFirst` layout. We can't
 /// confidently parse the variable-length route plan in the middle without
 /// the IDL, so we read the trailing fields from the END of the data
-/// instead: the last 19 bytes are `in_amount(u64) | out_amount(u64) |
-/// slippage_bps(u16) | platform_fee_bps(u8)`.
-///
-/// Returns `None` when the data is shorter than 19 bytes — we'd rather
-/// emit a "no amounts" hero than a wildly wrong number.
-fn parse_trailing_amounts(data: &[u8]) -> Option<(u64, u64, u16, u8)> {
-    const FOOTER: usize = 8 + 8 + 2 + 1;
-    if data.len() < 8 + FOOTER {
-        return None;
-    }
-    let pos = data.len() - FOOTER;
-    let in_amount = read_u64_le(data, pos).ok()?;
-    let out_amount = read_u64_le(data, pos + 8).ok()?;
-    let slippage_lo = *data.get(pos + 16)?;
-    let slippage_hi = *data.get(pos + 17)?;
-    let slippage_bps = u16::from_le_bytes([slippage_lo, slippage_hi]);
-    let fee_bps = *data.get(pos + 18)?;
-    Some((in_amount, out_amount, slippage_bps, fee_bps))
+/// Plausibility cap for a parsed DFlow amount. Anything above ~10^16 raw
+/// units exceeds the supply of every common Solana token (SOL ≈ 5.8e17
+/// lamports total, and that's the largest by raw-unit count) — when our
+/// trailing-bytes heuristic lands inside the route plan instead of on the
+/// real `in_amount` field, the values come back astronomical (we saw
+/// `6.5e18` raw lamports = ~6.5B SOL on a real DFlow swap). Treat
+/// implausible values as "couldn't decode" so the zoned review falls back
+/// to the legacy per-instruction pages where the user can verify the
+/// inner Token transfers directly.
+const PLAUSIBLE_AMOUNT_CAP: u64 = 10_000_000_000_000_000;
+
+fn amounts_look_plausible(in_amount: u64, out_amount: u64) -> bool {
+    in_amount > 0
+        && out_amount > 0
+        && in_amount < PLAUSIBLE_AMOUNT_CAP
+        && out_amount < PLAUSIBLE_AMOUNT_CAP
 }
 
 fn parse_swap(
@@ -141,22 +182,30 @@ fn parse_swap(
     let mut items: Vec<ReviewItem> = Vec::new();
     items.push(ReviewItem::Header("DFlow swap".into()));
 
-    let (source_mint, dest_mint) = resolve_user_mints(account_indices, all_accounts, ata_map);
-    let amounts = parse_trailing_amounts(data);
+    // DFlow swap data layout (reverse-engineered):
+    //   `[disc | actions: Vec<Action> | quoted_out(u64) | slip(u16) | fee(u16)]`
+    // We decode the trailing 12 bytes deterministically. We do **not** try
+    // to guess which user-ATA in the swap accounts is the dest mint —
+    // without an IDL there's no way to tell source vs dest reliably, and
+    // mis-denominating by 3 orders of magnitude (e.g. 6-dec vs 9-dec) is
+    // worse than showing raw units. The user can verify the number against
+    // their dApp; the value itself is verifiably from the signed bytes.
+    let footer = read_dflow_swap_footer(data).filter(|(out_a, _, _)| {
+        *out_a > 0 && *out_a < PLAUSIBLE_AMOUNT_CAP
+    });
 
-    let in_amount = amounts.map(|(a, _, _, _)| a).unwrap_or(0);
-    let out_amount = amounts.map(|(_, b, _, _)| b).unwrap_or(0);
-
-    items.extend(format_token_side("You spend", source_mint, in_amount));
-    items.extend(format_token_side("You receive (min)", dest_mint, out_amount));
-
-    if let Some((_, _, slippage_bps, fee_bps)) = amounts {
-        if slippage_bps > 0 {
-            items.push(ReviewItem::Field {
-                label: "Slippage".into(),
-                value: format!("{:.2}%", slippage_bps as f32 / 100.0),
-            });
-        }
+    if let Some((quoted_out, slippage_bps, fee_bps)) = footer {
+        let factor = 10_000_u64.saturating_sub(slippage_bps as u64);
+        let min_out = ((quoted_out as u128 * factor as u128) / 10_000) as u64;
+        items.extend(format_token_side("You receive (min)", None, min_out));
+        items.push(ReviewItem::Field {
+            label: "Slippage".into(),
+            value: format!("{:.2}%", slippage_bps as f32 / 100.0),
+        });
+        items.push(ReviewItem::Field {
+            label: "Slippage_bps".into(),
+            value: slippage_bps.to_string(),
+        });
         if fee_bps > 0 {
             items.push(ReviewItem::Field {
                 label: "Platform fee".into(),
@@ -165,8 +214,17 @@ fn parse_swap(
         }
     } else {
         items.push(ReviewItem::Warning(
-            "Amounts not decoded — verify on per-instruction pages.".into(),
+            "Receive amount computed inside aggregator — verify on dApp.".into(),
         ));
+    }
+
+    if let Ok(hops) = crate::parser::bytes::read_u32_le(data, 8) {
+        if hops > 0 && hops <= 32 {
+            items.push(ReviewItem::Field {
+                label: "Route_hops".into(),
+                value: hops.to_string(),
+            });
+        }
     }
 
     ParsedInstruction {
@@ -185,7 +243,7 @@ fn format_token_side(label: &str, mint: Option<[u8; 32]>, amount: u64) -> Vec<Re
         Some(m) => match token_registry::lookup(&m) {
             Some(info) => {
                 let formatted = if amount > 0 {
-                    token_registry::format_amount_short(amount, info.decimals)
+                    token_registry::format_amount(amount, info.decimals)
                 } else {
                     "?".into()
                 };
@@ -233,14 +291,6 @@ fn format_token_side(label: &str, mint: Option<[u8; 32]>, amount: u64) -> Vec<Re
     items
 }
 
-fn pubkey_short(key: &[u8; 32]) -> String {
-    let b58 = bs58::encode(key).into_string();
-    if b58.len() >= 8 {
-        format!("{}..{}", &b58[..4], &b58[b58.len() - 4..])
-    } else {
-        b58
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -286,16 +336,15 @@ mod tests {
 
     #[test]
     fn swap_emits_spend_receive_with_known_mints() {
-        // Build a minimal data buffer: [swap_disc | filler route bytes |
-        // in_amount=1_000_000 (1 USDC at 6 decimals) | out_amount=10_000_000 (0.01 SOL at 9 decimals) |
-        // slippage_bps=50 | fee_bps=0]
+        // DFlow swap data layout: [disc | actions… | quoted_out(u64) |
+        // slip(u16) | fee(u16)]. Trailing 12 bytes carry the amounts;
+        // `in_amount` lives in the paired `prepare` ix (not parsed here).
         let mut data = Vec::new();
         data.extend_from_slice(&swap_disc());
-        data.extend_from_slice(&[0u8; 32]); // filler "route plan"
-        data.extend_from_slice(&1_000_000u64.to_le_bytes());
-        data.extend_from_slice(&10_000_000u64.to_le_bytes());
-        data.extend_from_slice(&50u16.to_le_bytes());
-        data.push(0);
+        data.extend_from_slice(&[0u8; 32]); // filler "actions"
+        data.extend_from_slice(&10_000_000u64.to_le_bytes()); // out = 0.01 SOL
+        data.extend_from_slice(&50u16.to_le_bytes()); // slip = 50 bps
+        data.extend_from_slice(&0u16.to_le_bytes()); // fee bps
 
         // Account list: [user_signer, usdc_ata, wsol_ata, ...]. The ATA
         // map maps usdc_ata → USDC mint and wsol_ata → SOL/WSOL mint.
@@ -326,8 +375,57 @@ mod tests {
         let ix = parse(&data, &account_indices, &all_accounts, &ata_map);
 
         assert_eq!(ix.program, "DFlow");
-        assert_eq!(item_value(&ix.items, "You spend"), Some("1 USDC"));
-        assert_eq!(item_value(&ix.items, "You receive (min)"), Some("0.01 SOL"));
+        // swap ix only carries the receive side; spend comes from the prepare
+        // ix. The parser does NOT denominate dest — without the IDL we can't
+        // determine which user-ATA is the dest reliably, so we surface the
+        // raw u64 from the signed bytes and let the user verify against the
+        // dApp. With 50 bps slippage: 10_000_000 * (1 - 50/10000) = 9_950_000.
+        assert_eq!(
+            item_value(&ix.items, "You receive (min)"),
+            Some("9950000 raw units")
+        );
+    }
+
+    #[test]
+    fn implausible_amounts_suppress_spend_receive() {
+        // Trailing footer with an out_amount that crosses the plausibility
+        // cap. Parser must refuse to emit a denominated receive — would be
+        // dangerous next to a Sign button.
+        let mut data = Vec::new();
+        data.extend_from_slice(&swap_disc());
+        data.extend_from_slice(&[0u8; 32]); // filler actions
+        data.extend_from_slice(&17_582_052_945_200_000_000u64.to_le_bytes());
+        data.extend_from_slice(&50u16.to_le_bytes());
+        data.extend_from_slice(&0u16.to_le_bytes());
+
+        let user = key(0x01);
+        let usdc_ata = key(0x02);
+        let wsol_ata = key(0x03);
+        let all_accounts = vec![user, usdc_ata, wsol_ata];
+        let account_indices = vec![0u8, 1, 2];
+
+        let mut ata_map = AtaMap::new();
+        ata_map.insert(
+            usdc_ata,
+            crate::parser::token_registry::AtaEntry {
+                mint: usdc_mint(),
+                symbol: "USDC",
+                decimals: 6,
+            },
+        );
+        ata_map.insert(
+            wsol_ata,
+            crate::parser::token_registry::AtaEntry {
+                mint: wsol_mint(),
+                symbol: "SOL",
+                decimals: 9,
+            },
+        );
+
+        let ix = parse(&data, &account_indices, &all_accounts, &ata_map);
+        assert_eq!(ix.program, "DFlow");
+        assert!(item_value(&ix.items, "You receive (min)").is_none());
+        assert!(ix.items.iter().any(|it| matches!(it, ReviewItem::Warning(_))));
     }
 
     #[test]
