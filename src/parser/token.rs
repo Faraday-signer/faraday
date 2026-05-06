@@ -84,14 +84,28 @@ fn parse_transfer_checked(
         .first()
         .map(pubkey_short)
         .unwrap_or_else(|| "?".into());
-    let mint = accounts
-        .get(1)
-        .map(pubkey_short)
+    // Resolve the mint twice: as raw bytes for the symbol lookup, and as a
+    // shortened display string for the "Mint" review row. The lookup pulls
+    // a known symbol (USDC, USDT, JUP, …) out of the offline registry so
+    // the Amount row reads "0.99915 USDC" instead of bare "0.99915".
+    let mint_bytes = accounts.get(1).copied();
+    let mint_display = mint_bytes
+        .as_ref()
+        .map(|b| pubkey_short(b))
         .unwrap_or_else(|| "?".into());
+    let symbol = mint_bytes
+        .as_ref()
+        .and_then(|b| token_registry::lookup(b))
+        .map(|info| info.symbol);
     let dest = accounts
         .get(2)
         .map(pubkey_short)
         .unwrap_or_else(|| "?".into());
+
+    let amount_str = match symbol {
+        Some(sym) => format!("{} {}", token_registry::format_amount(amount, decimals), sym),
+        None => token_registry::format_amount(amount, decimals),
+    };
 
     Ok(vec![
         ReviewItem::Header("Token Transfer".into()),
@@ -105,11 +119,11 @@ fn parse_transfer_checked(
         },
         ReviewItem::Field {
             label: "Mint".into(),
-            value: mint,
+            value: mint_display,
         },
         ReviewItem::Field {
             label: "Amount".into(),
-            value: token_registry::format_amount(amount, decimals),
+            value: amount_str,
         },
     ])
 }
@@ -443,8 +457,27 @@ mod tests {
         data.push(6); // decimals
         let accounts = [key(0x01), key(0x02), key(0x03), key(0x04)];
         let ix = parse("Token", &data, &accounts);
+        // Unknown mint (key(0x02) isn't USDC) → falls back to bare amount.
         assert_eq!(field_value(&ix.items, "Amount"), Some("1.5"));
         assert!(!has_warning(&ix.items)); // checked variant has decimals, no warning
+    }
+
+    #[test]
+    fn test_transfer_checked_known_mint_appends_symbol() {
+        // Using the canonical USDC mint as the second account (= the mint
+        // slot in TransferChecked). Registry lookup should hit and append
+        // "USDC" to the Amount field.
+        let usdc_b58 = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+        let mut usdc_mint = [0u8; 32];
+        let decoded = bs58::decode(usdc_b58).into_vec().expect("valid base58");
+        usdc_mint.copy_from_slice(&decoded);
+
+        let mut data = vec![12u8]; // TransferChecked
+        data.extend_from_slice(&1_500_000u64.to_le_bytes());
+        data.push(6); // USDC decimals
+        let accounts = [key(0x01), usdc_mint, key(0x03), key(0x04)];
+        let ix = parse("Token", &data, &accounts);
+        assert_eq!(field_value(&ix.items, "Amount"), Some("1.5 USDC"));
     }
 
     // --- MintTo ---

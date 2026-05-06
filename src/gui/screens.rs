@@ -252,19 +252,43 @@ impl App {
                 }
             }
             Screen::SignReview {
+                tx_bytes,
                 info_lines,
+                parsed,
+                page,
                 scroll,
                 selected,
                 can_sign,
                 ..
-            } => draw_tx_review(
-                display,
-                info_lines,
-                *scroll,
-                *selected,
-                *can_sign,
-                self.seed_loaded(),
-            ),
+            } => {
+                // Page 0 is the existing summary (hero + chunked details).
+                // Pages 1..K-1 are new structured detail pages that read
+                // from the parsed tx struct directly; page K-1 is the raw
+                // bytes preview. The renderer for each detail page draws
+                // the pagination counter (page+1)/K in the header.
+                let total_pages = 3 + parsed.instructions.len() + 1;
+                match *page {
+                    0 => draw_tx_review(
+                        display,
+                        info_lines,
+                        *scroll,
+                        *selected,
+                        *can_sign,
+                        self.seed_loaded(),
+                        // Override the scroll-based counter with the page
+                        // counter so page 0 reads "1/N" consistently with
+                        // the detail pages.
+                        Some((1, total_pages)),
+                    ),
+                    1 => draw_tx_metadata(display, parsed, total_pages),
+                    2 => draw_tx_ix_list(display, parsed, total_pages),
+                    p if p < 3 + parsed.instructions.len() => {
+                        let ix_index = p - 3;
+                        draw_tx_ix_detail(display, parsed, ix_index, total_pages)
+                    }
+                    _ => draw_tx_raw(display, tx_bytes, total_pages),
+                }
+            }
             Screen::SignShowQr { data } => draw_fullscreen_qr(
                 display,
                 data.as_bytes(),
@@ -288,37 +312,11 @@ impl App {
             Screen::SettingsMenu { selected } => {
                 draw_settings_menu(display, *selected)
             }
-            Screen::SettingsAccounts { accounts, selected } => {
-                draw_accounts_list(display, accounts, *selected)
-            }
             Screen::SettingsShowAddress => {
                 draw_show_address(display, self.wallet.as_ref().map(|w| w.address.as_str()))
             }
-            Screen::SettingsVerifyAddressScan => {
-                #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
-                {
-                    draw_scan_overlay(
-                        display,
-                        "Verify Address",
-                        "Point camera at address QR",
-                        self.seed_loaded(),
-                        self.has_camera_frame(),
-                        self.camera_error_str(),
-                        self.scan_diag,
-                    )
-                }
-                #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
-                {
-                    draw_message(
-                        display,
-                        "Verify Address",
-                        "Scan address QR\nto verify it's yours",
-                        self.seed_loaded(),
-                    )
-                }
-            }
-            Screen::SettingsVerifyAddressResult { address, result } => {
-                draw_verify_address_result_card(display, address, result)
+            Screen::SettingsShowAddressText => {
+                draw_show_address_text(display, self.wallet.as_ref().map(|w| w.address.as_str()))
             }
             Screen::SettingsAbout => draw_about(display, self.seed_loaded()),
             Screen::SettingsPowerOff { selected } => draw_reset_wallet(display, *selected),
@@ -447,11 +445,15 @@ fn draw_mode_select<D: DrawTarget<Color = Rgb565>>(
     use crate::ui::{screens::ListScreen, Theme};
 
     let theme = Theme::faraday_240();
+    // Mode-named rows so the screen reads at a glance — no question to
+    // parse, no YES/NO ambiguity. The brand logo header keeps the
+    // welcome feeling without competing for the eye. Row order is
+    // chosen so the first-time-user default (GUIDED) is the top row.
     let rows: [ListRow; 2] = [
-        ListRow::with_subtitle("EXPERT", "I know Faraday"),
-        ListRow::with_subtitle("GUIDED", "Show me how"),
+        ListRow::with_subtitle("GUIDED MODE", "Help between steps"),
+        ListRow::with_subtitle("QUICK MODE", "Skip the help screens"),
     ];
-    let sel = selected.min(1);
+    let sel = selected.clamp(0, 1);
 
     ListScreen {
         header: HeaderKind::Brand,
@@ -467,29 +469,83 @@ fn draw_mode_select<D: DrawTarget<Color = Rgb565>>(
     .draw(display, &theme)
 }
 
+/// Help interstitial. Bigger body font (profont22) than the default card so
+/// the copy is comfortably readable from arm's length; lines are wrapped with
+/// `wrap_line_for_width` so no word is ever cut. The body width is sized so a
+/// 22-character word still fits — long words simply move to the next line
+/// rather than truncating.
 fn draw_help<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     topic: crate::gui::app::HelpTopic,
 ) -> Result<(), D::Error> {
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind};
-    use crate::ui::{screens::CardScreen, Theme};
+    use crate::ui::layout::split_top;
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::Theme;
 
     let theme = Theme::faraday_240();
-    let raw_body = topic.body();
-    let lines: Vec<&str> = raw_body.lines().collect();
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
+    display.fill_solid(&screen, theme.bg)?;
 
-    CardScreen {
-        header: HeaderKind::Title(topic.title()),
+    let (header_rect, body_rect) = split_top(screen, theme.header_h as i32);
+    Header {
+        kind: HeaderKind::Title(topic.title()),
         counter: None,
         right_label: None,
-        title: None,
-        subtitle: None,
-        body_lines: &lines,
-        rows: &[],
-        title_danger: false,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
-    .draw(display, &theme)
+    .draw(display, &theme, header_rect)?;
+
+    // Body sits left of the right-edge gutter where the K1/K3 hints render.
+    let body_inner = Rectangle::new(
+        body_rect.top_left,
+        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),
+    );
+    let left_x = body_inner.top_left.x + theme.space_md;
+    let usable_w = body_inner.size.width as i32 - 2 * theme.space_md;
+
+    // profont22 is ~12 px wide. Pick the largest char count that fits the
+    // usable width with a small safety margin so descenders / wider glyphs
+    // never bleed past the gutter.
+    let approx_char_w = 12i32;
+    let max_chars = ((usable_w - 4) / approx_char_w).max(8) as usize;
+
+    let mut wrapped: Vec<String> = Vec::new();
+    for raw_line in topic.body().split('\n') {
+        if raw_line.trim().is_empty() {
+            wrapped.push(String::new());
+            continue;
+        }
+        wrapped.extend(wrap_line_for_width(raw_line, max_chars));
+    }
+
+    // Center the block vertically within the body so short copies don't sit
+    // glued to the top edge, and long copies still have breathing room.
+    let line_h = 26i32;
+    let block_h = wrapped.len() as i32 * line_h;
+    let body_h = body_inner.size.height as i32;
+    let top_padding = ((body_h - block_h) / 2).max(theme.space_md);
+    let mut cursor_y = body_inner.top_left.y + top_padding + 18;
+
+    for line in &wrapped {
+        Text::with_alignment(
+            line,
+            Point::new(left_x, cursor_y),
+            theme.style_md(theme.text),
+            Alignment::Left,
+        )
+        .draw(display)?;
+        cursor_y += line_h;
+    }
+
+    let gutter = Rectangle::new(
+        Point::new(theme.width as i32 - GUTTER_W as i32, theme.header_h as i32),
+        Size::new(GUTTER_W, theme.height - theme.header_h),
+    );
+    EdgeHints::new()
+        .k1(EdgeIcon::Check)
+        .k3(EdgeIcon::ArrowLeft)
+        .draw(display, &theme, gutter)?;
+
+    Ok(())
 }
 
 /// Main menu: list register (Header + List + right-edge hints) via `src/ui/`.
@@ -1030,71 +1086,6 @@ fn draw_create_method<D: DrawTarget<Color = Rgb565>>(
 
 /// Settings menu: list register with Title header. Items depend on whether
 /// a wallet is loaded.
-/// Derived-accounts list. Each row: numbered prefix (01/02/…) + short
-/// address label + full derivation path as subtitle. Read-cursor only —
-/// Confirm/Back both exit back to Settings (state-machine decides).
-fn draw_accounts_list<D: DrawTarget<Color = Rgb565>>(
-    display: &mut D,
-    accounts: &[(String, String)],
-    selected: usize,
-) -> Result<(), D::Error> {
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
-    use crate::ui::{screens::ListScreen, Theme};
-
-    let theme = Theme::faraday_240();
-
-    if accounts.is_empty() {
-        // Degenerate — settings flow normally populates at least one entry,
-        // but guard against the empty case rather than indexing into nothing.
-        let rows: [ListRow; 1] = [ListRow::new("(no accounts)")];
-        return ListScreen {
-            header: HeaderKind::Title("ACCOUNTS"),
-            counter: None,
-            right_label: None,
-            description: None,
-            items: &rows,
-            selected: 0,
-            max_visible: 1,
-            selectable: false,
-            // Nothing selectable — only K3 (back) is meaningful.
-            edge_hints: EdgeHints::new().k3(EdgeIcon::ArrowLeft),
-        }
-        .draw(display, &theme);
-    }
-
-    // Own the formatted strings so ListRow borrows survive past this closure.
-    let nums: Vec<String> = (1..=accounts.len())
-        .map(|i| alloc::format!("{:02}", i))
-        .collect();
-    let shorts: Vec<String> = accounts
-        .iter()
-        .map(|(_, addr)| shorten_address(addr))
-        .collect();
-    let rows: Vec<ListRow> = (0..accounts.len())
-        .map(|i| ListRow {
-            prefix: Some(&nums[i]),
-            label: &shorts[i],
-            subtitle: Some(&accounts[i].0),
-        })
-        .collect();
-
-    let total = accounts.len();
-    let sel = selected.min(total - 1);
-
-    ListScreen {
-        header: HeaderKind::Title("ACCOUNTS"),
-        counter: None,
-        right_label: None,
-        description: None,
-        items: &rows,
-        selected: sel,
-        max_visible: 3,
-        selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
-    }
-    .draw(display, &theme)
-}
-
 fn draw_settings_menu<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     selected: usize,
@@ -1104,12 +1095,11 @@ fn draw_settings_menu<D: DrawTarget<Color = Rgb565>>(
 
     let theme = Theme::faraday_240();
 
-    let items: [ListRow; 5] = [
-        ListRow::with_subtitle("ADDRESS", "to receive payments"),
-        ListRow::with_subtitle("BACKUP", "of your wallet"),
-        ListRow::new("ACCOUNTS"),
-        ListRow::with_subtitle("VERIFY", "an address"),
-        ListRow::with_subtitle("RESET WALLET", "wipe memory"),
+    let items: [ListRow; 4] = [
+        ListRow::with_subtitle("ADDRESS", "Read or write down"),
+        ListRow::with_subtitle("ADDRESS QR", "Scan to receive"),
+        ListRow::with_subtitle("BACKUP", "Save your seed"),
+        ListRow::with_subtitle("RESET WALLET", "Wipe from memory"),
     ];
     let sel = selected.min(items.len() - 1);
 
@@ -1399,6 +1389,11 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
     _selected: usize,
     can_sign: bool,
     _seed_loaded: bool,
+    // `page_counter`: when `Some((page, total))` the header counter shows
+    // page navigation (e.g. "1/8") instead of the in-page scroll counter
+    // ("3/39"). The SignReview pagination model treats page 0 as one page
+    // among N, so we override the legacy scroll counter to match.
+    page_counter: Option<(usize, usize)>,
 ) -> Result<(), D::Error> {
     use crate::ui::layout::{split_bottom, split_top};
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
@@ -1484,11 +1479,18 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
     let visible_details = (detail_h / line_h).max(1) as usize;
     let total_details = detail_rows.len();
     let max_scroll = total_details.saturating_sub(visible_details);
-    let counter = if total_details > visible_details {
-        Some((scroll.min(max_scroll) + 1, max_scroll + 1))
-    } else {
-        None
-    };
+    // `page_counter` is `Some((page+1, total_pages))` when called from the
+    // SignReview pagination dispatch — wins over the legacy scroll counter
+    // because the new model doesn't scroll within page 0. Falls back to
+    // the scroll counter for any caller that doesn't pass one (none today,
+    // but keeps the function general).
+    let counter = page_counter.or_else(|| {
+        if total_details > visible_details {
+            Some((scroll.min(max_scroll) + 1, max_scroll + 1))
+        } else {
+            None
+        }
+    });
 
     Header {
         kind: HeaderKind::Title("REVIEW TX"),
@@ -1673,12 +1675,16 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
         .draw(display)?;
     }
 
+    // K2 advances to the next review page (TX METADATA, instructions,
+    // raw bytes). The hint matches the new SignReview pagination model
+    // — same "→ next" affordance the detail pages render.
     EdgeHints::new()
         .k1(if can_sign {
             EdgeIcon::Check
         } else {
             EdgeIcon::None
         })
+        .k2(EdgeIcon::ArrowRight)
         .k3(EdgeIcon::Cross)
         .draw(
             display,
@@ -1690,6 +1696,345 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
         )?;
 
     Ok(())
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Detail pages (1..K-1) for SignReview.
+//
+// Each page renders directly from `ParsedTransaction` — no marker
+// strings, no flat-list partitioning. They share the same shell
+// layout: header with title + (page+1)/K counter, gutter on the right
+// with the standard sign / next-page / cancel hints, body filled with
+// label-value rows.
+// ────────────────────────────────────────────────────────────────────
+
+/// Rows for a detail page. Keeps the renderer dumb — pages just build a
+/// list of these, the shell handles layout.
+struct DetailRow<'a> {
+    label: &'a str,
+    value: String,
+}
+
+/// Shared shell for pages 1..K-1. Header = title + pagination counter,
+/// body = a vertically-stacked list of `LABEL  value` rows, gutter =
+/// standard sign / next / cancel triplet.
+fn draw_detail_shell<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    title: &str,
+    page_one_indexed: usize,
+    total_pages: usize,
+    rows: &[DetailRow<'_>],
+) -> Result<(), D::Error> {
+    use crate::ui::layout::split_top;
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::Theme;
+
+    let theme = Theme::faraday_240();
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
+    display.fill_solid(&screen, theme.bg)?;
+
+    let (header_rect, body_rect) = split_top(screen, theme.header_h as i32);
+
+    Header {
+        kind: HeaderKind::Title(title),
+        counter: Some((page_one_indexed, total_pages)),
+        right_label: None,
+    }
+    .draw(display, &theme, header_rect)?;
+
+    // Body sits left of the right-edge gutter where the K1/K2/K3 hints render.
+    let body_inner = Rectangle::new(
+        body_rect.top_left,
+        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),
+    );
+    let label_x = body_inner.top_left.x + theme.space_md;
+    // Label column width — "FEE PAYER" (9), "INSTRUCTIONS" (12), "PROGRAM" (7)
+    // are the headline labels. Profont17 is ~9 px per glyph, so 13 chars
+    // gives the value column a consistent left edge with one char of
+    // breathing room before the longest label.
+    let label_col_chars: i32 = 13;
+    let approx_char_w: i32 = 9;
+    let label_col_w = label_col_chars * approx_char_w;
+    let value_x = label_x + label_col_w;
+    // Available width for the value column (left of the gutter, minus a
+    // small breathing margin) and the matching character cap.
+    let value_w_px = body_inner.size.width as i32 - label_col_w - theme.space_md - 4;
+    let value_max_chars = (value_w_px / approx_char_w).max(4) as usize;
+    // List-style rows (empty label) get the full body width — no point
+    // indenting them under an empty label column.
+    let full_w_px = body_inner.size.width as i32 - 2 * theme.space_md;
+    let full_max_chars = (full_w_px / approx_char_w).max(4) as usize;
+    let row_h: i32 = 18;
+    let mut y = body_inner.top_left.y + theme.space_md + 12;
+
+    for row in rows {
+        if row.label.is_empty() {
+            // No label → value runs from the left margin to the gutter.
+            Text::with_alignment(
+                &truncate_with_ellipsis(&row.value, full_max_chars),
+                Point::new(label_x, y),
+                theme.style_sm(theme.text),
+                Alignment::Left,
+            )
+            .draw(display)?;
+        } else {
+            Text::with_alignment(
+                row.label,
+                Point::new(label_x, y),
+                theme.style_sm(theme.muted),
+                Alignment::Left,
+            )
+            .draw(display)?;
+            Text::with_alignment(
+                &truncate_with_ellipsis(&row.value, value_max_chars),
+                Point::new(value_x, y),
+                theme.style_sm(theme.text),
+                Alignment::Left,
+            )
+            .draw(display)?;
+        }
+        y += row_h;
+    }
+
+    let gutter = Rectangle::new(
+        Point::new(theme.width as i32 - GUTTER_W as i32, theme.header_h as i32),
+        Size::new(GUTTER_W, theme.height - theme.header_h),
+    );
+    // K2 is the "next page" button. EdgeIcon doesn't have a downward
+    // arrow yet, so we use ArrowRight as a "→ next" stand-in. Worth
+    // adding a dedicated ArrowDown later for tighter visual semantics.
+    EdgeHints::new()
+        .k1(EdgeIcon::Check)
+        .k2(EdgeIcon::ArrowRight)
+        .k3(EdgeIcon::Cross)
+        .draw(display, &theme, gutter)?;
+
+    Ok(())
+}
+
+fn short_pubkey(s: &str) -> String {
+    if s.len() <= 12 {
+        s.to_string()
+    } else {
+        format!("{}…{}", &s[..6], &s[s.len() - 6..])
+    }
+}
+
+/// Trim a string to fit a column-character cap, appending `…` when it
+/// gets cut. Char-aware so multi-byte glyphs (e.g. the existing pubkey
+/// truncation indicator) don't trip on byte boundaries.
+fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        return s.to_string();
+    }
+    if max_chars <= 1 {
+        return "…".to_string();
+    }
+    let take = max_chars - 1;
+    let mut out: String = s.chars().take(take).collect();
+    out.push('…');
+    out
+}
+
+/// Match the formatting used by `parser::system::lamports_to_sol` so the
+/// detail page reads identically to the values the parser emits in the
+/// flat info_lines view (e.g. "0.001 SOL", "1.5 SOL", "1 SOL"). Inlined
+/// rather than reaching into `parser::system` because that module is
+/// crate-private.
+fn lamports_to_sol_str(lamports: u64) -> String {
+    let sol = lamports / 1_000_000_000;
+    let frac = lamports % 1_000_000_000;
+    if frac == 0 {
+        format!("{} SOL", sol)
+    } else {
+        let frac_str = format!("{:09}", frac);
+        format!("{}.{} SOL", sol, frac_str.trim_end_matches('0'))
+    }
+}
+
+/// Page 1 — top-level transaction metadata. Reads straight off the
+/// `ParsedTransaction`: program list, fee payer, fee, sig count, version,
+/// and tx size. Designed so a power user can verify the tx's shape at a
+/// glance before drilling into instructions.
+fn draw_tx_metadata<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    parsed: &crate::parser::ParsedTransaction,
+    total_pages: usize,
+) -> Result<(), D::Error> {
+    let version = match &parsed.version {
+        crate::parser::TransactionVersion::Legacy => "Legacy".to_string(),
+        crate::parser::TransactionVersion::V0 {
+            address_table_lookups: 0,
+        } => "v0".to_string(),
+        crate::parser::TransactionVersion::V0 {
+            address_table_lookups: n,
+        } => format!("v0 +{}", n),
+    };
+
+    let rows = [
+        DetailRow {
+            label: "FEE PAYER",
+            value: short_pubkey(&parsed.fee_payer),
+        },
+        DetailRow {
+            label: "FEE",
+            value: lamports_to_sol_str(parsed.fee_lamports),
+        },
+        DetailRow {
+            label: "SIGNERS",
+            value: parsed.num_signers.to_string(),
+        },
+        DetailRow {
+            label: "IX COUNT",
+            value: parsed.instructions.len().to_string(),
+        },
+        DetailRow {
+            label: "VERSION",
+            value: version,
+        },
+        DetailRow {
+            label: "SIZE",
+            value: format!("{} B", parsed.size),
+        },
+    ];
+
+    draw_detail_shell(display, "TX METADATA", 2, total_pages, &rows)
+}
+
+/// Page 2 — Instructions overview. One row per top-level instruction
+/// showing index + program. Drilling into a specific instruction
+/// happens on pages 3..3+N.
+fn draw_tx_ix_list<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    parsed: &crate::parser::ParsedTransaction,
+    total_pages: usize,
+) -> Result<(), D::Error> {
+    let rows: Vec<DetailRow<'_>> = parsed
+        .instructions
+        .iter()
+        .enumerate()
+        .map(|(i, ix)| DetailRow {
+            label: "", // index goes in the value column to keep alignment uniform
+            value: format!("{:>2}  {}", i + 1, ix.program),
+        })
+        .collect();
+
+    draw_detail_shell(display, "INSTRUCTIONS", 3, total_pages, &rows)
+}
+
+/// Pages 3..3+N — single-instruction detail. Renders the program name as
+/// the title and the instruction's `items` (Header / Field / Warning /
+/// Separator) as body rows. Long values truncate to fit the value column;
+/// the user can fall back to the raw bytes page if they need the full hex.
+fn draw_tx_ix_detail<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    parsed: &crate::parser::ParsedTransaction,
+    ix_index: usize,
+    total_pages: usize,
+) -> Result<(), D::Error> {
+    let Some(ix) = parsed.instructions.get(ix_index) else {
+        // Defensive — should not happen since the input handler bounds page
+        // by `3 + parsed.instructions.len()`. Render a stub instead of
+        // panicking.
+        return draw_detail_shell(
+            display,
+            "INSTRUCTION",
+            ix_index + 4,
+            total_pages,
+            &[DetailRow {
+                label: "ERROR",
+                value: "no instruction".to_string(),
+            }],
+        );
+    };
+
+    let mut rows: Vec<DetailRow<'_>> = Vec::new();
+    rows.push(DetailRow {
+        label: "PROGRAM",
+        value: ix.program.clone(),
+    });
+
+    for item in &ix.items {
+        match item {
+            crate::parser::ReviewItem::Header(s) => rows.push(DetailRow {
+                label: "",
+                value: format!("[{}]", s),
+            }),
+            crate::parser::ReviewItem::Field { label, value } => rows.push(DetailRow {
+                label: "",
+                value: if label.is_empty() {
+                    value.clone()
+                } else {
+                    format!("{}: {}", label, value)
+                },
+            }),
+            crate::parser::ReviewItem::Warning(s) => rows.push(DetailRow {
+                label: "!",
+                value: s.clone(),
+            }),
+            crate::parser::ReviewItem::Separator => {} // skip — visual gaps are handled by the row layout itself
+        }
+    }
+
+    // Title is `IX <n>/<total>` so the user knows which instruction they're
+    // looking at without doing the page-counter math.
+    let title = format!("IX {}/{}", ix_index + 1, parsed.instructions.len());
+    // SAFETY: title leaks one allocation per render. Acceptable for now —
+    // the firmware redraws on event, not 60Hz. If it becomes hot, swap to a
+    // fixed-size stack buffer.
+    let title_static: &'static str = Box::leak(title.into_boxed_str());
+    draw_detail_shell(display, title_static, ix_index + 4, total_pages, &rows)
+}
+
+/// Last page — raw bytes preview. Shows length, signing hash, and
+/// the first/last 32 bytes as hex. Intentionally not a full hex dump:
+/// the point is "I can verify nothing's hidden in here" — a length +
+/// hash + boundary bytes covers that without paginating across many
+/// screens. The user already scanned the QR for the full bytes.
+fn draw_tx_raw<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    tx_bytes: &[u8],
+    total_pages: usize,
+) -> Result<(), D::Error> {
+    let len = tx_bytes.len();
+    // 6 bytes per HEAD/TAIL line: each byte renders as "ff " (3 chars), so
+    // 6 bytes = 17 chars (no trailing space) — fits comfortably inside the
+    // value column at the chosen label width. Anything larger gets cut by
+    // the truncation pass anyway; we'd rather show clean bytes than
+    // mid-byte ellipsis.
+    let preview_bytes: usize = 6;
+    let format_bytes = |slice: &[u8]| -> String {
+        slice
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let head = format_bytes(&tx_bytes[..preview_bytes.min(len)]);
+    let tail = if len > preview_bytes * 2 {
+        format_bytes(&tx_bytes[len - preview_bytes..])
+    } else {
+        String::new()
+    };
+
+    let mut rows = vec![
+        DetailRow {
+            label: "SIZE",
+            value: format!("{} B", len),
+        },
+        DetailRow {
+            label: "HEAD",
+            value: head,
+        },
+    ];
+    if !tail.is_empty() {
+        rows.push(DetailRow {
+            label: "TAIL",
+            value: tail,
+        });
+    }
+
+    draw_detail_shell(display, "RAW", total_pages, total_pages, &rows)
 }
 
 #[derive(Clone, Copy)]
@@ -1852,6 +2197,85 @@ fn draw_message_review<D: DrawTarget<Color = Rgb565>>(
                 Size::new(GUTTER_W, theme.height - theme.header_h),
             ),
         )?;
+
+    Ok(())
+}
+
+/// Show the wallet's public address as wrapped text — for users who need to
+/// read or copy it by hand, character by character. Splits the 32–44 char
+/// base58 string into fixed-width chunks so the eye can track each row, but
+/// the chunking never breaks a "word" (the address itself is one token, so
+/// chunk boundaries are pure visual aids — no spaces are inserted that would
+/// alter the address). Rendered with the same big body font used by help
+/// screens.
+fn draw_show_address_text<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    address: Option<&str>,
+) -> Result<(), D::Error> {
+    use crate::ui::layout::split_top;
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::Theme;
+
+    let theme = Theme::faraday_240();
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
+    display.fill_solid(&screen, theme.bg)?;
+
+    let (header_rect, body_rect) = split_top(screen, theme.header_h as i32);
+    Header {
+        kind: HeaderKind::Title("ADDRESS"),
+        counter: None,
+        right_label: None,
+    }
+    .draw(display, &theme, header_rect)?;
+
+    let body_inner = Rectangle::new(
+        body_rect.top_left,
+        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),
+    );
+    let center_x = body_inner.top_left.x + body_inner.size.width as i32 / 2;
+
+    match address {
+        Some(addr) => {
+            // Chunk size picked so the longest possible Solana address (44
+            // chars) lays out as four equal rows of 11 — even visual rhythm,
+            // and the row width fits comfortably with the big font.
+            let chunk_size = 11usize;
+            let chunks: Vec<&str> = addr
+                .as_bytes()
+                .chunks(chunk_size)
+                .map(|b| core::str::from_utf8(b).unwrap_or(""))
+                .collect();
+
+            let line_h = 26i32;
+            let block_h = chunks.len() as i32 * line_h;
+            let body_h = body_inner.size.height as i32;
+            let top_padding = ((body_h - block_h) / 2).max(theme.space_md);
+            let mut cursor_y = body_inner.top_left.y + top_padding + 18;
+
+            for chunk in &chunks {
+                Text::with_alignment(
+                    chunk,
+                    Point::new(center_x, cursor_y),
+                    theme.style_md(theme.text),
+                    Alignment::Center,
+                )
+                .draw(display)?;
+                cursor_y += line_h;
+            }
+        }
+        None => {
+            return draw_no_wallet_alert(display, "ADDRESS", "Create or load a", "wallet to view.");
+        }
+    }
+
+    let gutter = Rectangle::new(
+        Point::new(theme.width as i32 - GUTTER_W as i32, theme.header_h as i32),
+        Size::new(GUTTER_W, theme.height - theme.header_h),
+    );
+    EdgeHints::new()
+        .k1(EdgeIcon::Check)
+        .k3(EdgeIcon::ArrowLeft)
+        .draw(display, &theme, gutter)?;
 
     Ok(())
 }
@@ -2365,50 +2789,6 @@ fn draw_no_wallet_alert<D: DrawTarget<Color = Rgb565>>(
         .draw(display, &theme, gutter)?;
 
     Ok(())
-}
-
-/// Address-verification result. Shows whether the scanned address was
-/// derived from the loaded seed and, if so, at which account index.
-fn draw_verify_address_result_card<D: DrawTarget<Color = Rgb565>>(
-    display: &mut D,
-    address: &str,
-    result: &crate::crypto::derivation::AddressMatch,
-) -> Result<(), D::Error> {
-    use crate::crypto::derivation::AddressMatch;
-    use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
-    use crate::ui::{screens::CardScreen, Theme};
-
-    let theme = Theme::faraday_240();
-    let short = shorten_address(address);
-    let body = [short.as_str()];
-
-    let (title, subtitle, account_line) = match result {
-        AddressMatch::Standard { account } => {
-            let line = alloc::format!("Account {}", account);
-            ("MATCH", "Derived from your seed", Some(line))
-        }
-        AddressMatch::NotFound => ("NOT YOURS", "Not derivable from your seed", None),
-        AddressMatch::InvalidFormat => ("INVALID", "Not a Solana address", None),
-    };
-
-    // Account row only on matches — no point showing "Account —" otherwise.
-    let account_rows: Vec<CardRow> = account_line
-        .as_deref()
-        .map(|v| vec![CardRow::new("ACCOUNT", v)])
-        .unwrap_or_default();
-
-    CardScreen {
-        header: HeaderKind::Title("VERIFY ADDRESS"),
-        counter: None,
-        right_label: None,
-        title: Some(title),
-        subtitle: Some(subtitle),
-        body_lines: &body,
-        rows: &account_rows,
-        title_danger: false,
-        edge_hints: EdgeHints::new().k3(EdgeIcon::ArrowLeft),
-    }
-    .draw(display, &theme)
 }
 
 /// Paper-seed didn't decode to the currently-loaded wallet's mnemonic.

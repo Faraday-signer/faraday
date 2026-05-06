@@ -45,14 +45,20 @@ function messageTypeOf(message: RuntimeRequest | unknown): string {
   return typeof maybe.type === "string" ? maybe.type : "<missing>";
 }
 
+// Faraday brand mark — the 4-square pattern from assets/brand/faraday-mark.svg
+// in our cyan accent on the dark wallet bg. This is what dApps' wallet
+// pickers (Jupiter, Phantom modal, etc.) show next to "Faraday" — the
+// previous generic stripes-on-slate icon was off-brand and made the wallet
+// look unbranded next to Phantom/Backpack/Solflare.
 const ICON_SVG =
   "data:image/svg+xml," +
   encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
-      '<rect width="64" height="64" rx="16" fill="#0f172a"/>' +
-      '<path d="M16 22h32l-5 6H11z" fill="#22d3ee"/>' +
-      '<path d="M16 32h32l-5 6H11z" fill="#a3e635"/>' +
-      '<path d="M16 42h32l-5 6H11z" fill="#f59e0b"/>' +
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 103 103">' +
+      '<rect width="103" height="103" fill="#001721"/>' +
+      '<rect x="14" y="14" width="33" height="33" fill="#1AF8FF"/>' +
+      '<rect x="47" y="47" width="33" height="33" fill="#1AF8FF"/>' +
+      '<rect x="64" y="14" width="16" height="16" fill="#1AF8FF"/>' +
+      '<rect x="14" y="64" width="16" height="16" fill="#1AF8FF"/>' +
     "</svg>"
   );
 

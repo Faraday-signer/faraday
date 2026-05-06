@@ -66,17 +66,17 @@ impl HelpTopic {
 
     pub fn body(self) -> &'static str {
         match self {
-            Self::Welcome => "Guided mode shows\nhelpful hints before\neach step. Start by\ncreating or loading\na wallet.",
-            Self::CreateWallet => "Generate a brand new\nwallet from random\nentropy. You will back\nit up on paper.",
-            Self::LoadWallet => "Restore a wallet you\nalready backed up, by\nscanning its QR or\ntyping the words.",
-            Self::SignTx => "Scan a transaction QR\nfrom your computer,\nreview it, and sign\nwith your loaded key.",
-            Self::WalletData => "Show your address,\nbackup your seed,\nlist accounts, or\nverify an address.",
-            Self::ChooseEntropyMethod => "Pick how randomness\nis generated: auto,\ncamera noise, coin\nflips, or dice rolls.",
-            Self::ScanSeedQr => "Point the camera at\nyour paper SeedQR.\nIt will be decoded\nautomatically.",
-            Self::TypeWords => "Enter each BIP39 word\nusing the grid. Words\nauto-complete after a\nfew letters.",
-            Self::BackupSeed => "Your seed is the ONLY\nway to recover funds.\nWrite it on paper or\nmetal. Keep it safe.",
-            Self::VerifyWords => "We will now check\nthat you wrote the\nwords correctly. A\nfew will be asked.",
-            Self::Passphrase => "A passphrase adds\nextra security. If\nyou skip it, the seed\nalone unlocks funds.",
+            Self::Welcome => "Faraday is an offline Solana signer. Create or load a wallet to start.",
+            Self::CreateWallet => "Generate a brand new wallet from random entropy. You will back it up on paper.",
+            Self::LoadWallet => "Restore a wallet you already backed up, by scanning its QR or typing the words.",
+            Self::SignTx => "Scan a transaction QR from your computer, review it, and sign with your loaded key.",
+            Self::WalletData => "View your address as text or QR, or back up your seed.",
+            Self::ChooseEntropyMethod => "Pick how randomness is generated: auto, camera noise, coin flips, or dice rolls.",
+            Self::ScanSeedQr => "Point the camera at your paper SeedQR. It will be decoded automatically.",
+            Self::TypeWords => "Enter each BIP39 word using the grid. Words auto-complete after a few letters.",
+            Self::BackupSeed => "Your seed is the ONLY way to recover funds. Write it on paper or metal. Keep it safe.",
+            Self::VerifyWords => "We will now check that you wrote the words correctly. A few will be asked.",
+            Self::Passphrase => "DONE: no passphrase. ENCRYPT adds one you must enter every time. Forget it and the funds are gone.",
         }
     }
 }
@@ -285,6 +285,20 @@ pub enum Screen {
         tx_bytes: Vec<u8>,
         tx_base64: String,
         info_lines: Vec<String>,
+        /// Structured parse of `tx_bytes`. Carried alongside `info_lines` so
+        /// detail pages (metadata / instruction list / per-instruction / raw)
+        /// can render directly from the parsed instructions instead of
+        /// re-parsing or re-flattening. Boxed because `ParsedTransaction` is
+        /// large and `Screen` is moved on every input event.
+        parsed: Box<crate::parser::ParsedTransaction>,
+        /// Which review page is currently shown. K2 advances; the renderer
+        /// dispatches on this index. Wraps after the last page.
+        // Page 0 = Summary (hero + first chunk of details);
+        // Page 1 = Tx metadata; Page 2 = Instructions overview;
+        // Pages 3..3+N-1 = one per instruction; Page 3+N = Raw bytes.
+        page: usize,
+        // Scroll position within page 0's detail block. Reset to 0 on
+        // page change. Pages 1..K don't scroll — they fit in one screen.
         scroll: usize,
         selected: usize,
         /// False when the loaded wallet's pubkey is not in the tx's required
@@ -310,16 +324,12 @@ pub enum Screen {
         selected: usize,
     },
     SettingsShowAddress,
-    SettingsAccounts {
-        accounts: Vec<(String, String)>,
-        selected: usize,
-    },
-    SettingsVerifyAddressScan,
-    SettingsVerifyAddressResult {
-        address: String,
-        result: crate::crypto::derivation::AddressMatch,
-    },
+    /// Address rendered as wrapped text so the user can read it digit-by-digit
+    /// or transcribe it onto paper.
+    SettingsShowAddressText,
     SettingsAbout,
+    /// Wipe-in-memory-wallet confirm. Reachable only via the long-press Back
+    /// shortcut; not exposed in the wallet-data menu.
     SettingsPowerOff {
         selected: usize,
     },
@@ -903,7 +913,6 @@ impl App {
             Screen::LoadScanQr
                 | Screen::SignScanTx
                 | Screen::CreateCameraEntropy { .. }
-                | Screen::SettingsVerifyAddressScan
                 | Screen::VerifyBackupScan
         )
     }
@@ -981,10 +990,7 @@ impl App {
 
         let is_scan_screen = matches!(
             self.screen,
-            Screen::LoadScanQr
-                | Screen::SignScanTx
-                | Screen::SettingsVerifyAddressScan
-                | Screen::VerifyBackupScan
+            Screen::LoadScanQr | Screen::SignScanTx | Screen::VerifyBackupScan
         );
         // Seed / address / backup scans only ever see small QRs (CompactSeedQR
         // V1/V3, address V≤5). Hint the decoder to downsample aggressively so
@@ -993,7 +999,7 @@ impl App {
         // V20+ where every module pixel matters.
         let small_qr_scan = matches!(
             self.screen,
-            Screen::LoadScanQr | Screen::SettingsVerifyAddressScan | Screen::VerifyBackupScan
+            Screen::LoadScanQr | Screen::VerifyBackupScan
         );
         let pending_qr = if let Some(cam) = &self.camera {
             cam.set_decode_enabled(is_scan_screen);
@@ -1023,10 +1029,7 @@ impl App {
         if let Some(data) = pending_qr {
             if matches!(
                 self.screen,
-                Screen::LoadScanQr
-                    | Screen::SignScanTx
-                    | Screen::SettingsVerifyAddressScan
-                    | Screen::VerifyBackupScan
+                Screen::LoadScanQr | Screen::SignScanTx | Screen::VerifyBackupScan
             ) {
                 self.scanned_qr = Some(data);
                 self.handle_input(InputEvent::Confirm);
@@ -1054,22 +1057,28 @@ impl App {
 
         match screen {
             Screen::Splash => Screen::ModeSelect {
-                selected: 0,
+                selected: 1,
                 shown_at: std::time::Instant::now(),
             },
 
             Screen::ModeSelect { mut selected, .. } => {
+                // Row 0 = GUIDED MODE (walk through help screens), row 1 =
+                // EXPERT MODE (skip help, straight to main menu). `guided`
+                // is true when the user picks GUIDED.
                 match event {
-                    InputEvent::Up | InputEvent::Down => {
-                        selected = 1 - selected;
-                    }
+                    InputEvent::Up => selected = 0,
+                    InputEvent::Down => selected = 1,
                     InputEvent::Confirm => {
-                        self.guided = selected == 1;
+                        let sel = selected.clamp(0, 1);
+                        self.guided = sel == 0;
                         return self.maybe_help(HelpTopic::Welcome, Screen::MainMenu { selected: 0 });
                     }
                     _ => {}
                 }
-                Screen::ModeSelect { selected, shown_at: std::time::Instant::now() }
+                Screen::ModeSelect {
+                    selected: selected.clamp(0, 1),
+                    shown_at: std::time::Instant::now(),
+                }
             }
 
             Screen::Help { topic } => {
@@ -1164,9 +1173,7 @@ impl App {
 
             s @ (Screen::SettingsMenu { .. }
             | Screen::SettingsShowAddress
-            | Screen::SettingsAccounts { .. }
-            | Screen::SettingsVerifyAddressScan
-            | Screen::SettingsVerifyAddressResult { .. }
+            | Screen::SettingsShowAddressText
             | Screen::SettingsAbout
             | Screen::SettingsPowerOff { .. }) => flows::settings::handle(self, s, event),
 
@@ -1236,7 +1243,10 @@ impl App {
 ///
 /// Delegates to the unified parser (`crate::parser`) which supports both
 /// legacy and v0 transactions.
-pub fn build_review_lines(tx_bytes: &[u8], wallet_pubkey: &[u8; 32]) -> (Vec<String>, bool) {
+pub fn build_review_lines(
+    tx_bytes: &[u8],
+    wallet_pubkey: &[u8; 32],
+) -> (Vec<String>, bool, crate::parser::ParsedTransaction) {
     crate::parser::build_review_lines(tx_bytes, wallet_pubkey)
 }
 
@@ -1323,7 +1333,7 @@ mod review_lines_tests {
     fn matching_wallet_allows_signing() {
         let kp = loaded_keypair();
         let tx = build_tx_for(&kp.public_key);
-        let (lines, can_sign) = build_review_lines(&tx, &kp.public_key);
+        let (lines, can_sign, _parsed) = build_review_lines(&tx, &kp.public_key);
         assert!(can_sign);
         assert!(lines.iter().any(|l| l.contains("SOL Transfer")));
         assert!(!lines.iter().any(|l| l.starts_with('!')));
@@ -1336,7 +1346,7 @@ mod review_lines_tests {
         assert_ne!(kp.public_key, other_pubkey);
 
         let tx = build_tx_for(&other_pubkey);
-        let (lines, can_sign) = build_review_lines(&tx, &kp.public_key);
+        let (lines, can_sign, _parsed) = build_review_lines(&tx, &kp.public_key);
 
         assert!(!can_sign, "sign must be blocked on mismatch");
         // Warning banner present.
@@ -1355,7 +1365,7 @@ mod review_lines_tests {
     fn unparseable_tx_blocks_signing() {
         let kp = loaded_keypair();
         let garbage = vec![0xFFu8; 10];
-        let (lines, can_sign) = build_review_lines(&garbage, &kp.public_key);
+        let (lines, can_sign, _parsed) = build_review_lines(&garbage, &kp.public_key);
         assert!(!can_sign);
         assert!(lines.iter().any(|l| l.contains("Failed to parse")));
     }
@@ -1367,7 +1377,7 @@ mod review_lines_tests {
         let tx_b64 = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAEDywkoNI1j+nah055+LRl/5r74IARS0MSvHfPPW5usTeAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACbZKN5QkVXQQH+5BYJje2PQK9UFAivDK+ncn3rilJV8BAgIAAQwCAAAAgJaYAAAAAAA=";
         let tx = B64.decode(tx_b64).unwrap();
         let kp = loaded_keypair();
-        let (lines, can_sign) = build_review_lines(&tx, &kp.public_key);
+        let (lines, can_sign, _parsed) = build_review_lines(&tx, &kp.public_key);
         assert!(
             !can_sign,
             "abandon-abandon wallet should not match EfZr signer"
