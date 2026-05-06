@@ -12,7 +12,7 @@ import { SendSignScreen } from "../screens/send-sign";
 import { SettingsNavigator } from "./settings";
 import { WalletScreen } from "../screens/wallet";
 import type { TokenProgram } from "../lib/tokens";
-import { colors, letterSpacing } from "../lib/theme";
+import { colors, fontFamily, letterSpacing } from "../lib/theme";
 
 export type RootStackParamList = {
   WalletHome: undefined;
@@ -65,6 +65,7 @@ function tabLabel(label: string) {
       style={{
         color: focused ? colors.accent : colors.textMuted,
         fontSize: 11,
+        fontFamily: fontFamily.display,
         letterSpacing: letterSpacing.eyebrow,
         textTransform: "uppercase"
       }}

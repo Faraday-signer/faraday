@@ -36,6 +36,11 @@ export const space = {
   xxxl: 56
 } as const;
 
+export const fontFamily = {
+  display: "DepartureMono-Regular",
+  mono: "monospace"
+} as const;
+
 export const font = {
   xs: 11,
   sm: 12,

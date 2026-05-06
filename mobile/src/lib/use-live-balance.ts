@@ -13,7 +13,15 @@ export type LiveConnectionState =
 
 const LOG_PREFIX = "[Faraday][live-balance]";
 const BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000] as const;
-const MAX_CONSECUTIVE_FAILURES = 20;
+/**
+ * Lower than the extension's 20 — RN's WebSocket subscription path through
+ * `@solana/kit` currently hits a structural TypeError on first connect, and
+ * retrying just spams the JS console without ever recovering. SWR polling
+ * keeps the balance fresh in the meantime; once we either polyfill the
+ * missing `@solana/rpc-subscriptions` dep or drop subs entirely on RN, this
+ * can come back up.
+ */
+const MAX_CONSECUTIVE_FAILURES = 2;
 
 export function useLiveBalance(
   pubkey: string | null,
@@ -67,7 +75,11 @@ export function useLiveBalance(
         return "completed";
       } catch (error) {
         if (cancelled) return "completed";
-        console.warn(`${LOG_PREFIX} subscription error`, error);
+        if (consecutiveFailures === 0) {
+          // Log only the first failure per subscription session. Repeated
+          // structural errors flood the console without telling us anything new.
+          console.warn(`${LOG_PREFIX} subscription error (will fall back to polling)`, error);
+        }
         return "errored";
       }
     }
@@ -76,7 +88,6 @@ export function useLiveBalance(
       if (cancelled) return;
       consecutiveFailures += 1;
       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-        console.error(`${LOG_PREFIX} giving up after ${consecutiveFailures} failures`);
         setState("failed");
         return;
       }

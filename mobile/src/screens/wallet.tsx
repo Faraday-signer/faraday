@@ -9,7 +9,7 @@ import { LiveDot } from "../components/live-dot";
 import { TokensSection } from "../components/tokens-section";
 import { CLUSTER_LABEL } from "../lib/sol-client";
 import { formatSol, formatTokenUsd, shortAddress } from "../lib/token-format";
-import { colors, font, letterSpacing, radius, space } from "../lib/theme";
+import { colors, font, fontFamily, letterSpacing, radius, space } from "../lib/theme";
 import { useSolPrice } from "../lib/use-tokens";
 import { useWallet } from "../lib/use-wallet";
 import type { RootStackParamList } from "../navigation/root";
@@ -106,11 +106,7 @@ export function WalletScreen({ navigation }: Props) {
                   ? "Balance unavailable"
                   : wallet.liveState === "live"
                     ? `Live on ${CLUSTER_LABEL.toLowerCase()}`
-                    : wallet.liveState === "reconnecting"
-                      ? "Reconnecting… (polling fallback)"
-                      : wallet.liveState === "failed"
-                        ? "Live connection down — polling"
-                        : `Balance on ${CLUSTER_LABEL.toLowerCase()}`}
+                    : `Balance on ${CLUSTER_LABEL.toLowerCase()}`}
             </Text>
           </View>
           {wallet.balanceError ? (
@@ -225,7 +221,8 @@ const styles = StyleSheet.create({
   },
   networkPillLabel: {
     color: colors.accent,
-    fontSize: 9,
+    fontSize: 10,
+    fontFamily: fontFamily.display,
     letterSpacing: letterSpacing.eyebrow,
     textTransform: "uppercase"
   },
@@ -272,11 +269,12 @@ const styles = StyleSheet.create({
   heroNumber: {
     color: colors.text,
     fontSize: font.hero,
-    fontWeight: "600"
+    fontFamily: fontFamily.display
   },
   heroUnit: {
     color: colors.accent,
     fontSize: font.xl,
+    fontFamily: fontFamily.display,
     marginLeft: space.xs,
     letterSpacing: letterSpacing.loose
   },
@@ -323,6 +321,7 @@ const styles = StyleSheet.create({
   actionLabel: {
     color: colors.text,
     fontSize: font.sm,
+    fontFamily: fontFamily.display,
     letterSpacing: letterSpacing.loose,
     textTransform: "uppercase"
   }

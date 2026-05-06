@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { colors, font, letterSpacing, space } from "../lib/theme";
+import { colors, font, fontFamily, letterSpacing, space } from "../lib/theme";
 
 interface ScreenShellProps {
   eyebrow?: string;
@@ -51,13 +51,14 @@ const styles = StyleSheet.create({
   eyebrow: {
     color: colors.textMuted,
     fontSize: font.xs,
+    fontFamily: fontFamily.display,
     letterSpacing: letterSpacing.eyebrow,
     textTransform: "uppercase"
   },
   title: {
     color: colors.text,
     fontSize: font.xxl,
-    fontWeight: "600"
+    fontFamily: fontFamily.display
   },
   scroll: {
     flex: 1
