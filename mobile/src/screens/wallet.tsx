@@ -4,8 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
-import { FaradayMark } from "../lib/brand";
-import { LiveDot } from "../components/live-dot";
+import { FaradayLogo, FaradayMark } from "../lib/brand";
 import { TokensSection } from "../components/tokens-section";
 import { CLUSTER_LABEL } from "../lib/sol-client";
 import { formatSol, formatTokenUsd, shortAddress } from "../lib/token-format";
@@ -68,11 +67,9 @@ export function WalletScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.root} edges={["top", "left", "right"]}>
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <FaradayMark size={20} />
-          <View style={styles.networkPill}>
-            <Text style={styles.networkPillLabel}>{CLUSTER_LABEL}</Text>
-          </View>
+        <FaradayLogo height={22} />
+        <View style={styles.networkPill}>
+          <Text style={styles.networkPillLabel}>{CLUSTER_LABEL}</Text>
         </View>
       </View>
 
@@ -97,18 +94,11 @@ export function WalletScreen({ navigation }: Props) {
           {solUsdValue !== null ? (
             <Text style={styles.heroUsd}>{formatTokenUsd(solUsdValue)}</Text>
           ) : null}
-          <View style={styles.heroMetaRow}>
-            <LiveDot state={wallet.liveState} />
+          {wallet.balanceLoading || wallet.solUiAmount === null ? (
             <Text style={styles.heroMeta}>
-              {wallet.balanceLoading
-                ? "Fetching…"
-                : wallet.solUiAmount === null
-                  ? "Balance unavailable"
-                  : wallet.liveState === "live"
-                    ? `Live on ${CLUSTER_LABEL.toLowerCase()}`
-                    : `Balance on ${CLUSTER_LABEL.toLowerCase()}`}
+              {wallet.balanceLoading ? "Fetching…" : "Balance unavailable"}
             </Text>
-          </View>
+          ) : null}
           {wallet.balanceError ? (
             <Pressable onPress={wallet.refreshBalance}>
               <Text style={styles.heroError}>Could not load balance — tap to retry</Text>
@@ -206,13 +196,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border
   },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space.xs
-  },
   networkPill: {
-    paddingHorizontal: space.xs,
+    paddingHorizontal: space.sm,
     paddingVertical: 2,
     borderRadius: radius.pill,
     backgroundColor: colors.accentSoft,
@@ -283,16 +268,11 @@ const styles = StyleSheet.create({
     fontSize: font.xl,
     fontFamily: "monospace"
   },
-  heroMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: space.xs
-  },
   heroMeta: {
     color: colors.textMuted,
     fontSize: font.xs,
-    fontFamily: "monospace"
+    fontFamily: "monospace",
+    marginTop: space.xs
   },
   heroError: {
     color: colors.error,
