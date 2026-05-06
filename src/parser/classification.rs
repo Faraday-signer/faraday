@@ -224,10 +224,7 @@ fn is_infra_program(program_name: &str) -> bool {
 }
 
 fn is_swap_program(program_name: &str) -> bool {
-    matches!(
-        program_name,
-        "Jupiter" | "Raydium AMM" | "Raydium CLMM" | "Raydium CPMM"
-    )
+    super::is_swap_program_name(program_name)
 }
 
 fn is_authority_change(program_name: &str, data: &[u8]) -> bool {

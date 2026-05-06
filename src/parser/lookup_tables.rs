@@ -1,7 +1,27 @@
 //! Hardcoded Address Lookup Tables for common Solana programs.
 //!
 //! Enables offline resolution of v0 transaction accounts without RPC access.
-//! ALT contents are snapshots — entries may be added on-chain after this build.
+//!
+//! # Security caveat (2026-05)
+//!
+//! All currently shipped ATLs (`JUPITER_MAIN`, `JUPITER_2`, `RAYDIUM_CLMM`)
+//! are **mutable** at chain level — their respective authorities can extend
+//! or replace entries. Our snapshot is only correct as of the firmware build
+//! time. If an authority is compromised or pushes a malicious update, our
+//! display can diverge from on-chain execution: the user sees one mint, the
+//! validator resolves another. The signed bytes are unaffected (the
+//! signature is over the message, which references ATLs by pubkey, not by
+//! resolved content), but the user's *informed consent* to sign is.
+//!
+//! Going forward, `extract_zoned` refuses to emit a zoned approval screen
+//! when the receive token cannot be resolved deterministically — for txs
+//! whose dest mint lives in an ATL we don't have or trust, the device falls
+//! back to the legacy paginated review (raw amounts, explicit warning).
+//!
+//! `scripts/fetch_alt.py` will warn if you try to add a non-frozen ATL.
+//! Prefer ATLs whose `authority` field is `None` — those are immutable on
+//! chain and our hash matches forever. For the existing mutable entries,
+//! re-snapshot periodically and audit the authority's behaviour.
 
 const UNRESOLVED: [u8; 32] = [0xFF; 32];
 

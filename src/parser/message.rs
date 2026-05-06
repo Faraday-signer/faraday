@@ -60,13 +60,7 @@ pub fn deserialize(tx_bytes: &[u8]) -> Result<ParsedMessage, &'static str> {
         cur.skip(1)?; // consume the version prefix byte
         match version_byte & 0x7f {
             0 => MessageVersion::V0,
-            v => {
-                return Err(if v > 0 {
-                    "Unsupported transaction version"
-                } else {
-                    unreachable!()
-                })
-            }
+            _ => return Err("Unsupported transaction version"),
         }
     } else {
         MessageVersion::Legacy

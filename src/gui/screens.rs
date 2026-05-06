@@ -10,9 +10,7 @@ use embedded_graphics::{
 
 use crate::gui::app::{App, Screen};
 use crate::gui::colors;
-use crate::gui::components::{
-    draw_char_grid, draw_option_list, draw_qr, draw_status_bar,
-};
+use crate::gui::components::draw_status_bar;
 use crate::gui::logo;
 
 /// Menu item. Brutalist layout: one hero label + subtitle at a time.
@@ -269,24 +267,36 @@ impl App {
                 // from the parsed tx struct directly; page K-1 is the raw
                 // bytes preview. The renderer for each detail page draws
                 // the pagination counter (page+1)/K in the header.
-                let total_pages = 3 + parsed.instructions.len() + 1;
+                let interesting = crate::parser::interesting_ix_indices(parsed);
+                let total_pages = 3 + interesting.len() + 1;
                 match *page {
-                    0 => draw_tx_review(
-                        display,
-                        info_lines,
-                        *scroll,
-                        *selected,
-                        *can_sign,
-                        self.seed_loaded(),
-                        // Override the scroll-based counter with the page
-                        // counter so page 0 reads "1/N" consistently with
-                        // the detail pages.
-                        Some((1, total_pages)),
-                    ),
+                    0 => {
+                        let wallet_pk = self.wallet.as_ref().map(|w| w.keypair.public_key);
+                        let zoned = crate::parser::extract_zoned(tx_bytes, parsed);
+                        if let Some(action) = zoned {
+                            draw_tx_review_zoned(
+                                display,
+                                &action,
+                                wallet_pk.as_ref(),
+                                *can_sign,
+                                Some((1, total_pages)),
+                            )
+                        } else {
+                            draw_tx_review(
+                                display,
+                                info_lines,
+                                *scroll,
+                                *selected,
+                                *can_sign,
+                                self.seed_loaded(),
+                                Some((1, total_pages)),
+                            )
+                        }
+                    }
                     1 => draw_tx_metadata(display, parsed, total_pages),
                     2 => draw_tx_ix_list(display, parsed, total_pages),
-                    p if p < 3 + parsed.instructions.len() => {
-                        let ix_index = p - 3;
+                    p if p < 3 + interesting.len() => {
+                        let ix_index = interesting[p - 3];
                         draw_tx_ix_detail(display, parsed, ix_index, total_pages)
                     }
                     _ => draw_tx_raw(display, tx_bytes, total_pages),
@@ -679,7 +689,7 @@ fn draw_passphrase_grid<D: DrawTarget<Color = Rgb565>>(
     title: &str,
 ) -> Result<(), D::Error> {
     use crate::gui::app::{GridAction, GRID_COLS};
-    use crate::ui::layout::{split_bottom, split_top};
+    use crate::ui::layout::split_top;
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
     use crate::ui::Theme;
     use embedded_graphics::{
@@ -1176,7 +1186,6 @@ fn draw_show_words<D: DrawTarget<Color = Rgb565>>(
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
     use crate::ui::{screens::ListScreen, Theme};
-    use embedded_graphics::geometry::Size;
 
     let theme = Theme::faraday_240();
     let words_per_page = 4usize;
@@ -1473,6 +1482,403 @@ fn draw_message<D: DrawTarget<Color = Rgb565>>(
         Alignment::Center,
     )
     .draw(display)?;
+
+    Ok(())
+}
+
+/// 3-zone TX review for simple, single-action transactions (today: System
+/// transfers). Header reads as a verb (`SEND`); the body splits into three
+/// equal-height cells aligned with the K1/K2/K3 button gutter so every row
+/// divider lines up with a button-cell boundary. Full base58 addresses are
+/// shown — no truncation — wrapped to two lines via the existing helper.
+/// Falls back to `draw_tx_review` for anything more complex (swaps,
+/// multi-step txs, unknown programs).
+fn draw_tx_review_zoned<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    action: &crate::parser::ZonedAction,
+    wallet_pubkey: Option<&[u8; 32]>,
+    can_sign: bool,
+    page_counter: Option<(usize, usize)>,
+) -> Result<(), D::Error> {
+    use crate::ui::layout::split_top;
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::Theme;
+    use embedded_graphics::primitives::{Line, PrimitiveStyle};
+
+    let theme = Theme::faraday_240();
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
+    display.fill_solid(&screen, theme.bg)?;
+
+    let (header_rect, body_rect) = split_top(screen, theme.header_h as i32);
+    let title = build_zoned_title(action);
+    Header {
+        kind: HeaderKind::Title(title.as_ref()),
+        counter: page_counter,
+        right_label: None,
+    }
+    .draw(display, &theme, header_rect)?;
+
+    // Three equal body zones. The remainder pixel from `body_h % 3` goes
+    // to the bottom zone so the K-cell dividers land on integer y values.
+    let body_h = body_rect.size.height as i32;
+    let zone_h = body_h / 3;
+    let bottom_h = body_h - 2 * zone_h;
+    let zone1_top = body_rect.top_left.y;
+    let zone2_top = zone1_top + zone_h;
+    let zone3_top = zone2_top + zone_h;
+
+    let v_x = theme.width as i32 - GUTTER_W as i32;
+    Line::new(
+        Point::new(v_x, body_rect.top_left.y),
+        Point::new(v_x, theme.height as i32 - 1),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(theme.border, 1))
+    .draw(display)?;
+
+    for y in [zone2_top, zone3_top] {
+        Line::new(Point::new(0, y), Point::new(theme.width as i32 - 1, y))
+            .into_styled(PrimitiveStyle::with_stroke(theme.border, 1))
+            .draw(display)?;
+    }
+
+    let zone_rect = |top_y: i32, height: u32| {
+        Rectangle::new(
+            Point::new(body_rect.top_left.x, top_y),
+            Size::new(body_rect.size.width - GUTTER_W, height),
+        )
+    };
+
+    match action {
+        crate::parser::ZonedAction::Send {
+            from,
+            to,
+            amount_lamports,
+            ..
+        } => {
+            let from_b58 = bs58::encode(from).into_string();
+            let to_b58 = bs58::encode(to).into_string();
+            let from_is_self = wallet_pubkey.map_or(false, |w| w == from);
+
+            // profont17 ≈ 9 px wide on a 240 px panel with 12 px padding +
+            // 24 px gutter leaves ~22 chars per line, so a 32–44 char base58
+            // address wraps to 2 lines max.
+            const ADDR_WRAP: usize = 22;
+
+            draw_zone_address(
+                display,
+                &theme,
+                zone_rect(zone1_top, zone_h as u32),
+                "FROM",
+                &from_b58,
+                from_is_self,
+                ADDR_WRAP,
+            )?;
+
+            draw_zone_address(
+                display,
+                &theme,
+                zone_rect(zone2_top, zone_h as u32),
+                "TO",
+                &to_b58,
+                false,
+                ADDR_WRAP,
+            )?;
+
+            let amount_str = crate::parser::compact_amount(
+                &crate::parser::token_registry::format_amount(*amount_lamports, 9),
+            );
+            draw_zone_amount(
+                display,
+                &theme,
+                zone_rect(zone3_top, bottom_h as u32),
+                "AMOUNT",
+                &amount_str,
+                "SOL",
+            )?;
+        }
+        crate::parser::ZonedAction::Swap {
+            sell_amount,
+            sell_symbol,
+            buy_amount,
+            buy_symbol,
+            fee_lamports,
+            fee_payer,
+            dex_name,
+            slippage_bps,
+            route_hops,
+            ..
+        } => {
+            draw_zone_amount(
+                display,
+                &theme,
+                zone_rect(zone1_top, zone_h as u32),
+                "SEND",
+                sell_amount,
+                if sell_symbol.is_empty() { "?" } else { sell_symbol.as_str() },
+            )?;
+
+            // Empty `buy_amount` is the explicit "device can't verify"
+            // sentinel — render as em dash rather than a fabricated value.
+            let receive_display = if buy_amount.is_empty() {
+                "—"
+            } else {
+                buy_amount.as_str()
+            };
+            draw_zone_amount(
+                display,
+                &theme,
+                zone_rect(zone2_top, zone_h as u32),
+                "RECEIVE",
+                receive_display,
+                if buy_symbol.is_empty() { "?" } else { buy_symbol.as_str() },
+            )?;
+
+            let fee_value = crate::parser::compact_amount(
+                &crate::parser::token_registry::format_amount(*fee_lamports, 9),
+            );
+            let fee_str = alloc::format!("{} SOL", fee_value);
+            let payer_b58 = bs58::encode(fee_payer).into_string();
+            let payer_is_self = wallet_pubkey.map_or(false, |w| w == fee_payer);
+            draw_zone_fee(
+                display,
+                &theme,
+                zone_rect(zone3_top, bottom_h as u32),
+                &fee_str,
+                &payer_b58,
+                payer_is_self,
+                *slippage_bps,
+                *route_hops,
+                dex_name.as_str(),
+            )?;
+        }
+    }
+
+    // K1 = sign (dim if can't), K2 = next page, K3 = reject.
+    let gutter = Rectangle::new(
+        Point::new(v_x, body_rect.top_left.y),
+        Size::new(GUTTER_W, theme.height - theme.header_h),
+    );
+    let mut hints = EdgeHints::new()
+        .k2(EdgeIcon::ArrowRight)
+        .k3(EdgeIcon::Cross);
+    if can_sign {
+        hints = hints.k1(EdgeIcon::Check);
+    }
+    hints.draw(display, &theme, gutter)?;
+
+    Ok(())
+}
+
+/// Render an address-bearing zone: small label on top, the address itself
+/// wrapped to (at most) two lines below. `is_self` adds a `(you)` chip in
+/// the accent color next to the label.
+fn draw_zone_address<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    theme: &crate::ui::Theme,
+    rect: Rectangle,
+    label: &str,
+    address: &str,
+    is_self: bool,
+    wrap_chars: usize,
+) -> Result<(), D::Error> {
+    let inner_x = rect.top_left.x + theme.space_md;
+    let label_y = rect.top_left.y + 14;
+    Text::with_alignment(
+        label,
+        Point::new(inner_x, label_y),
+        theme.style_sm(theme.muted),
+        Alignment::Left,
+    )
+    .draw(display)?;
+    if is_self {
+        let chip_x = inner_x + label.len() as i32 * 9 + 6;
+        Text::with_alignment(
+            "(you)",
+            Point::new(chip_x, label_y),
+            theme.style_sm(theme.accent),
+            Alignment::Left,
+        )
+        .draw(display)?;
+    }
+
+    let wrapped = wrap_line_for_width(address, wrap_chars);
+    let mut y = label_y + 18;
+    for line in wrapped.iter().take(2) {
+        Text::with_alignment(
+            line,
+            Point::new(inner_x, y),
+            theme.style_sm(theme.text),
+            Alignment::Left,
+        )
+        .draw(display)?;
+        y += 18;
+    }
+
+    Ok(())
+}
+
+/// Render the amount zone: small label top-left, currency symbol pinned
+/// to the top-right (always visible regardless of amount length), big
+/// number on the bottom row.
+fn draw_zone_amount<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    theme: &crate::ui::Theme,
+    rect: Rectangle,
+    label: &str,
+    amount: &str,
+    symbol: &str,
+) -> Result<(), D::Error> {
+    let inner_x = rect.top_left.x + theme.space_md;
+    let right_x = rect.top_left.x + rect.size.width as i32 - theme.space_sm;
+
+    let label_y = rect.top_left.y + 18;
+    Text::with_alignment(
+        label,
+        Point::new(inner_x, label_y),
+        theme.style_md(theme.muted),
+        Alignment::Left,
+    )
+    .draw(display)?;
+    Text::with_alignment(
+        symbol,
+        Point::new(right_x, label_y),
+        theme.style_md(theme.accent),
+        Alignment::Right,
+    )
+    .draw(display)?;
+
+    let amount_y = rect.top_left.y + rect.size.height as i32 - 14;
+    Text::with_alignment(
+        amount,
+        Point::new(right_x, amount_y),
+        theme.style_lg(theme.text),
+        Alignment::Right,
+    )
+    .draw(display)?;
+
+    Ok(())
+}
+
+fn build_zoned_title(action: &crate::parser::ZonedAction) -> alloc::borrow::Cow<'static, str> {
+    use alloc::borrow::Cow;
+    match action {
+        crate::parser::ZonedAction::Send { .. } => Cow::Borrowed("APPROVE SEND"),
+        crate::parser::ZonedAction::Swap { .. } => Cow::Borrowed("APPROVE SWAP"),
+    }
+}
+
+/// FEE row + secondary row, picked in priority order:
+/// `SLIPPAGE` (numeric, color-coded) → `ROUTE` (dex/hops) → `PAYER` (full addr).
+fn draw_zone_fee<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    theme: &crate::ui::Theme,
+    rect: Rectangle,
+    fee: &str,
+    payer: &str,
+    payer_is_self: bool,
+    slippage_bps: Option<u16>,
+    route_hops: Option<u32>,
+    dex_name: &str,
+) -> Result<(), D::Error> {
+    let inner_x = rect.top_left.x + theme.space_md;
+    let right_x = rect.top_left.x + rect.size.width as i32 - theme.space_sm;
+    let fee_y = rect.top_left.y + 14;
+    Text::with_alignment(
+        "FEE",
+        Point::new(inner_x, fee_y),
+        theme.style_sm(theme.muted),
+        Alignment::Left,
+    )
+    .draw(display)?;
+    Text::with_alignment(
+        fee,
+        Point::new(right_x, fee_y),
+        theme.style_sm(theme.text),
+        Alignment::Right,
+    )
+    .draw(display)?;
+
+    let row2_y = fee_y + 18;
+    if let Some(bps) = slippage_bps {
+        // > 5% danger, > 1% accent (warning), else neutral.
+        let color = if bps > 500 {
+            theme.danger
+        } else if bps > 100 {
+            theme.accent
+        } else {
+            theme.text
+        };
+        Text::with_alignment(
+            "SLIPPAGE",
+            Point::new(inner_x, row2_y),
+            theme.style_sm(theme.muted),
+            Alignment::Left,
+        )
+        .draw(display)?;
+        let slip_str = alloc::format!("{:.2}%", bps as f32 / 100.0);
+        Text::with_alignment(
+            &slip_str,
+            Point::new(right_x, row2_y),
+            theme.style_sm(color),
+            Alignment::Right,
+        )
+        .draw(display)?;
+        return Ok(());
+    }
+
+    if let Some(hops) = route_hops {
+        Text::with_alignment(
+            "ROUTE",
+            Point::new(inner_x, row2_y),
+            theme.style_sm(theme.muted),
+            Alignment::Left,
+        )
+        .draw(display)?;
+        let route_str = if dex_name.is_empty() {
+            alloc::format!("{} hops", hops)
+        } else {
+            alloc::format!("{} · {} hops", dex_name, hops)
+        };
+        Text::with_alignment(
+            &route_str,
+            Point::new(right_x, row2_y),
+            theme.style_sm(theme.text),
+            Alignment::Right,
+        )
+        .draw(display)?;
+        return Ok(());
+    }
+
+    Text::with_alignment(
+        "PAYER",
+        Point::new(inner_x, row2_y),
+        theme.style_sm(theme.muted),
+        Alignment::Left,
+    )
+    .draw(display)?;
+    if payer_is_self {
+        let chip_x = inner_x + "PAYER".len() as i32 * 9 + 6;
+        Text::with_alignment(
+            "(you)",
+            Point::new(chip_x, row2_y),
+            theme.style_sm(theme.accent),
+            Alignment::Left,
+        )
+        .draw(display)?;
+    }
+
+    let wrapped = wrap_line_for_width(payer, 22);
+    let mut y = row2_y + 16;
+    for line in wrapped.iter().take(2) {
+        Text::with_alignment(
+            line,
+            Point::new(inner_x, y),
+            theme.style_sm(theme.text),
+            Alignment::Left,
+        )
+        .draw(display)?;
+        y += 16;
+    }
 
     Ok(())
 }
@@ -2060,19 +2466,25 @@ fn draw_tx_ix_detail<D: DrawTarget<Color = Rgb565>>(
                 label: "",
                 value: format!("[{}]", s),
             }),
-            crate::parser::ReviewItem::Field { label, value } => rows.push(DetailRow {
-                label: "",
-                value: if label.is_empty() {
-                    value.clone()
-                } else {
-                    format!("{}: {}", label, value)
-                },
-            }),
+            crate::parser::ReviewItem::Field { label, value } => {
+                // Internal machine-readable fields the zoned renderer pulls.
+                if label == "Slippage_bps" || label == "Route_hops" {
+                    continue;
+                }
+                rows.push(DetailRow {
+                    label: "",
+                    value: if label.is_empty() {
+                        value.clone()
+                    } else {
+                        format!("{}: {}", label, value)
+                    },
+                });
+            }
             crate::parser::ReviewItem::Warning(s) => rows.push(DetailRow {
                 label: "!",
                 value: s.clone(),
             }),
-            crate::parser::ReviewItem::Separator => {} // skip — visual gaps are handled by the row layout itself
+            crate::parser::ReviewItem::Separator => {}
         }
     }
 
@@ -3222,7 +3634,7 @@ fn draw_entropy_picker<D: DrawTarget<Color = Rgb565>>(
     display.fill_solid(&screen, theme.bg)?;
 
     let (header_rect, rest) = split_top(screen, theme.header_h as i32);
-    let (body_rect, footer_rect) = split_bottom(rest, theme.footer_h as i32);
+    let (body_rect, _footer_rect) = split_bottom(rest, theme.footer_h as i32);
     let body_rect = Rectangle::new(
         body_rect.top_left,
         Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),

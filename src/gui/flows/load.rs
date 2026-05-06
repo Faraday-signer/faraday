@@ -1,6 +1,5 @@
 //! Load wallet flow.
 
-use crate::crypto::bip39;
 use crate::gui::app::{App, CharGrid, HelpTopic, InputEvent, Screen, WordPicker};
 use crate::qr::decode_qr;
 

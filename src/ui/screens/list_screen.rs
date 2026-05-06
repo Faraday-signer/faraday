@@ -10,7 +10,7 @@ use embedded_graphics::{
     primitives::Rectangle,
 };
 
-use crate::ui::layout::{split_bottom, split_top};
+use crate::ui::layout::split_top;
 use embedded_graphics::{
     text::{Alignment, Text},
     Drawable,

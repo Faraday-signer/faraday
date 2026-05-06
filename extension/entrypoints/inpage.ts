@@ -21,6 +21,16 @@ import type {
 const LOG_PREFIX = "[Faraday][inpage]";
 const BRIDGE_TIMEOUT_MS = 15_000;
 
+// EIP-1193 standard rejection code — Web3 dApps treat this as a clean
+// user-rejection signal and skip retry / fallback paths.
+class UserRejectedError extends Error {
+  readonly code = 4001;
+  constructor(message = "User rejected the request.") {
+    super(message);
+    this.name = "UserRejectedError";
+  }
+}
+
 function debug(message: string, meta?: unknown): void {
   if (meta === undefined) {
     console.debug(`${LOG_PREFIX} ${message}`);
@@ -45,20 +55,22 @@ function messageTypeOf(message: RuntimeRequest | unknown): string {
   return typeof maybe.type === "string" ? maybe.type : "<missing>";
 }
 
-// Faraday brand mark — the 4-square pattern from assets/brand/faraday-mark.svg
-// in our cyan accent on the dark wallet bg. This is what dApps' wallet
-// pickers (Jupiter, Phantom modal, etc.) show next to "Faraday" — the
-// previous generic stripes-on-slate icon was off-brand and made the wallet
-// look unbranded next to Phantom/Backpack/Solflare.
+// Square wallet-picker icon: just the 4-square brand mark, scaled to fill
+// most of the slot. The dApp's UI already renders "Faraday" as text next
+// to the icon, so the icon itself doesn't need to repeat it — and dropping
+// the text lets the mark grow ~2x. Native 103×103 mark mapped into a
+// 200×200 viewBox with ~24 px breathing room on each side.
 const ICON_SVG =
   "data:image/svg+xml," +
   encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 103 103">' +
-      '<rect width="103" height="103" fill="#001721"/>' +
-      '<rect x="14" y="14" width="33" height="33" fill="#1AF8FF"/>' +
-      '<rect x="47" y="47" width="33" height="33" fill="#1AF8FF"/>' +
-      '<rect x="64" y="14" width="16" height="16" fill="#1AF8FF"/>' +
-      '<rect x="14" y="64" width="16" height="16" fill="#1AF8FF"/>' +
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">' +
+      '<rect width="200" height="200" fill="#001721"/>' +
+      '<g transform="translate(-78.4 -19.7) scale(1.5)">' +
+        '<path d="M63 28H114.5V79.5H63V28Z" fill="#1AF8FF"/>' +
+        '<path d="M114.5 79.5H166V131H114.5V79.5Z" fill="#1AF8FF"/>' +
+        '<path d="M140.736 28H166V53.2642H140.736V28Z" fill="#1AF8FF"/>' +
+        '<path d="M63 105.736H88.2642V131H63V105.736Z" fill="#1AF8FF"/>' +
+      '</g>' +
     "</svg>"
   );
 
@@ -283,7 +295,7 @@ class FaradayWallet {
       );
       if (!accepted) {
         warn("User rejected origin approval", { origin });
-        throw new Error("Connection rejected by user.");
+        throw new UserRejectedError("Connection rejected by user.");
       }
 
       const approve = await callBackground({
@@ -365,6 +377,7 @@ class FaradayWallet {
     const first = normalized[0] as { transaction?: unknown } | undefined;
     const txBytes = toUint8Array(first?.transaction ?? first);
     const txBase64 = encodeBase64(txBytes);
+    console.log("[Faraday] TX_BASE64:", txBase64);
 
     const create = await callBackground<CreateSignSessionResult>({
       type: "faraday:create-sign-session",
@@ -398,6 +411,9 @@ class FaradayWallet {
     const done = await this.waitForSession(create.data.sessionId);
     if (done.kind !== "tx") {
       throw new Error("Unexpected signing session type.");
+    }
+    if (done.status === "canceled") {
+      throw new UserRejectedError(done.error || "Signing canceled by user.");
     }
     if (done.status !== "completed" || !done.signedTxBase64) {
       throw new Error(done.error || "Signing was not completed.");
@@ -472,6 +488,9 @@ class FaradayWallet {
     const done = await this.waitForSession(create.data.sessionId);
     if (done.kind !== "message") {
       throw new Error("Unexpected signing session type.");
+    }
+    if (done.status === "canceled") {
+      throw new UserRejectedError(done.error || "Message signing canceled by user.");
     }
     if (done.status !== "completed" || !done.signatureHex) {
       throw new Error(done.error || "Message signing was not completed.");
@@ -574,6 +593,9 @@ class FaradayWallet {
     const done = await this.waitForSession(create.data.sessionId);
     if (done.kind !== "message") {
       throw new Error("Unexpected signing session type.");
+    }
+    if (done.status === "canceled") {
+      throw new UserRejectedError(done.error || "SIWS canceled by user.");
     }
     if (done.status !== "completed" || !done.signatureHex) {
       throw new Error(done.error || "SIWS signing was not completed.");

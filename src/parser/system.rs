@@ -2,7 +2,7 @@
 //!
 //! Reference: https://docs.rs/solana-sdk/latest/solana_sdk/system_instruction/enum.SystemInstruction.html
 
-use crate::parser::bytes::{read_u32_le, read_u64_le};
+use crate::parser::bytes::{pubkey_short, read_u32_le, read_u64_le};
 use crate::parser::{ParsedInstruction, ReviewItem};
 
 pub fn parse(data: &[u8], accounts: &[[u8; 32]]) -> ParsedInstruction {
@@ -209,11 +209,6 @@ pub(crate) fn lamports_to_sol(lamports: u64) -> String {
         let frac_str = format!("{:09}", frac);
         format!("{}.{} SOL", sol, frac_str.trim_end_matches('0'))
     }
-}
-
-fn pubkey_short(key: &[u8; 32]) -> String {
-    let b58 = bs58::encode(key).into_string();
-    format!("{}..{}", &b58[..4], &b58[b58.len() - 4..])
 }
 
 #[cfg(test)]

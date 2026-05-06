@@ -23,11 +23,49 @@ pub(crate) fn read_u32_le(data: &[u8], offset: usize) -> Result<u32, &'static st
         .ok_or("data truncated")
 }
 
+pub(crate) fn read_u16_le(data: &[u8], offset: usize) -> Result<u16, &'static str> {
+    let end = offset.checked_add(2).ok_or("offset overflow")?;
+    data.get(offset..end)
+        .and_then(|s| s.try_into().ok())
+        .map(u16::from_le_bytes)
+        .ok_or("data truncated")
+}
+
 pub(crate) fn read_disc8(data: &[u8], offset: usize) -> Result<[u8; 8], &'static str> {
     let end = offset.checked_add(8).ok_or("offset overflow")?;
     data.get(offset..end)
         .and_then(|s| s.try_into().ok())
         .ok_or("data truncated")
+}
+
+/// Decodes the 19-byte trailer that aggregator swap-instruction data carries
+/// after a variable-length route plan: `in_amount(u64) | out_amount(u64) |
+/// slippage_bps(u16) | platform_fee_bps(u8)`. Used by Jupiter's RoutePlanFirst
+/// layouts and by DFlow.
+pub(crate) fn read_swap_footer(data: &[u8]) -> Result<(u64, u64, u16, u8), &'static str> {
+    const FOOTER: usize = 8 + 8 + 2 + 1;
+    if data.len() < 8 + FOOTER {
+        return Err("data too short for trailing amounts");
+    }
+    let pos = data.len() - FOOTER;
+    let in_amount = read_u64_le(data, pos)?;
+    let out_amount = read_u64_le(data, pos + 8)?;
+    let lo = *data.get(pos + 16).ok_or("data truncated")?;
+    let hi = *data.get(pos + 17).ok_or("data truncated")?;
+    let slippage_bps = u16::from_le_bytes([lo, hi]);
+    let fee_bps = *data.get(pos + 18).ok_or("data truncated")?;
+    Ok((in_amount, out_amount, slippage_bps, fee_bps))
+}
+
+/// Truncated `<head>..<tail>` rendering of a 32-byte pubkey for review-line
+/// display where the full base58 form would overflow the column.
+pub(crate) fn pubkey_short(key: &[u8; 32]) -> String {
+    let b58 = bs58::encode(key).into_string();
+    if b58.len() >= 8 {
+        format!("{}..{}", &b58[..4], &b58[b58.len() - 4..])
+    } else {
+        b58
+    }
 }
 
 #[cfg(test)]
