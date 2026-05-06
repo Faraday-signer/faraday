@@ -3,25 +3,13 @@ import { useCallback, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
-import { address as toAddress } from "@solana/kit";
-
 import { ScreenShell } from "../components/screen-shell";
 import { useAppState } from "../lib/app-state";
+import { parsePairInput } from "../lib/pair-parser";
 import { colors, font, letterSpacing, radius, space } from "../lib/theme";
 import type { RootStackParamList } from "../navigation/root";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PairScan">;
-
-function extractPubkey(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  try {
-    toAddress(trimmed);
-    return trimmed;
-  } catch {
-    return null;
-  }
-}
 
 export function PairScanScreen({ navigation }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
@@ -32,14 +20,18 @@ export function PairScanScreen({ navigation }: Props) {
   const onBarcodeScanned = useCallback(
     async ({ data }: { data: string }) => {
       if (handlingRef.current) return;
-      const pk = extractPubkey(data);
-      if (!pk) {
-        setError("Scanned QR is not a valid Solana address.");
+      const result = parsePairInput(data);
+      if (result.kind === "invalid") {
+        setError("Scanned QR is not a Faraday pair QR or a Solana address.");
+        return;
+      }
+      if (result.kind === "wrong-mode") {
+        setError(result.hint);
         return;
       }
       handlingRef.current = true;
       try {
-        await setPairedPubkey(pk);
+        await setPairedPubkey(result.pubkey);
         navigation.popToTop();
       } catch (e) {
         handlingRef.current = false;

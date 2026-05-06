@@ -3,10 +3,9 @@ import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
-import { address as toAddress } from "@solana/kit";
-
 import { ScreenShell } from "../components/screen-shell";
 import { useAppState } from "../lib/app-state";
+import { parsePairInput } from "../lib/pair-parser";
 import { colors, font, letterSpacing, radius, space } from "../lib/theme";
 import type { RootStackParamList } from "../navigation/root";
 
@@ -34,15 +33,18 @@ export function PairPasteScreen({ navigation }: Props) {
       setError("Address is empty.");
       return;
     }
-    try {
-      toAddress(trimmed);
-    } catch {
+    const result = parsePairInput(trimmed);
+    if (result.kind === "invalid") {
       setError("Not a valid Solana address.");
+      return;
+    }
+    if (result.kind === "wrong-mode") {
+      setError(result.hint);
       return;
     }
     setBusy(true);
     try {
-      await setPairedPubkey(trimmed);
+      await setPairedPubkey(result.pubkey);
       navigation.popToTop();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
