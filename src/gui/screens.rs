@@ -2320,7 +2320,7 @@ fn draw_tx_metadata<D: DrawTarget<Color = Rgb565>>(
         },
         DetailRow {
             label: "SIGNERS",
-            value: parsed.num_signers.to_string(),
+            value: parsed.signers.len().to_string(),
         },
         DetailRow {
             label: "IX COUNT",
@@ -2416,7 +2416,6 @@ fn draw_tx_ix_detail<D: DrawTarget<Color = Rgb565>>(
                 label: "!",
                 value: s.clone(),
             }),
-            crate::parser::ReviewItem::Separator => {}
         }
     }
 
