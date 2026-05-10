@@ -42,7 +42,7 @@ From the repo root:
 ```bash
 # 1. Cross-compile the ARM binary
 cargo install cargo-zigbuild
-cargo zigbuild --release --target arm-unknown-linux-gnueabihf
+cd hardware && cargo zigbuild --release --target arm-unknown-linux-gnueabihf && cd ..
 
 # 2. Build the image
 docker compose up
