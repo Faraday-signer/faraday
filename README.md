@@ -35,10 +35,12 @@ The whole life of a key on Faraday — from birth to use to death — happens in
        |                                  Keys live ONLY in RAM
        |                                        |
        |  1. Build unsigned transaction         |
-       |  2. Display as QR code          -----> |  3. Scan QR with camera
+       |  2. Display as QR code          -----> |
+       |                                        |  3. Scan QR with camera
        |                                        |  4. Display transaction details
        |                                        |  5. User reviews & approves
-       |  7. Scan signed QR back         <----- |  6. Sign & display signed QR
+       |                                        |  6. Sign & display signed QR
+       |  7. Scan signed QR back         <----- |
        |  8. Submit to Solana network           |
        |                                        |
        |                                  POWER OFF
