@@ -29,10 +29,10 @@ The whole life of a key on Faraday — from birth to use to death — happens in
 ```
  [Phone / Laptop]                      [Faraday (air-gapped)]
        |                                        |
-       |                                  1. POWER ON
+       |                                        |  1. POWER ON
        |                                        |
-       |                                  2. CREATE or LOAD wallet
-       |                                     Keys live ONLY in RAM
+       |                                        |  2. CREATE or LOAD wallet
+       |                                        |     Keys live ONLY in RAM
        |                                        |
        |  3. Build unsigned transaction         |
        |  4. Display as QR code          -----> |
@@ -43,8 +43,8 @@ The whole life of a key on Faraday — from birth to use to death — happens in
        |  9. Scan signed QR back         <----- |
        | 10. Submit to Solana network           |
        |                                        |
-       |                                 11. POWER OFF
-       |                                     ☠ seed wiped from RAM
+       |                                        | 11. POWER OFF
+       |                                        |     ☠ seed wiped from RAM
        |                                        |
        |  Private key NEVER crosses this gap    |
 ```
