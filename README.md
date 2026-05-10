@@ -1,6 +1,9 @@
 <div align="center">
   <img src="hardware/assets/brand/faraday-logo.svg" alt="Faraday" width="320">
   <p><strong>Air-gapped Solana signer. $35 in parts. Pure Rust.</strong></p>
+  <p>
+    <a href="https://github.com/Faraday-signer/faraday/actions/workflows/ci.yml"><img src="https://github.com/Faraday-signer/faraday/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  </p>
 </div>
 
 ---
@@ -86,8 +89,8 @@ Create a wallet (`CREATE → 12 WORDS → RANDOM`) or load an existing one. Leav
 **2. Extension** (in a second terminal):
 ```bash
 cd extension
-pnpm install
-pnpm run dev
+npm install
+npm run dev
 ```
 WXT builds to `extension/.output/chrome-mv3/`. Load it in Chrome:
 1. Open `chrome://extensions`, toggle **Developer mode** on
@@ -96,8 +99,8 @@ WXT builds to `extension/.output/chrome-mv3/`. Load it in Chrome:
 **3. Playground** (in a third terminal):
 ```bash
 cd playground
-pnpm install
-pnpm run dev
+npm install
+npm run dev
 ```
 Opens at <http://localhost:4173>.
 
