@@ -299,7 +299,7 @@ mod tests {
     #[test]
     fn looks_like_tx_rejects_solana_address() {
         // 32-byte base58 address is way under the min tx length
-        let addr = b"GAthe6Gh8xEuJobQWB3cLUBFjsGtyvsk";
+        let addr = b"11111111111111111111111111111111";
         assert!(!looks_like_solana_tx(addr));
     }
 

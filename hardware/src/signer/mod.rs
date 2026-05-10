@@ -342,34 +342,6 @@ mod tests {
         assert!(verify_signature(message, &sig_arr, &kp.public_key).is_ok());
     }
 
-    /// Live V0 payload captured off the device. Used to reproduce signing
-    /// against a realistic versioned tx (6 static account keys, not our
-    /// synthetic 2-key shape).
-    const DEVICE_V0_TX_B64: &str = include_str!("../../testdata/fixtures/v0_tx.b64");
-
-    #[test]
-    fn sign_tx_v0_device_capture_with_test_mnemonic() {
-        use crate::crypto::{bip39, slip0010};
-        // Test mnemonic's derived keypair is `GAthe6Gh…MsfT`, which is
-        // account[0] (the signer) of the captured tx.
-        let mnemonic =
-            "warm stage brain flag busy bless situate fox push crouch caution direct";
-        let seed = bip39::mnemonic_to_seed(mnemonic, "");
-        let kp = slip0010::derive_solana_keypair(&seed, 0).unwrap();
-
-        let b64 = DEVICE_V0_TX_B64.trim();
-        let signed = sign_transaction_base64(&b64, &kp.private_key, &kp.public_key)
-            .expect("V0 device tx must sign cleanly with the test mnemonic");
-
-        // Version prefix must survive, signature must verify against the
-        // full message bytes (prefix included) — this is what the Solana
-        // network expects.
-        let sigs_end = 1 + 1 * 64;
-        let message = &signed.signed_bytes[sigs_end..];
-        assert_eq!(message[0], 0x80);
-        assert!(verify_signature(message, &signed.signature, &kp.public_key).is_ok());
-    }
-
     #[test]
     fn sign_tx_v0_versioned_round_trip() {
         // V0 versioned-tx signing was silently failing before the fix: the

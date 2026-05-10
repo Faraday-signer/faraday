@@ -9,9 +9,10 @@ cargo run --features simulator --bin gen-test-tx
 
 ## `self_transfer.{png,bin}`
 
-- **From / To:** `GAthe6Gh8xEuJobQWB3cLUBFjsGtyvsk7Y3BeQMkMsfT` (self-transfer)
-- **Mnemonic (account 0, no passphrase):** `warm stage brain flag busy bless
-  situate fox push crouch caution direct`
+- **From / To:** `HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk` (self-transfer)
+- **Mnemonic (account 0, no passphrase):** `abandon abandon abandon abandon
+  abandon abandon abandon abandon abandon abandon abandon about` — the canonical
+  BIP39 test vector. **Never put a real seed in this file.**
 - **Amount:** 10,000,000 lamports (0.01 SOL)
 - **Instructions:** 1× System::Transfer
 - **Blockhash:** placeholder (`0xAB * 32`) — **not submittable**; for UI demos only.

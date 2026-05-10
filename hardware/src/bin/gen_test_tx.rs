@@ -6,7 +6,8 @@
 //! Outputs land in `testdata/examples/` (committed to the repo so demo
 //! materials are available without re-running this tool).
 //!
-//! Default mnemonic derives `GAthe6Gh8xEuJobQWB3cLUBFjsGtyvsk7Y3BeQMkMsfT`.
+//! Default mnemonic is the canonical BIP39 test vector (`abandon × 11 + about`)
+//! — never put a real seed in this file.
 
 // Pulls whole modules via `#[path]` but only uses a subset.
 #![allow(dead_code)]
@@ -22,7 +23,7 @@ use base64::Engine;
 use image::{GrayImage, Luma};
 
 const DEFAULT_MNEMONIC: &str =
-    "warm stage brain flag busy bless situate fox push crouch caution direct";
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
 const LAMPORTS: u64 = 10_000_000; // 0.01 SOL
 
