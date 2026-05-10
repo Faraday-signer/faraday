@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Faraday",
+    "slug": "faraday-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#001721"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "io.faraday.mobile"
+    },
+    "android": {
+      "package": "io.faraday.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#001721"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Faraday needs the camera to scan device QR codes."
+        }
+      ],
+      [
+        "expo-font",
+        {
+          "fonts": ["./assets/fonts/DepartureMono-Regular.otf"]
+        }
+      ]
+    ]
+  }
+}
