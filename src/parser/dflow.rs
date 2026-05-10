@@ -359,16 +359,12 @@ mod tests {
             usdc_ata,
             crate::parser::token_registry::AtaEntry {
                 mint: usdc_mint(),
-                symbol: "USDC",
-                decimals: 6,
             },
         );
         ata_map.insert(
             wsol_ata,
             crate::parser::token_registry::AtaEntry {
                 mint: wsol_mint(),
-                symbol: "SOL",
-                decimals: 9,
             },
         );
 
@@ -409,16 +405,12 @@ mod tests {
             usdc_ata,
             crate::parser::token_registry::AtaEntry {
                 mint: usdc_mint(),
-                symbol: "USDC",
-                decimals: 6,
             },
         );
         ata_map.insert(
             wsol_ata,
             crate::parser::token_registry::AtaEntry {
                 mint: wsol_mint(),
-                symbol: "SOL",
-                decimals: 9,
             },
         );
 
