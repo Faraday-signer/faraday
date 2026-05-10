@@ -24,45 +24,60 @@ Faraday isn't just a device. It's a suite:
 
 ## How it works
 
+The whole life of a key on Faraday — from birth to use to death — happens in a single diagram. **No part of it touches a network.**
+
 ```
- [Phone / Laptop]                      [Faraday (air-gapped)]
-       |                                        |
-       |  1. Build unsigned transaction         |
-       |  2. Display as QR code          -----> |  3. Scan QR with camera
-       |                                        |  4. Display transaction details
-       |                                        |  5. User reviews & approves
-       |  7. Scan signed QR back         <----- |  6. Sign & display signed QR
-       |  8. Submit to Solana network           |
-       |                                        |
-       |  Private key NEVER crosses this gap    |
+                         ┌──────────────────────────────┐
+                         │   Faraday (air-gapped Pi)    │
+                         │                              │
+   POWER ON ─────────►   │   CREATE                     │
+                         │   ├─ pick 12 or 24 words     │
+                         │   ├─ entropy: dice / coin /  │
+                         │   │  camera noise / device   │
+                         │   ├─ optional BIP39 passph.  │
+                         │   └─ write seed down on      │
+                         │      paper, NOT on a phone   │
+                         │                              │
+                         │             ── or ──         │
+                         │                              │
+                         │   LOAD                       │
+                         │   └─ restore a Faraday-      │
+                         │      created seed (SeedQR    │
+                         │      or typed) — never load  │
+                         │      a seed that has ever    │
+                         │      been online             │
+                         │                              │
+                         │   ↓                          │
+                         │   Keys live ONLY in RAM      │
+                         │                              │
+   [Phone / Laptop]      │                              │
+        |                │                              │
+        | unsigned QR ─► │   SIGN                       │
+        |                │   ├─ scan QR via camera      │
+        |                │   ├─ decode tx, show details │
+        |                │   ├─ user reviews & approves │
+        | signed QR ◄─── │   └─ display signed QR       │
+        |                │                              │
+        | broadcast      │                              │
+        |                │                              │
+   POWER OFF ─────────►  │   ☠ seed wiped from RAM     │
+                         │     no disk, no journal,     │
+                         │     no recovery on next boot │
+                         └──────────────────────────────┘
+
+   Private key NEVER crosses the air gap. The only durable copy
+   of your seed is the one you wrote down on paper.
 ```
 
 Every transaction is **decoded and shown in human terms** before signing — Jupiter swaps, Raydium swaps, SPL transfers, stake operations, Anchor program calls, all parsed offline without touching an RPC. See [Transaction parser](#transaction-parser).
 
-### Creating a wallet on the device
+### A note on importing existing seeds
 
-Faraday generates seeds **on the device itself** — entropy never originates on a connected machine.
+Faraday's **LOAD** flow exists so you can restore a Faraday-created seed onto a new device (or after a power cycle). It is **not** a path for migrating a Phantom / Solflare / Backpack wallet onto Faraday.
 
-1. **CREATE** → choose 12 or 24 words
-2. Pick an entropy source: **dice rolls**, **coin flips**, **camera noise**, or device random
-3. Faraday derives the BIP39 mnemonic from your raw entropy and shows it word-by-word for you to write down
-4. Optional **passphrase** (BIP39 passphrase, with confirmation)
-5. Faraday displays the derived address (Solana standard derivation) — scan it from the extension or the mobile app to pair
+If a seed phrase was ever generated on, displayed on, or typed into an internet-connected device, treat it as already known to attackers — current or future. The whole point of Faraday is that your seed was *born* offline and stays offline. Loading an online-born seed onto Faraday gives you the air-gapped *signing* protection but leaves the *seed itself* compromised; the moment that wallet holds anything worth taking, an attacker who's been sitting on the seed can drain it from anywhere.
 
-### Loading an existing wallet
-
-Already have a Solana seed phrase from Phantom, Solflare, or another standards-compliant wallet? Import it.
-
-1. **LOAD** → choose 12 or 24 words
-2. Either type the words on the on-screen keyboard, or scan a SeedQR / CompactSeedQR backup
-3. Optional passphrase
-4. Same address derivation as Phantom/Solflare — your existing accounts appear unchanged
-
-### Power off wipes everything
-
-Faraday's strongest property and its most important promise: **keys exist only in RAM**. The OS root filesystem is read-only. There is no swap, no journaled filesystem, no write path that touches persistent storage with seed material. The moment you cut power, the seed is gone.
-
-This means the *durable* backup of your wallet is the seed phrase you wrote down (or the SeedQR you printed). Faraday is a signer, not a vault — it holds keys only while powered, and is happy to forget them.
+If you have a wallet that's already been online and you want to move to Faraday: create a fresh wallet on Faraday, transfer your assets to its address, and retire the old seed.
 
 ## What's in this repo
 
