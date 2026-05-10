@@ -28,7 +28,7 @@
 //! opaque without the IDL.
 
 use crate::parser::anchor;
-use crate::parser::bytes::{pubkey_short, read_disc8, read_swap_footer, read_u64_le};
+use crate::parser::bytes::{pubkey_short, read_disc8, read_u64_le};
 use crate::parser::token_registry::{self, AtaMap};
 use crate::parser::{ParsedInstruction, ReviewItem};
 
@@ -166,18 +166,11 @@ fn resolve_user_mints(
 /// inner Token transfers directly.
 const PLAUSIBLE_AMOUNT_CAP: u64 = 10_000_000_000_000_000;
 
-fn amounts_look_plausible(in_amount: u64, out_amount: u64) -> bool {
-    in_amount > 0
-        && out_amount > 0
-        && in_amount < PLAUSIBLE_AMOUNT_CAP
-        && out_amount < PLAUSIBLE_AMOUNT_CAP
-}
-
 fn parse_swap(
     data: &[u8],
-    account_indices: &[u8],
-    all_accounts: &[[u8; 32]],
-    ata_map: &AtaMap,
+    _account_indices: &[u8],
+    _all_accounts: &[[u8; 32]],
+    _ata_map: &AtaMap,
 ) -> ParsedInstruction {
     let mut items: Vec<ReviewItem> = Vec::new();
     items.push(ReviewItem::Header("DFlow swap".into()));

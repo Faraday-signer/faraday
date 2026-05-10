@@ -269,8 +269,8 @@ fn detect_swap_shape(tx_bytes: &[u8], fee_lamports: u64) -> Option<ZonedAction> 
     // touched (e.g. wrap-and-swap touches both WSOL + the receive
     // token); we disambiguate later by excluding the SEND mint.
     let mut signer_atas_touched: Vec<token_registry::AtaEntry> = Vec::new();
-    let mut record_touched = |entry: token_registry::AtaEntry,
-                              acc: &mut Vec<token_registry::AtaEntry>| {
+    let record_touched = |entry: token_registry::AtaEntry,
+                          acc: &mut Vec<token_registry::AtaEntry>| {
         if !acc.iter().any(|e| e.mint == entry.mint) {
             acc.push(entry);
         }
