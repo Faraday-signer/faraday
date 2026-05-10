@@ -99,6 +99,14 @@ A 240×240 window opens. Pick `CREATE → 12 or 24 WORDS → RANDOM` to generate
 | X | Key2 | Secondary action |
 | Escape | Key3 | Back / Cancel |
 
+### Windows (WSL)
+
+For Windows, working in WSL is recommended, but the Windows camera isn't available inside it. To work around this:
+
+- **File camera:** Use `cargo run --features simulator-no-cam` — opens a JPEG, PNG, or animated GIF each time the camera is triggered.
+- **USB/IP:** Attach the camera to WSL with [usbipd-win](https://github.com/dorssel/usbipd-win), then use `--features simulator` normally.
+- **Native Windows build:** Compile on Windows pointing to the WSL repo path (`\\wsl$\Ubuntu\home\…\faraday`) — the camera works directly.
+
 ## End-to-end demo (simulator + extension + playground)
 
 Run all three locally — no Pi needed — to see the full sign flow.
