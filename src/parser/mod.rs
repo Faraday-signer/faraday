@@ -312,7 +312,7 @@ fn detect_swap_shape(tx_bytes: &[u8], fee_lamports: u64) -> Option<ZonedAction> 
                         // address is a plain SOL send and would have been
                         // caught by `extract_send` earlier.
                         if let Some(entry) = ata_map.get(to) {
-                            if entry.symbol == "SOL" {
+                            if token_registry::lookup(&entry.mint).map_or(false, |i| i.symbol == "SOL") {
                                 sol_outflow_into_wrap =
                                     sol_outflow_into_wrap.saturating_add(lamports);
                                 record_touched(*entry, &mut signer_atas_touched);
@@ -410,16 +410,18 @@ fn detect_swap_shape(tx_bytes: &[u8], fee_lamports: u64) -> Option<ZonedAction> 
     let (send_symbol, send_amount_raw, send_decimals, send_mint) = if sol_outflow_into_wrap > 0 {
         let sol_entry = ata_map
             .values()
-            .find(|e| e.symbol == "SOL")
+            .find(|e| token_registry::lookup(&e.mint).map_or(false, |i| i.symbol == "SOL"))
             .copied()?;
+        let sol_info = token_registry::lookup(&sol_entry.mint)?;
         (
-            sol_entry.symbol,
+            sol_info.symbol,
             sol_outflow_into_wrap,
-            sol_entry.decimals,
+            sol_info.decimals,
             sol_entry.mint,
         )
     } else if let Some((amount, entry)) = token_outflow {
-        (entry.symbol, amount, entry.decimals, entry.mint)
+        let info = token_registry::lookup(&entry.mint)?;
+        (info.symbol, amount, info.decimals, entry.mint)
     } else {
         return None;
     };
@@ -440,7 +442,10 @@ fn detect_swap_shape(tx_bytes: &[u8], fee_lamports: u64) -> Option<ZonedAction> 
         // Empty `buy_amount` is the explicit "device cannot verify this
         // number offline" signal. The renderer surfaces it as a dash.
         buy_amount: String::new(),
-        buy_symbol: receive_entry.symbol.to_string(),
+        buy_symbol: token_registry::lookup(&receive_entry.mint).map_or_else(
+            || bs58::encode(receive_entry.mint).into_string(),
+            |i| i.symbol.to_string(),
+        ),
         fee_lamports,
         fee_payer,
         dex_name: String::new(),
@@ -525,7 +530,8 @@ fn resolve_dflow_dest(tx_bytes: &[u8]) -> Option<(u64, u16, u8, &'static str)> {
     let raw_out = u64::from_le_bytes(swap_d[pos..pos + 8].try_into().ok()?);
     let slip = u16::from_le_bytes(swap_d[pos + 8..pos + 10].try_into().ok()?);
 
-    Some((raw_out, slip, dest.decimals, dest.symbol))
+    let dest_info = token_registry::lookup(&dest.mint)?;
+    Some((raw_out, slip, dest_info.decimals, dest_info.symbol))
 }
 
 fn extract_send(tx_bytes: &[u8]) -> Option<ZonedAction> {

@@ -25,6 +25,10 @@
 
 const UNRESOLVED: [u8; 32] = [0xFF; 32];
 
+pub fn is_unresolved(key: &[u8; 32]) -> bool {
+    *key == UNRESOLVED
+}
+
 /// Expands a v0 transaction's static account list with resolved ALT entries.
 ///
 /// Follows the Solana v0 account ordering:
