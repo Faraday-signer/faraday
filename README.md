@@ -1,6 +1,6 @@
 <div align="center">
   <img src="hardware/assets/brand/faraday-logo.svg" alt="Faraday" width="320">
-  <p><strong>Air-gapped Solana signer. $35 in parts. Pure Rust.</strong></p>
+  <p><strong>Open-source, air-gapped Solana signing suite.</strong></p>
   <p>
     <a href="https://github.com/Faraday-signer/faraday/actions/workflows/ci.yml"><img src="https://github.com/Faraday-signer/faraday/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   </p>
@@ -10,11 +10,17 @@
 
 ## Why Faraday exists
 
-Hot wallets get drained. Hardware wallets cost $80–$200, lock you into proprietary firmware, and most still trust a USB cable to the same machine that just clicked the malicious link.
+AI is getting smarter every day, and **anything online will eventually be hacked**. Hot wallets get drained. Browser extensions ship malicious updates. The hardware wallets people fall back on are mostly **closed source** — users end up trusting a vendor's firmware, the vendor's update channel, the vendor's RNG, and the vendor's promise that the secure element really is secure. You can't verify any of it.
 
-Faraday is a **DIY hardware signer for Solana** built on a Raspberry Pi Zero 1.3 — a board with **no WiFi, no Bluetooth, no network silicon at all**. The only way data crosses the air gap is QR codes scanned through the Pi camera. Total bill of materials: ~$35.
+Faraday flips that. The whole stack is open: signer firmware, OS image recipe, browser extension, mobile companion. You can read the code, build it yourself, and verify that the binary you run is the one you compiled.
 
-Everything is open source: firmware, OS image recipe, browser extension, mobile companion. You can audit it, fork it, build your own, and verify the binary you flash matches the source you read.
+The signer device itself has **no antennas**. No WiFi, no Bluetooth, no NFC, no cellular — the Pi Zero 1.3 board doesn't physically contain a network chip. The only channel into or out of Faraday is the camera reading QR codes and the screen displaying them. There is no remote attack surface because there is no remote.
+
+Faraday isn't just a device. It's a suite:
+
+- **The signer** (`hardware/`) — Rust firmware for the air-gapped device, also runnable as a desktop simulator
+- **The browser extension** (`extension/`) — Wallet Standard companion that relays dapp signing requests over QR
+- **The mobile app** (`mobile/`) — Watch-only wallet for the Solana Seeker phone with QR-relay signing
 
 ## How it works
 
@@ -32,6 +38,31 @@ Everything is open source: firmware, OS image recipe, browser extension, mobile 
 ```
 
 Every transaction is **decoded and shown in human terms** before signing — Jupiter swaps, Raydium swaps, SPL transfers, stake operations, Anchor program calls, all parsed offline without touching an RPC. See [Transaction parser](#transaction-parser).
+
+### Creating a wallet on the device
+
+Faraday generates seeds **on the device itself** — entropy never originates on a connected machine.
+
+1. **CREATE** → choose 12 or 24 words
+2. Pick an entropy source: **dice rolls**, **coin flips**, **camera noise**, or device random
+3. Faraday derives the BIP39 mnemonic from your raw entropy and shows it word-by-word for you to write down
+4. Optional **passphrase** (BIP39 passphrase, with confirmation)
+5. Faraday displays the derived address (Solana standard derivation) — scan it from the extension or the mobile app to pair
+
+### Loading an existing wallet
+
+Already have a Solana seed phrase from Phantom, Solflare, or another standards-compliant wallet? Import it.
+
+1. **LOAD** → choose 12 or 24 words
+2. Either type the words on the on-screen keyboard, or scan a SeedQR / CompactSeedQR backup
+3. Optional passphrase
+4. Same address derivation as Phantom/Solflare — your existing accounts appear unchanged
+
+### Power off wipes everything
+
+Faraday's strongest property and its most important promise: **keys exist only in RAM**. The OS root filesystem is read-only. There is no swap, no journaled filesystem, no write path that touches persistent storage with seed material. The moment you cut power, the seed is gone.
+
+This means the *durable* backup of your wallet is the seed phrase you wrote down (or the SeedQR you printed). Faraday is a signer, not a vault — it holds keys only while powered, and is happy to forget them.
 
 ## What's in this repo
 
@@ -53,7 +84,7 @@ Every transaction is **decoded and shown in human terms** before signing — Jup
 | Display | Waveshare 1.3" LCD HAT | 240×240, ST7789, 3 buttons + joystick |
 | Camera | Pi Camera v1.3 (OV5647) | QR code scanning + entropy capture |
 
-Total cost: **~$35**. Any Pi Zero v1.3 or 2 W with WiFi physically removed/disabled also works, but the original Zero is the simplest because the chip just isn't there.
+Total cost: **~$35**. Any Pi works — including ones with WiFi, if you already own one. The original Zero v1.3 is recommended because the network chip simply isn't there, so there's nothing to misconfigure or trust to "off".
 
 ## Quick start (desktop simulator)
 
@@ -66,7 +97,7 @@ cargo run --features simulator
 
 Or from the repo root: `just sim`.
 
-A 240×240 window opens. Pick `CREATE → 12 WORDS → RANDOM` to generate a wallet with on-screen entropy.
+A 240×240 window opens. Pick `CREATE → 12 or 24 WORDS → RANDOM` to generate a wallet with on-screen entropy.
 
 | Key | Hardware button | Action |
 |-----|-----------------|--------|
@@ -84,7 +115,7 @@ Run all three locally — no Pi needed — to see the full sign flow.
 cd hardware
 cargo run --features simulator
 ```
-Create a wallet (`CREATE → 12 WORDS → RANDOM`) or load an existing one. Leave it running.
+Create a wallet (`CREATE → 12 or 24 WORDS → RANDOM`) or load an existing one. Leave it running.
 
 **2. Extension** (in a second terminal):
 ```bash
@@ -105,7 +136,7 @@ npm run dev
 Opens at <http://localhost:4173>.
 
 **4. Drive the loop:**
-1. Click the Faraday extension icon → **Pair** to your simulator's pubkey (shown on `MAIN MENU → SETTINGS → ADDRESS`)
+1. Click the Faraday extension icon → **Pair** to your simulator's pubkey (shown on `MAIN MENU → SETTINGS → ADDRESS QR` — scan or copy)
 2. In the playground, click **Connect** → approve in the extension
 3. Click **Airdrop 1 SOL** (devnet)
 4. Click **Sign + send transfer** → unsigned tx QR appears in the extension's sign window
