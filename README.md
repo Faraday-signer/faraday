@@ -1,10 +1,19 @@
-# Faraday
+<div align="center">
+  <img src="assets/brand/faraday-logo.svg" alt="Faraday" width="320">
+  <p><strong>Air-gapped Solana signer. $35 in parts. Pure Rust.</strong></p>
+</div>
 
-Air-gapped Solana transaction signer for Raspberry Pi Zero. Pure Rust.
+---
 
-**Your private keys never touch the internet. Ever.**
+## Why Faraday exists
 
-## How It Works
+Hot wallets get drained. Hardware wallets cost $80–$200, lock you into proprietary firmware, and most still trust a USB cable to the same machine that just clicked the malicious link.
+
+Faraday is a **DIY hardware signer for Solana** built on a Raspberry Pi Zero 1.3 — a board with **no WiFi, no Bluetooth, no network silicon at all**. The only way data crosses the air gap is QR codes scanned through the Pi camera. Total bill of materials: ~$35.
+
+Everything is open source: firmware, OS image recipe, browser extension, mobile companion. You can audit it, fork it, build your own, and verify the binary you flash matches the source you read.
+
+## How it works
 
 ```
  [Phone / Laptop]                      [Faraday (air-gapped)]
@@ -19,37 +28,146 @@ Air-gapped Solana transaction signer for Raspberry Pi Zero. Pure Rust.
        |  Private key NEVER crosses this gap    |
 ```
 
-No WiFi. No Bluetooth. No network. Communication happens exclusively through QR codes.
+Every transaction is **decoded and shown in human terms** before signing — Jupiter swaps, Raydium swaps, SPL transfers, stake operations, Anchor program calls, all parsed offline without touching an RPC. See [Transaction parser](#transaction-parser).
+
+## What's in this repo
+
+| Path | What it is |
+|------|------------|
+| [`src/`](src) | Rust firmware for the Pi Zero — also runs as a desktop simulator (`cargo run --features simulator`) for development |
+| [`opt/`](opt) | Buildroot recipe that produces the Pi OS image. See [`opt/README.md`](opt/README.md) |
+| [`extension/`](extension) | Chromium browser extension — Wallet Standard companion that relays dapp signing requests to Faraday over QR. See [`extension/README.md`](extension/README.md) |
+| [`mobile/`](mobile) | React Native + Expo wallet for the Solana Seeker phone (work in progress). See [`mobile/README.md`](mobile/README.md) |
+| [`playground/`](playground) | Vite devnet dapp for exercising the extension end-to-end. See [`playground/README.md`](playground/README.md) |
+| [`site/`](site) | Next.js marketing site (separate deploy target) |
+| [`testdata/`](testdata) | Real mainnet transactions captured for parser tests. See [`testdata/README.md`](testdata/README.md) |
+| [`scripts/`](scripts) | Helper scripts (e.g. `fetch_alt.py` to capture frozen Address Lookup Tables) |
+| [`assets/`](assets) | Brand SVGs, fonts, printable SeedQR templates |
 
 ## Hardware
 
 | Component | Model | Purpose |
 |-----------|-------|---------|
-| Computer | Raspberry Pi Zero 1.3 | No WiFi/BT chip |
-| Display | Waveshare 1.3" LCD HAT | 240x240, ST7789, 3 buttons + joystick |
-| Camera | Pi Camera (OV5647) | QR code scanning + entropy capture |
+| Computer | Raspberry Pi Zero 1.3 | No WiFi/BT chip on this revision (v1.3, **not** Zero W) |
+| Display | Waveshare 1.3" LCD HAT | 240×240, ST7789, 3 buttons + joystick |
+| Camera | Pi Camera v1.3 (OV5647) | QR code scanning + entropy capture |
 
-Total cost: ~$35
+Total cost: **~$35**. Any Pi Zero v1.3 or 2 W with WiFi physically removed/disabled also works, but the original Zero is the simplest because the chip just isn't there.
 
-## Features
+## Quick start (desktop simulator)
 
-- **Wallet Creation**: Generate seeds from dice rolls, coin flips, camera entropy, or device random
-- **Passphrase Support**: Optional BIP39 passphrase with confirmation
-- **Transaction Signing**: Scan unsigned tx QR, review decoded details per instruction type, approve, display signed QR
-- **Message Signing**: Sign arbitrary messages (login, identity verification) via QR — `0xFF` prefix distinguishes messages from transactions
-- **SeedQR**: Backup/restore seeds as compact QR codes
-- **Manual Import**: Enter 12 or 24 BIP39 words via on-screen keyboard
-- **Air-gapped**: Keys exist only in RAM, wiped on power off
+You don't need any hardware to try Faraday — the same code that runs on the Pi runs on macOS/Linux/Windows with a webcam.
 
-## Security Model
+```bash
+cargo run --features simulator
+```
 
-1. **No network hardware** — Pi Zero 1.3 has no WiFi/Bluetooth chip
-2. **RAM-only keys** — Seeds never written to disk. Power off = keys gone
-3. **Verifiable transactions** — Full tx details shown before signing
-4. **Open source** — All code is auditable
-5. **Minimal surface** — No web server, no database, no unnecessary services
+A 240×240 window opens. Pick `CREATE → 12 WORDS → RANDOM` to generate a wallet with on-screen entropy.
 
-## QR Payload Format
+| Key | Hardware button | Action |
+|-----|-----------------|--------|
+| Arrow keys | Joystick | Navigate |
+| Enter / Z | Key1 / JoyPress | Confirm |
+| X | Key2 | Secondary action |
+| Escape | Key3 | Back / Cancel |
+
+## End-to-end demo (simulator + extension + playground)
+
+Run all three locally — no Pi needed — to see the full sign flow.
+
+**1. Simulator:**
+```bash
+cargo run --features simulator
+```
+Create a wallet (`CREATE → 12 WORDS → RANDOM`) or load an existing one. Leave it running.
+
+**2. Extension** (in a second terminal):
+```bash
+cd extension
+pnpm install
+pnpm run dev
+```
+WXT builds to `extension/.output/chrome-mv3/`. Load it in Chrome:
+1. Open `chrome://extensions`, toggle **Developer mode** on
+2. Click **Load unpacked** → pick `extension/.output/chrome-mv3/`
+
+**3. Playground** (in a third terminal):
+```bash
+cd playground
+pnpm install
+pnpm run dev
+```
+Opens at <http://localhost:4173>.
+
+**4. Drive the loop:**
+1. Click the Faraday extension icon → **Pair** to your simulator's pubkey (shown on `MAIN MENU → SETTINGS → ADDRESS`)
+2. In the playground, click **Connect** → approve in the extension
+3. Click **Airdrop 1 SOL** (devnet)
+4. Click **Sign + send transfer** → unsigned tx QR appears in the extension's sign window
+5. Point the simulator's camera at the QR → review → approve → it shows the signed QR
+6. Scan the signed QR back in the extension → playground broadcasts → check the explorer link
+
+[`extension/README.md`](extension/README.md) and [`playground/README.md`](playground/README.md) have details and troubleshooting.
+
+## Building the Pi OS image
+
+The OS is a minimal Buildroot Linux that boots straight into the Faraday binary, with no networking, no shell on the framebuffer, and a read-only root.
+
+```bash
+# 1. Cross-compile the ARM binary
+cargo install cargo-zigbuild
+cargo zigbuild --release --target arm-unknown-linux-gnueabihf
+
+# 2. Build the OS image (uses Docker — first build takes ~30 min, cached rebuilds are fast)
+docker compose up
+
+# 3. Flash to SD card (find your device with `diskutil list` first)
+just flash DEVICE=/dev/diskN
+```
+
+Image lands at `images/faraday_os.pi0.img`. See [`opt/README.md`](opt/README.md) for what's inside the OS, what's stripped out, and how to customize it.
+
+## `just` commands
+
+```
+just sim          # Run the desktop simulator
+just arm          # Cross-compile the ARM binary for Pi Zero
+just image        # Build the full Pi OS image (cold Buildroot — slow)
+just image-fast   # Rebuild reusing warm Buildroot state
+just flash DEVICE # Flash to SD card (DEVICE=/dev/diskN)
+just ext          # Build the browser extension
+just test         # cargo test
+just check        # Type-check both simulator and Pi targets
+```
+
+## Transaction parser
+
+Faraday decodes Solana transactions before signing so users see human-readable details instead of raw bytes. Both legacy and v0 (versioned) transaction formats are supported. **All decoding happens offline — no RPC.**
+
+| Program | Instructions decoded |
+|---------|---------------------|
+| System | Transfer, CreateAccount, CreateAccountWithSeed, Allocate, TransferWithSeed |
+| SPL Token / Token-2022 | Transfer, TransferChecked, Approve, ApproveChecked, Revoke, MintTo, MintToChecked, Burn, BurnChecked, CloseAccount |
+| Stake | Initialize, DelegateStake, Split, Withdraw, Deactivate, Merge |
+| Jupiter v6 | Route, RouteV2, SharedAccountsRoute, ExactOutRoute, RouteWithTokenLedger (10 variants) |
+| Jupiter Ultra / RFQ | Swap variants with RFQ pricing |
+| DFlow | Swap (heuristic decode of trailing footer) |
+| Raydium AMM v4 | SwapBaseIn, SwapBaseOut |
+| Raydium CLMM | Swap, SwapV2 |
+| Raydium CPMM | SwapBaseInput, SwapBaseOutput |
+| Associated Token | CreateAccount |
+| ComputeBudget | SetComputeUnitLimit, SetComputeUnitPrice |
+| Memo | Inline memo text |
+| Unknown | Program ID + raw data shown with a warning |
+
+For Jupiter swaps, mints are resolved offline through a hardcoded registry of ~30 well-known tokens (SOL, USDC, JUP, etc.) plus deterministic ATA derivation — no network call. When a mint can't be resolved, a warning is shown instead of a misleading symbol.
+
+To add a new program:
+1. Create `src/parser/<program>.rs` with `pub fn parse(data, accounts) -> ParsedInstruction`
+2. Register the program ID in `src/parser/programs.rs`
+3. Add a match arm in `dispatch()` in `src/parser/mod.rs`
+
+## QR payload format
 
 QR codes carry base64-encoded payloads. A single prefix byte determines the type:
 
@@ -60,251 +178,34 @@ QR codes carry base64-encoded payloads. A single prefix byte determines the type
 
 Transactions use no prefix — the first byte is `num_signatures` (typically `0x01`), which is always a valid transaction header. The `0xFF` prefix is reserved for messages because no valid transaction can have 255 signatures.
 
-### Message signing flow
+For payloads that exceed a single QR's capacity, Faraday uses [UR](https://github.com/BlockchainCommons/Research/blob/master/papers/bcr-2020-005-ur.md) (Uniform Resource) animated QR streams.
 
-```
- [Companion App]                         [Faraday]
-       |                                      |
-       |  1. Prepend 0xFF to message bytes    |
-       |  2. Base64-encode                    |
-       |  3. Display as QR code        -----> |  4. Scan QR, detect 0xFF prefix
-       |                                      |  5. Display message for review
-       |  7. Scan signature QR back    <----- |  6. User approves → sign with Ed25519
-       |  8. Verify signature                 |
-```
+## Security model
 
-## Project Structure
+1. **No network hardware.** Pi Zero 1.3 has no WiFi/Bluetooth chip — not "disabled", physically absent.
+2. **RAM-only keys.** Seeds never touch persistent storage. Power off = keys gone. The OS rootfs is read-only.
+3. **Verifiable transactions.** Full decoded details shown on-screen before signing. The user is the final approval.
+4. **Open source, reproducible.** All firmware, OS recipe, and companion apps are auditable. Cross-compile + Buildroot make the build deterministic given the same toolchain.
+5. **Minimal surface.** No web server, no daemon, no SSH, no shell on the framebuffer.
+6. **Pre-sign risk analysis** (in the browser extension) catches drainer patterns — unlimited approvals, ownership changes, token impersonators, simulated balance drops — before the signing QR is even displayed.
 
-```
-src/
-├── main.rs               # Entry point (simulator + Pi modes)
-├── crypto/
-│   ├── mod.rs            # BIP39 mnemonics, SLIP-0010 derivation, Ed25519
-│   └── pda.rs            # Program Derived Address derivation (offline, no SDK)
-├── gui/
-│   ├── app.rs            # App struct, Screen enum, input types, transition dispatcher
-│   ├── flows/
-│   │   ├── create.rs     # Create wallet flow (word count, entropy, verify, passphrase)
-│   │   ├── load.rs       # Load wallet flow (scan QR, enter words, passphrase)
-│   │   ├── sign.rs       # Sign TX flow (scan, review, approve, display signed QR)
-│   │   └── settings.rs   # Settings flow (address, accounts, export, power off)
-│   ├── screens.rs        # Screen rendering (all draw functions)
-│   ├── components.rs     # Reusable UI components
-│   ├── colors.rs         # Color palette
-│   ├── icons.rs          # Icon bitmaps
-│   └── framebuffer.rs    # In-memory framebuffer (simulator)
-├── hardware/             # ST7789 display driver, GPIO buttons
-├── qr/
-│   ├── encode_qr.rs      # QR encoding (SeedQR, CompactSeedQR, address, signed tx)
-│   └── decode_qr.rs      # QR decoding, type detection (tx vs message via 0xFF prefix)
-├── parser/
-│   ├── mod.rs            # Entry point: parse(tx_bytes) → ParsedTransaction, to_lines()
-│   ├── message.rs        # Solana wire format deserializer (legacy + v0 versioned)
-│   ├── programs.rs       # Known program ID registry (System, Token, Stake, Jupiter, Raydium, …)
-│   ├── system.rs         # System Program instruction parser
-│   ├── token.rs          # SPL Token / Token-2022 instruction parser
-│   ├── stake.rs          # Stake Program instruction parser
-│   ├── anchor.rs         # Anchor discriminator computation (sha256("global:{name}")[..8])
-│   ├── token_registry.rs # Hardcoded token list + offline ATA derivation for mint resolution
-│   ├── jupiter.rs        # Jupiter v6 aggregator swap parser (10 instruction variants)
-│   ├── raydium/
-│   │   ├── mod.rs        # Shared types (SwapInfo) and helpers (format, ATA resolution)
-│   │   ├── amm_v4.rs     # AMM v4 legacy swap parser (non-Anchor, u8 discriminator)
-│   │   ├── clmm.rs       # CLMM concentrated liquidity swap parser (Anchor)
-│   │   └── cpmm.rs       # CPMM constant-product v2 swap parser (Anchor)
-│   └── unknown.rs        # Fallback parser for unrecognised programs
-└── signer/               # Ed25519 transaction and message signing
+## BIP39 wordlist
 
-build.rs                  # Downloads BIP39 wordlist from bitcoin/bips, verifies SHA256
-opt/                      # Buildroot OS build system for Pi Zero
-```
+The wordlist is **not bundled** in the repo. At build time, `build.rs` fetches it directly from the canonical [bitcoin/bips](https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt) repository and verifies the SHA256 checksum. If the hash doesn't match, the build fails. No trust required — verify the constant in `build.rs` yourself.
 
-## Transaction Parser
-
-Faraday decodes Solana transactions before signing so users see human-readable details instead of raw bytes. Both legacy and v0 (versioned) transaction formats are supported.
-
-Recognised programs:
-
-| Program | Instructions decoded |
-|---------|---------------------|
-| System | Transfer, CreateAccount, CreateAccountWithSeed, Allocate, TransferWithSeed |
-| SPL Token / Token-2022 | Transfer, TransferChecked, Approve, ApproveChecked, Revoke, MintTo, MintToChecked, Burn, BurnChecked, CloseAccount |
-| Stake | Initialize, DelegateStake, Split, Withdraw, Deactivate, Merge |
-| Jupiter v6 | Route, RouteV2, SharedAccountsRoute, SharedAccountsRouteV2, ExactOutRoute, ExactOutRouteV2, SharedAccountsExactOutRoute, SharedAccountsExactOutRouteV2, RouteWithTokenLedger, SharedAccountsRouteWithTokenLedger |
-| Raydium AMM v4 | SwapBaseIn, SwapBaseOut |
-| Raydium CLMM | Swap, SwapV2 |
-| Raydium CPMM | SwapBaseInput, SwapBaseOutput |
-| Associated Token | CreateAccount |
-| ComputeBudget | SetComputeUnitLimit, SetComputeUnitPrice |
-| Memo | Inline memo text |
-| Unknown | Program ID + raw data shown with a warning |
-
-To add support for a new program:
-1. Create `src/parser/<program>.rs` with `pub fn parse(data, accounts) -> ParsedInstruction`
-2. Register the program ID in `src/parser/programs.rs`
-3. Add a match arm in the `dispatch()` function in `src/parser/mod.rs`
-
-### Jupiter v6 Parser
-
-Jupiter swaps are the most complex instructions Faraday parses. The parser works entirely offline:
-
-1. **Anchor discriminators** (`anchor.rs`) — Jupiter uses the Anchor framework, so instruction variants are identified by their 8-byte discriminator: `sha256("global:{instruction_name}")[..8]`
-2. **Instruction decoding** (`jupiter.rs`) — Parses 10 swap variants across two data layouts (route-plan-first for v1, amounts-first for v2). Extracts input/output amounts, slippage (bps), and platform fee
-3. **Token identification** (`token_registry.rs`) — Hardcoded list of ~30 well-known tokens (SOL, USDC, JUP, etc.) with symbols and decimals. For shared-accounts variants, mints are read directly from the account list. For non-shared variants (where mints live in address lookup tables and can't be resolved air-gapped), ATA derivation identifies the token
-4. **PDA derivation** (`crypto/pda.rs`) — Derives Associated Token Account addresses offline using `sha256(signer + token_program + mint + bump + ata_program + "ProgramDerivedAddress")`, matching Solana's `find_program_address`
-
-What the user sees on the review screen:
-
-```
-[Jupiter Swap]
-  Type: shared_accounts_route
-  You spend: 1.5 SOL
-  You receive (min): 150 USDC
-  Slippage: 50 bps (0.50%)
-```
-
-When a mint can't be resolved (e.g. token in a lookup table not in the registry), a warning is shown instead of a symbol.
-
-### Raydium Parser
-
-Raydium has three on-chain programs, each in its own file under `parser/raydium/`:
-
-| Program | File | Discriminator | Mint resolution |
-|---------|------|---------------|-----------------|
-| **AMM v4** (legacy) | `amm_v4.rs` | u8 (non-Anchor) | ATA derivation (mints not in accounts) |
-| **CLMM** (concentrated liquidity) | `clmm.rs` | Anchor 8-byte | swap: ATA derivation / swap_v2: explicit in accounts |
-| **CPMM** (constant-product v2) | `cpmm.rs` | Anchor 8-byte | Explicit in accounts |
-
-Shared code (token formatting, ATA resolution, error helpers) lives in `raydium/mod.rs`. Each program file is self-contained: modifying one doesn't affect the others, and adding a new Raydium program means adding a file + one line in `programs.rs` and `mod.rs`.
-
-## Quick Start (Desktop Simulator)
-
-```bash
-cargo run --features simulator
-```
-
-### Simulator Controls
-
-| Key | Hardware Button | Action |
-|-----|----------------|--------|
-| Arrow keys | Joystick | Navigate |
-| Enter / Z | Key1 / JoyPress | Confirm |
-| X | Key2 | Secondary action |
-| Escape | Key3 | Back / Cancel |
-
-## Browser Extension + Playground (end-to-end demo)
-
-The browser extension relays Wallet Standard requests from dapps to the
-Faraday device over QR codes. The playground is a small Solana devnet dapp
-for exercising the whole flow on one machine — simulator + extension +
-playground all running locally.
-
-### 1. Run the Faraday simulator
-
-In a terminal:
-
-```bash
-cargo run --bin faraday --features simulator
-```
-
-A 240×240 window opens. Create a wallet (`CREATE → 12 WORDS → RANDOM → …`)
-or load one (`LOAD → TYPE / SCAN QR`). Leave this running.
-
-### 2. Build and load the extension
-
-In a second terminal:
-
-```bash
-cd extension
-npm install
-npm run dev
-```
-
-WXT builds the extension in watch mode to `extension/.output/chrome-mv3/`.
-Load it in Chrome:
-
-1. Open `chrome://extensions`
-2. Toggle **Developer mode** on (top right)
-3. Click **Load unpacked**
-4. Pick `extension/.output/chrome-mv3/`
-
-The Faraday icon appears in the toolbar. Leave `npm run dev` running so
-hot-reload keeps the extension in sync.
-
-### 3. Start the playground dapp
-
-In a third terminal:
-
-```bash
-cd playground
-npm install
-npm run dev
-```
-
-Vite serves at <http://localhost:4173>.
-
-### 4. Exercise the signing loop
-
-1. Click the Faraday extension icon → side panel opens
-2. **Pair** the extension to your simulator's pubkey (shown on
-   `MAIN MENU → SETTINGS → ADDRESS` — scan the QR *or* copy-paste)
-3. In the playground tab, click **Connect** and approve the origin in the
-   extension
-4. (Optional) Click **Airdrop 1 SOL** to fund the devnet wallet
-5. Click **Sign + send transfer**:
-   - the extension opens a sign window showing the unsigned-tx QR
-   - point the simulator window's camera at it (or use the test-data shortcut
-     during development)
-   - approve on the simulator — it displays the signed-tx QR
-   - scan that QR back in the extension's sign window
-   - the playground broadcasts to devnet and logs the explorer URL
-
-If any step looks wrong, `extension/README.md` and `playground/README.md`
-have more detail + troubleshooting.
-
-## Cross-Compile for Pi Zero
-
-```bash
-# Install cross-compilation toolchain
-cargo install cargo-zigbuild
-
-# Build ARM binary
-cargo zigbuild --release --target arm-unknown-linux-gnueabihf
-```
-
-## Build OS Image
-
-```bash
-docker compose up
-```
-
-Image output: `images/faraday_os.pi0.img`
-
-## Flash to SD Card
-
-```bash
-diskutil unmountDisk /dev/diskN
-sudo dd if=images/faraday_os.pi0.img of=/dev/rdiskN bs=4m status=progress
-diskutil eject /dev/diskN
-```
-
-## BIP39 Wordlist
-
-The wordlist is **not bundled** in the repo. At build time, `build.rs` fetches it directly from the canonical [bitcoin/bips](https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt) repository and verifies the SHA256 checksum (`2f5eed53...`). If the hash doesn't match, the build fails. No trust required — verify it yourself.
-
-## Derivation Path
+## Derivation path
 
 Solana standard: `m/44'/501'/0'/0'` (all hardened, Ed25519/SLIP-0010)
 
-- 44' — BIP-44 purpose (multi-account HD wallets)                                                                                                                                                                                       
-- 501' — Solana coin type
-- 0' — account index                                                                                                                                                                                                                    
-- 0' — address index (all hardened because Ed25519/SLIP-0010 doesn't support non-hardened derivation)
+- `44'` — BIP-44 purpose (multi-account HD wallets)
+- `501'` — Solana coin type
+- `0'` — account index
+- `0'` — address index (all hardened because Ed25519/SLIP-0010 doesn't support non-hardened derivation)
 
-Compatible with Phantom, Solflare, and other Solana wallets.
+Compatible with Phantom, Solflare, and other Solana wallets — the seed you create on Faraday can be restored in any standards-compliant Solana wallet, and vice versa.
 
 ## License
 
-Business Source License 1.1 — see [LICENSE](LICENSE)
+Business Source License 1.1 — see [LICENSE](LICENSE).
 
 You may use, copy, and modify the code for non-production purposes (learning, testing, personal use, contributions). Production and commercial use requires a license from the author. The code converts to Apache 2.0 on 2030-04-16.
