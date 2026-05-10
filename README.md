@@ -27,43 +27,28 @@ Faraday isn't just a device. It's a suite:
 The whole life of a key on Faraday — from birth to use to death — happens in a single diagram. **No part of it touches a network.**
 
 ```
-                         ┌──────────────────────────────┐
-                         │   Faraday (air-gapped Pi)    │
-                         │                              │
-   POWER ON ─────────►   │   CREATE                     │
-                         │   ├─ pick 12 or 24 words     │
-                         │   ├─ entropy: dice / coin /  │
-                         │   │  camera noise / device   │
-                         │   ├─ optional BIP39 passph.  │
-                         │   └─ write seed down on      │
-                         │      paper, NOT on a phone   │
-                         │                              │
-                         │             ── or ──         │
-                         │                              │
-                         │   LOAD                       │
-                         │   └─ restore a Faraday-      │
-                         │      created seed (SeedQR    │
-                         │      or typed) — never load  │
-                         │      a seed that has ever    │
-                         │      been online             │
-                         │                              │
-                         │   ↓                          │
-                         │   Keys live ONLY in RAM      │
-                         │                              │
-   [Phone / Laptop]      │                              │
-        |                │                              │
-        | unsigned QR ─► │   SIGN                       │
-        |                │   ├─ scan QR via camera      │
-        |                │   ├─ decode tx, show details │
-        |                │   ├─ user reviews & approves │
-        | signed QR ◄─── │   └─ display signed QR       │
-        |                │                              │
-        | broadcast      │                              │
-        |                │                              │
-   POWER OFF ─────────►  │   ☠ seed wiped from RAM     │
-                         │     no disk, no journal,     │
-                         │     no recovery on next boot │
-                         └──────────────────────────────┘
+                            ┌──────────────────────────────┐
+                            │   Faraday (air-gapped Pi)    │
+                            │                              │
+   CREATE  or  LOAD ──────► │   Wallet                     │
+                            │                              │
+                            │   ↓                          │
+                            │   Keys live ONLY in RAM      │
+                            │                              │
+   [Phone / Laptop]         │                              │
+        |                   │                              │
+        | unsigned QR ─►    │   SIGN                       │
+        |                   │   ├─ scan QR via camera      │
+        |                   │   ├─ decode tx, show details │
+        |                   │   ├─ user reviews & approves │
+        | signed QR ◄──     │   └─ display signed QR       │
+        |                   │                              │
+        | broadcast         │                              │
+        |                   │                              │
+   POWER OFF ────────────►  │   ☠ seed wiped from RAM     │
+                            │     no disk, no journal,     │
+                            │     no recovery on next boot │
+                            └──────────────────────────────┘
 
    Private key NEVER crosses the air gap. The only durable copy
    of your seed is the one you wrote down on paper.
