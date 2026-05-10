@@ -16,11 +16,11 @@ image: arm
 image-fast: arm
     BUILD_ARGS='--pi0 --no-clean' docker compose up
 
-# Flash the latest Pi image to the SD card at /dev/disk9.
-flash:
-    diskutil unmountDisk /dev/disk9
-    sudo dd if=images/faraday_os.pi0.img of=/dev/rdisk9 bs=4m status=progress
-    diskutil eject /dev/disk9
+# Flash the latest Pi image to an SD card. Pass DEVICE=/dev/diskN (find with `diskutil list`).
+flash DEVICE:
+    diskutil unmountDisk {{DEVICE}}
+    sudo dd if=images/faraday_os.pi0.img of={{replace(DEVICE, "/dev/disk", "/dev/rdisk")}} bs=4m status=progress
+    diskutil eject {{DEVICE}}
 
 # Build the browser extension (Chromium MV3 → extension/.output/chrome-mv3).
 ext:
