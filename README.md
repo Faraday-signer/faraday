@@ -27,31 +27,24 @@ Faraday isn't just a device. It's a suite:
 The whole life of a key on Faraday — from birth to use to death — happens in a single diagram. **No part of it touches a network.**
 
 ```
-                            ┌──────────────────────────────┐
-                            │   Faraday (air-gapped Pi)    │
-                            │                              │
-   CREATE  or  LOAD ──────► │   Wallet                     │
-                            │                              │
-                            │   ↓                          │
-                            │   Keys live ONLY in RAM      │
-                            │                              │
-   [Phone / Laptop]         │                              │
-        |                   │                              │
-        | unsigned QR ─►    │   SIGN                       │
-        |                   │   ├─ scan QR via camera      │
-        |                   │   ├─ decode tx, show details │
-        |                   │   ├─ user reviews & approves │
-        | signed QR ◄──     │   └─ display signed QR       │
-        |                   │                              │
-        | broadcast         │                              │
-        |                   │                              │
-   POWER OFF ────────────►  │   ☠ seed wiped from RAM     │
-                            │     no disk, no journal,     │
-                            │     no recovery on next boot │
-                            └──────────────────────────────┘
-
-   Private key NEVER crosses the air gap. The only durable copy
-   of your seed is the one you wrote down on paper.
+ [Phone / Laptop]                      [Faraday (air-gapped)]
+       |                                        |
+       |                                  POWER ON
+       |                                        |
+       |                                  CREATE or LOAD wallet
+       |                                  Keys live ONLY in RAM
+       |                                        |
+       |  1. Build unsigned transaction         |
+       |  2. Display as QR code          -----> |  3. Scan QR with camera
+       |                                        |  4. Display transaction details
+       |                                        |  5. User reviews & approves
+       |  7. Scan signed QR back         <----- |  6. Sign & display signed QR
+       |  8. Submit to Solana network           |
+       |                                        |
+       |                                  POWER OFF
+       |                                  ☠ seed wiped from RAM
+       |                                        |
+       |  Private key NEVER crosses this gap    |
 ```
 
 Every transaction is **decoded and shown in human terms** before signing — Jupiter swaps, Raydium swaps, SPL transfers, stake operations, Anchor program calls, all parsed offline without touching an RPC. See [Transaction parser](#transaction-parser).
