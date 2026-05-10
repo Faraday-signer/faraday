@@ -1,6 +1,9 @@
 //! Dev helper: generate a CompactSeedQR PNG from a test mnemonic. Used to
 //! point a Pi camera at a clean machine-generated QR when debugging scans.
 
+// Pulls whole modules via `#[path]` but only uses a subset.
+#![allow(dead_code)]
+
 #[path = "../crypto/mod.rs"]
 mod crypto;
 

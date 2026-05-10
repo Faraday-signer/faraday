@@ -161,30 +161,15 @@ impl App {
 
             // Load flow
             Screen::LoadMethod { selected } => draw_load_method(display, *selected),
-            Screen::LoadScanQr => {
-                #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
-                {
-                    draw_scan_overlay(
-                        display,
-                        "Scan SeedQR",
-                        "Point camera at SeedQR",
-                        self.seed_loaded(),
-                        self.has_camera_frame(),
-                        self.camera_error_str(),
-                        self.scan_diag,
-                    )?;
-                }
-                #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
-                {
-                    draw_message(
-                        display,
-                        "Scan SeedQR",
-                        "Point camera at\nSeedQR code",
-                        self.seed_loaded(),
-                    )?;
-                }
-                Ok(())
-            }
+            Screen::LoadScanQr => draw_scan_overlay(
+                display,
+                "Scan SeedQR",
+                "Point camera at SeedQR",
+                self.seed_loaded(),
+                self.has_camera_frame(),
+                self.camera_error_str(),
+                self.scan_diag,
+            ),
             Screen::LoadWordCount { selected } => {
                 // Same visual as Create's word-count picker — the choice is
                 // the same, only the state-machine edges differ.
@@ -228,29 +213,15 @@ impl App {
             Screen::DerivationError => draw_derivation_error(display),
 
             // Sign TX flow
-            Screen::SignScanTx => {
-                #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
-                {
-                    draw_scan_overlay(
-                        display,
-                        "Sign TX",
-                        "Point camera at TX QR",
-                        self.seed_loaded(),
-                        self.has_camera_frame(),
-                        self.camera_error_str(),
-                        self.scan_diag,
-                    )
-                }
-                #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
-                {
-                    draw_message(
-                        display,
-                        "Sign TX",
-                        "Scan unsigned TX QR\nX: Sign Message",
-                        self.seed_loaded(),
-                    )
-                }
-            }
+            Screen::SignScanTx => draw_scan_overlay(
+                display,
+                "Sign TX",
+                "Point camera at TX QR",
+                self.seed_loaded(),
+                self.has_camera_frame(),
+                self.camera_error_str(),
+                self.scan_diag,
+            ),
             Screen::SignReview {
                 tx_bytes,
                 info_lines,
@@ -347,6 +318,8 @@ impl App {
                         self.scan_diag,
                     )
                 }
+                // Fallback for `simulator_no_cam` builds (window without nokhwa) on
+                // non-Linux hosts: no live camera, so prompt the user instead.
                 #[cfg(not(any(feature = "simulator", target_os = "linux")))]
                 {
                     draw_message(
@@ -1390,6 +1363,9 @@ fn draw_qr_block<D: DrawTarget<Color = Rgb565>>(
     Ok(())
 }
 
+// Only compiled for `simulator_no_cam` on non-Linux hosts (the one place
+// VerifyBackupScan needs a no-camera fallback). See `Screen::VerifyBackupScan`.
+#[cfg(not(any(feature = "simulator", target_os = "linux")))]
 fn draw_message<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     title: &str,

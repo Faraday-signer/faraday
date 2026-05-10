@@ -55,6 +55,7 @@ pub fn rgb_to_gray(rgb: &[u8], width: u32, height: u32) -> Vec<u8> {
 /// downsample aggressively before handing to the decoder. The Sign-TX
 /// screen can see dense single-frame txs (V20+) that need full resolution.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)] // SmallQr unused in `simulator_no_cam` (file picker)
 pub enum ScanMode {
     /// Full-resolution decode. Use when QR density is unbounded.
     Full,
@@ -133,6 +134,7 @@ fn downsample_center_square(frame: &Frame, factor: u32) -> (u32, u32, Vec<u8>) {
 /// reassembling). Camera backends use the extra signal to drive the scan-
 /// screen heartbeat so the user can distinguish "camera sees nothing"
 /// from "camera sees a fragment, waiting for more".
+#[allow(dead_code)] // unused in `simulator_no_cam` (file picker)
 pub fn try_decode_qr_ur_diag(
     frame: &Frame,
     accumulator: &mut crate::qr::ur_decoder::UrAccumulator,

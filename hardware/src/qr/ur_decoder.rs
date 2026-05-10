@@ -1,6 +1,9 @@
 //! Accumulates UR (Uniform Resource) fountain-coded QR frames and
 //! reconstructs the original payload once enough frames are received.
 
+// Unused in `simulator_no_cam` (file picker, no animated-QR stream).
+#![allow(dead_code)]
+
 extern crate alloc;
 
 /// Wraps `ur::Decoder` with progress tracking and UR-detection logic.

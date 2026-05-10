@@ -8,6 +8,9 @@
 //!
 //! Default mnemonic derives `GAthe6Gh8xEuJobQWB3cLUBFjsGtyvsk7Y3BeQMkMsfT`.
 
+// Pulls whole modules via `#[path]` but only uses a subset.
+#![allow(dead_code)]
+
 #[path = "../crypto/mod.rs"]
 mod crypto;
 
