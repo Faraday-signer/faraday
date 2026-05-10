@@ -40,9 +40,8 @@ type ScanResult =
  * Parse a QR payload as a pairing input. Supports three formats in order of
  * preference:
  *
- *   1. `faraday:pair:<address>` — preferred tagged envelope (see
- *      docs/proposals/qr-uri-envelope.md). Device firmware ships this when
- *      the user opens the Pair screen.
+ *   1. `faraday:pair:<address>` — preferred tagged envelope. Device firmware
+ *      ships this when the user opens the Pair screen.
  *   2. `solana:<address>[?params]` — ecosystem-standard receive URI. Accepted
  *      as a fallback while the device still emits this format.
  *   3. Bare base58 address — last-resort accepted for pasting; discouraged

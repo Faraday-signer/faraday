@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel in-progress runs for the same branch when a new push lands.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Treat all rustc warnings as hard errors. Keeps the warning count at
+  # zero so real issues stand out.
+  RUSTFLAGS: "-D warnings"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust-host:
+    name: Rust (host - ${{ matrix.features }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [simulator, simulator_no_cam]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hardware
+      # Some optional deps (nokhwa, minifb) need X11/V4L2 headers on Linux.
+      - name: Install linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libv4l-dev libudev-dev libxkbcommon-dev pkg-config
+      - name: cargo check
+        working-directory: hardware
+        run: cargo check --features ${{ matrix.features }}
+
+  rust-test:
+    name: Rust tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hardware
+      - name: Install linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libv4l-dev libudev-dev libxkbcommon-dev pkg-config
+      - name: cargo test
+        working-directory: hardware
+        run: cargo test --features simulator
+
+  rust-arm:
+    name: Rust (Pi Zero ARM cross-compile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: arm-unknown-linux-gnueabihf
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hardware
+          key: arm
+      - uses: mlugg/setup-zig@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+      - name: cargo zigbuild (ARM)
+        working-directory: hardware
+        run: cargo zigbuild --release --target arm-unknown-linux-gnueabihf
+
+  extension:
+    name: Extension typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - name: npm ci
+        working-directory: extension
+        run: npm ci
+      - name: typecheck
+        working-directory: extension
+        run: npm run typecheck
+
+  mobile:
+    name: Mobile typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: npm ci
+        working-directory: mobile
+        run: npm ci
+      - name: typecheck
+        working-directory: mobile
+        run: npm run typecheck
+
+  playground:
+    name: Playground typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: playground/package-lock.json
+      - name: npm ci
+        working-directory: playground
+        run: npm ci
+      - name: typecheck
+        working-directory: playground
+        run: npm run typecheck

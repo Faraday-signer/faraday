@@ -2,7 +2,7 @@
 """
 Fetch a Solana Address Lookup Table from chain, verify it's FROZEN
 (authority = None, immutable), and emit Rust constant code for
-`src/parser/lookup_tables.rs`.
+`hardware/src/parser/lookup_tables.rs`.
 
 Hardware-wallet invariant: we only trust ATLs whose on-chain content
 cannot change after our snapshot. That requires the ATL's authority to
