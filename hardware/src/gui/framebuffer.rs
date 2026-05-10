@@ -43,18 +43,6 @@ impl Framebuffer {
             .collect()
     }
 
-    /// Convert to raw bytes for ST7789 SPI (big-endian RGB565).
-    /// Used on Pi hardware to push framebuffer to display via SPI.
-    #[cfg(target_os = "linux")]
-    pub fn to_spi_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(self.pixels.len() * 2);
-        for &p in &self.pixels {
-            bytes.push((p >> 8) as u8);
-            bytes.push((p & 0xFF) as u8);
-        }
-        bytes
-    }
-
     /// Blit an RGB frame from the webcam into the full framebuffer using a
     /// center-crop + nearest-neighbor scale so the preview fills 240x240
     /// without distortion.
