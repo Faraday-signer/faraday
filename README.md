@@ -101,7 +101,7 @@ A 240×240 window opens. Pick `CREATE → 12 or 24 WORDS → RANDOM` to generate
 
 ### Windows (WSL)
 
-Working in WSL is recommended, but the Windows camera isn't available inside it. To work around this:
+For Windows, working in WSL is recommended, but the Windows camera isn't available inside it. To work around this:
 
 - **File camera:** Use `cargo run --features simulator-no-cam` — opens a JPEG, PNG, or animated GIF each time the camera is triggered.
 - **USB/IP:** Attach the camera to WSL with [usbipd-win](https://github.com/dorssel/usbipd-win), then use `--features simulator` normally.
