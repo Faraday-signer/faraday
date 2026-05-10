@@ -29,22 +29,22 @@ The whole life of a key on Faraday — from birth to use to death — happens in
 ```
  [Phone / Laptop]                      [Faraday (air-gapped)]
        |                                        |
-       |                                  POWER ON
+       |                                  1. POWER ON
        |                                        |
-       |                                  CREATE or LOAD wallet
-       |                                  Keys live ONLY in RAM
+       |                                  2. CREATE or LOAD wallet
+       |                                     Keys live ONLY in RAM
        |                                        |
-       |  1. Build unsigned transaction         |
-       |  2. Display as QR code          -----> |
-       |                                        |  3. Scan QR with camera
-       |                                        |  4. Display transaction details
-       |                                        |  5. User reviews & approves
-       |                                        |  6. Sign & display signed QR
-       |  7. Scan signed QR back         <----- |
-       |  8. Submit to Solana network           |
+       |  3. Build unsigned transaction         |
+       |  4. Display as QR code          -----> |
+       |                                        |  5. Scan QR with camera
+       |                                        |  6. Display transaction details
+       |                                        |  7. User reviews & approves
+       |                                        |  8. Sign & display signed QR
+       |  9. Scan signed QR back         <----- |
+       | 10. Submit to Solana network           |
        |                                        |
-       |                                  POWER OFF
-       |                                  ☠ seed wiped from RAM
+       |                                 11. POWER OFF
+       |                                     ☠ seed wiped from RAM
        |                                        |
        |  Private key NEVER crosses this gap    |
 ```
