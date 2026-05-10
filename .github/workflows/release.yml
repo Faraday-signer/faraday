@@ -1,0 +1,140 @@
+name: Release
+
+# Tag a commit with `v*` (e.g. `v0.1.0`) to cut a release. The job
+# cross-compiles the Pi Zero binary, runs the Buildroot OS build, and
+# publishes the resulting image (`.img` and zipped) plus a SHA256SUMS
+# manifest as GitHub Release assets.
+#
+# Manual trigger is also allowed via the Actions tab — useful for
+# regenerating an asset without bumping a tag.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  pi-image:
+    name: Build Pi Zero image
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free up disk space
+        # Default ubuntu runners only have ~14GB free; Buildroot needs more.
+        # Drop the toolchains we don't use to claw back ~30GB.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: arm-unknown-linux-gnueabihf
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hardware
+          key: arm
+
+      - uses: mlugg/setup-zig@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+
+      - name: Cross-compile ARM binary
+        working-directory: hardware
+        run: cargo zigbuild --release --target arm-unknown-linux-gnueabihf
+
+      - name: Build Pi OS image (Buildroot via Docker)
+        run: docker compose up --exit-code-from build-images
+
+      - name: Package release artifacts
+        id: pkg
+        run: |
+          # Strip the leading `v` from a tag like `v0.1.0`; fall back to short SHA
+          # for manual workflow_dispatch runs.
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(git rev-parse --short HEAD)"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          cd images
+          IMG="faraday_os.${VERSION}.pi0.img"
+          mv faraday_os.pi0.img "${IMG}"
+          zip -9 "${IMG}.zip" "${IMG}"
+          sha256sum "${IMG}" "${IMG}.zip" > "faraday_os.${VERSION}.sha256.txt"
+          ls -lh
+
+      - name: Upload artifacts (always, for inspection)
+        uses: actions/upload-artifact@v4
+        with:
+          name: faraday-os-${{ steps.pkg.outputs.version }}
+          path: |
+            images/faraday_os.*.pi0.img.zip
+            images/faraday_os.*.sha256.txt
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            images/faraday_os.${{ steps.pkg.outputs.version }}.pi0.img.zip
+            images/faraday_os.${{ steps.pkg.outputs.version }}.sha256.txt
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          body: |
+            ## Faraday OS — Pi Zero image
+
+            Pre-built, ready to flash. Verify the SHA256 against
+            `faraday_os.${{ steps.pkg.outputs.version }}.sha256.txt` before
+            flashing — every release artifact is reproducible from this tag,
+            and the `Build Pi OS image` step in [this workflow run][run]
+            shows exactly how it was produced.
+
+            **Flash with `dd` (macOS / Linux):**
+
+            ```
+            unzip faraday_os.${{ steps.pkg.outputs.version }}.pi0.img.zip
+            sudo dd if=faraday_os.${{ steps.pkg.outputs.version }}.pi0.img \
+                    of=/dev/diskN bs=4m status=progress
+            ```
+
+            (Replace `diskN` with your SD card device — find it with
+            `diskutil list` on macOS or `lsblk` on Linux.)
+
+            **Windows:** unzip the `.img.zip`, then write the `.img` with
+            [Raspberry Pi Imager](https://www.raspberrypi.com/software/) →
+            "Use custom image".
+
+            ### Verify before flashing
+
+            ```
+            shasum -a 256 -c faraday_os.${{ steps.pkg.outputs.version }}.sha256.txt
+            ```
+
+            ### Build it yourself instead
+
+            Faraday is open source. To audit the binary you flash, build the
+            image from this exact tag:
+
+            ```
+            git checkout ${{ github.ref_name }}
+            just image
+            ```
+
+            See [`opt/README.md`](../tree/${{ github.ref_name }}/opt/README.md)
+            for build details.
+
+            [run]: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

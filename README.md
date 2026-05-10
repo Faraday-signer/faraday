@@ -138,9 +138,25 @@ Opens at <http://localhost:4173>.
 
 [`extension/README.md`](extension/README.md) and [`playground/README.md`](playground/README.md) have details and troubleshooting.
 
-## Building the Pi OS image
+## Getting a Pi OS image
 
 The OS is a minimal Buildroot Linux that boots straight into the Faraday binary, with no networking, no shell on the framebuffer, and a read-only root.
+
+### Option A: download a pre-built image
+
+Each tagged release publishes a `faraday_os.<version>.pi0.img.zip` plus a SHA256SUMS file under [GitHub Releases](https://github.com/Faraday-signer/faraday/releases). Verify the hash before flashing — the `Build Pi Zero image` workflow run linked from each release shows exactly how the artifact was produced.
+
+```bash
+unzip faraday_os.<version>.pi0.img.zip
+shasum -a 256 -c faraday_os.<version>.sha256.txt
+just flash DEVICE=/dev/diskN
+```
+
+On Windows, unzip and write the `.img` with [Raspberry Pi Imager](https://www.raspberrypi.com/software/) → "Use custom image".
+
+### Option B: build it yourself
+
+You should do this if you care about supply-chain integrity at all. The pre-built image is a convenience; the source is the source of truth.
 
 ```bash
 # 1. Cross-compile the ARM binary
