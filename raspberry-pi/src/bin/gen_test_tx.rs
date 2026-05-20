@@ -9,15 +9,8 @@
 //! Default mnemonic is the canonical BIP39 test vector (`abandon × 11 + about`)
 //! — never put a real seed in this file.
 
-// Pulls whole modules via `#[path]` but only uses a subset.
-#![allow(dead_code)]
-
-#[path = "../crypto/mod.rs"]
-mod crypto;
-
-#[path = "../qr/mod.rs"]
-mod qr;
-
+use faraday_core::crypto;
+use faraday_core::qr;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use image::{GrayImage, Luma};

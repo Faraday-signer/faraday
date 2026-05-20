@@ -877,12 +877,8 @@ name = "faraday"
 version = "0.1.0"
 dependencies = [
  "base64",
- "bs58",
- "embedded-graphics",
  "embedded-graphics-core",
  "faraday-core",
- "getrandom 0.2.17",
- "hex",
  "image",
  "minifb",
  "nokhwa",
@@ -890,9 +886,6 @@ dependencies = [
  "rfd",
  "rppal",
  "rxing",
- "sha2",
- "u8g2-fonts",
- "zeroize",
 ]
 
 [[package]]
@@ -902,12 +895,15 @@ dependencies = [
  "base64",
  "bs58",
  "ed25519-dalek",
+ "embedded-graphics",
+ "embedded-graphics-core",
  "getrandom 0.2.17",
  "hex",
  "hmac",
  "pbkdf2",
  "qrcode",
  "sha2",
+ "u8g2-fonts",
  "ur",
  "zeroize",
 ]

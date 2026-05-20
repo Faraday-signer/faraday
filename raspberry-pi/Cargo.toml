@@ -34,18 +34,8 @@ required-features = ["simulator"]
 [dependencies]
 faraday-core = { path = "../core" }
 
-# Display rendering
-embedded-graphics = "0.8"
 embedded-graphics-core = "0.4"
-u8g2-fonts = { version = "0.5", features = ["embedded_graphics_textstyle"] }
-
-# Used directly by gui modules (will move to core in phase 1.3)
-sha2 = "0.10"
-bs58 = "0.5"
-hex = "0.4"
 base64 = "0.22"
-zeroize = { version = "1", features = ["zeroize_derive"] }
-getrandom = "0.2"
 
 # QR decoding + image buffer. `rxing` is paired with an Otsu binarize pass
 # (core/src/qr/threshold.rs) so it copes with hand-drawn CompactSeedQR

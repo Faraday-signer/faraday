@@ -9,3 +9,5 @@ pub mod parser;
 pub mod signer;
 pub mod qr;
 pub mod camera;
+pub mod gui;
+pub mod ui;

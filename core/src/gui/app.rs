@@ -5,16 +5,6 @@ use crate::crypto::slip0010::SolanaKeypair;
 use crate::gui::flows;
 use zeroize::Zeroize;
 
-// Camera backend selection. Exactly one of these is compiled per build:
-// macOS simulator uses nokhwa; Pi Linux uses V4L2. On targets with neither
-// (e.g. headless cross-platform builds) the camera fields on `App` are absent.
-#[cfg(feature = "simulator")]
-type Camera = crate::gui::sim_camera::SimCamera;
-#[cfg(feature = "simulator_no_cam")]
-type Camera = crate::gui::file_camera::FileCamera;
-#[cfg(all(target_os = "linux", not(feature = "_desktop_sim")))]
-type Camera = crate::hardware::pi_camera::PiCamera;
-
 /// Platform-independent input event.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InputEvent {
@@ -775,18 +765,9 @@ pub struct App {
     /// deterministic function of `elapsed()`, so transitions in and out of
     /// the splash don't cause it to jump.
     pub splash_anim_start: std::time::Instant,
-    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
-    pub camera: Option<Camera>,
-    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
     pub latest_frame: Option<crate::camera::Frame>,
-    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
     pub camera_error: Option<String>,
-    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
     pub scanned_qr: Option<Vec<u8>>,
-    /// Latest scan-pipeline diagnostics from the camera thread. Refreshed
-    /// each `tick()` on scan screens so the UI can show a live indicator of
-    /// whether QRs are being detected at all.
-    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
     pub scan_diag: crate::camera::ScanDiagnostics,
 }
 
@@ -802,15 +783,9 @@ impl App {
             last_activity: std::time::Instant::now(),
             blank_timeout_ms: DEFAULT_BLANK_TIMEOUT_MS,
             splash_anim_start: std::time::Instant::now(),
-            #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
-            camera: None,
-            #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
             latest_frame: None,
-            #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
             camera_error: None,
-            #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
             scanned_qr: None,
-            #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
             scan_diag: crate::camera::ScanDiagnostics::default(),
         }
     }
@@ -868,45 +843,18 @@ impl App {
             .elapsed()
             .as_millis()
             .min(u64::MAX as u128) as u64;
-        let on_camera = {
-            #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
-            {
-                self.wants_camera()
-            }
-            #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
-            {
-                false
-            }
-        };
+        let on_camera = self.wants_camera();
         should_blank(idle_ms, self.blank_timeout_ms, on_camera)
     }
 
-    /// Camera error message, if any. None when camera isn't supported on this build.
     pub fn camera_error_str(&self) -> Option<&str> {
-        #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
-        {
-            self.camera_error.as_deref()
-        }
-        #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
-        {
-            None
-        }
+        self.camera_error.as_deref()
     }
 
-    /// True if a webcam frame is currently available.
     pub fn has_camera_frame(&self) -> bool {
-        #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
-        {
-            self.latest_frame.is_some()
-        }
-        #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
-        {
-            false
-        }
+        self.latest_frame.is_some()
     }
 
-    /// True when the current screen wants the webcam.
-    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
     pub fn wants_camera(&self) -> bool {
         matches!(
             &self.screen,
@@ -917,9 +865,11 @@ impl App {
         )
     }
 
-    /// Per-frame update — manages camera lifecycle and auto-advances on QR detect.
-    /// Shared between simulator (macOS nokhwa) and Pi (V4L2) via the `Camera` type alias.
-    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
+    /// Per-frame update — handles timers, auto-dismiss, and scanned-QR auto-advance.
+    ///
+    /// Camera lifecycle (open/close, pulling frames, feeding `scanned_qr`) is
+    /// the responsibility of each platform's main loop. Call this after updating
+    /// the camera fields.
     pub fn tick(&mut self) {
         if let Screen::ModeSelect { shown_at, .. } = &self.screen {
             if shown_at.elapsed() >= std::time::Duration::from_secs(5) {
@@ -928,11 +878,6 @@ impl App {
             }
         }
 
-        // Auto-dismiss the per-word commit flash. If this was the last word
-        // we either advance to LoadFinalize (valid mnemonic), LoadInvalidMnemonic
-        // (checksum failed), or DerivationError (HMAC failed). Otherwise we
-        // return to LoadEnterWords with the picker already advanced for the
-        // next word.
         if let Screen::LoadWordCommitted { shown_at, .. } = &self.screen {
             if shown_at.elapsed() >= std::time::Duration::from_millis(900) {
                 let taken = std::mem::replace(&mut self.screen, Screen::Splash);
@@ -970,63 +915,7 @@ impl App {
             }
         }
 
-        let wants = self.wants_camera();
-        if wants && self.camera.is_none() && self.camera_error.is_none() {
-            match Camera::open() {
-                Ok(cam) => self.camera = Some(cam),
-                Err(e) => {
-                    eprintln!("Camera unavailable: {e}");
-                    self.camera_error = Some(e);
-                }
-            }
-        } else if !wants && self.camera.is_some() {
-            self.camera = None;
-            self.latest_frame = None;
-            self.scanned_qr = None;
-        }
-        if !wants {
-            self.camera_error = None;
-        }
-
-        let is_scan_screen = matches!(
-            self.screen,
-            Screen::LoadScanQr | Screen::SignScanTx | Screen::VerifyBackupScan
-        );
-        // Seed / address / backup scans only ever see small QRs (CompactSeedQR
-        // V1/V3, address V≤5). Hint the decoder to downsample aggressively so
-        // rqrr sees far fewer pixels. Sign TX stays on full resolution — its
-        // animated UR fragments are modest, but one-shot dense tx QRs can hit
-        // V20+ where every module pixel matters.
-        let small_qr_scan = matches!(
-            self.screen,
-            Screen::LoadScanQr | Screen::VerifyBackupScan
-        );
-        let pending_qr = if let Some(cam) = &self.camera {
-            cam.set_decode_enabled(is_scan_screen);
-            cam.set_small_qr_mode(small_qr_scan);
-            if let Some(f) = cam.latest() {
-                self.latest_frame = Some(f);
-            }
-            self.scan_diag = cam.diagnostics();
-            // Watchdog from the Pi camera thread — if the stream opened but
-            // never produced a frame (or errored mid-capture), surface it as
-            // a UI error so the user isn't stuck on "Opening camera...".
-            if let Some(err) = cam.take_fatal_err() {
-                eprintln!("Camera fatal: {err}");
-                self.camera_error = Some(err);
-                self.camera = None;
-                self.latest_frame = None;
-                self.scan_diag = crate::camera::ScanDiagnostics::default();
-                None
-            } else {
-                cam.take_qr()
-            }
-        } else {
-            self.scan_diag = crate::camera::ScanDiagnostics::default();
-            None
-        };
-
-        if let Some(data) = pending_qr {
+        if let Some(data) = self.scanned_qr.take() {
             if matches!(
                 self.screen,
                 Screen::LoadScanQr | Screen::SignScanTx | Screen::VerifyBackupScan
@@ -1035,6 +924,20 @@ impl App {
                 self.handle_input(InputEvent::Confirm);
             }
         }
+    }
+
+    pub fn is_scan_screen(&self) -> bool {
+        matches!(
+            self.screen,
+            Screen::LoadScanQr | Screen::SignScanTx | Screen::VerifyBackupScan
+        )
+    }
+
+    pub fn wants_small_qr_scan(&self) -> bool {
+        matches!(
+            self.screen,
+            Screen::LoadScanQr | Screen::VerifyBackupScan
+        )
     }
 
     fn transition(&mut self, screen: Screen, event: InputEvent) -> Screen {

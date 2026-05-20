@@ -306,7 +306,7 @@ impl App {
 
             // Verify backup flow
             Screen::VerifyBackupScan => {
-                #[cfg(any(feature = "simulator", target_os = "linux"))]
+                #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
                 {
                     draw_scan_overlay(
                         display,
@@ -320,7 +320,7 @@ impl App {
                 }
                 // Fallback for `simulator_no_cam` builds (window without nokhwa) on
                 // non-Linux hosts: no live camera, so prompt the user instead.
-                #[cfg(not(any(feature = "simulator", target_os = "linux")))]
+                #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
                 {
                     draw_message(
                         display,
@@ -1365,7 +1365,7 @@ fn draw_qr_block<D: DrawTarget<Color = Rgb565>>(
 
 // Only compiled for `simulator_no_cam` on non-Linux hosts (the one place
 // VerifyBackupScan needs a no-camera fallback). See `Screen::VerifyBackupScan`.
-#[cfg(not(any(feature = "simulator", target_os = "linux")))]
+#[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
 fn draw_message<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     title: &str,
