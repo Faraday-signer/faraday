@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="hardware/assets/brand/faraday-logo.svg" alt="Faraday" width="320">
+  <img src="raspberry-pi/assets/brand/faraday-logo.svg" alt="Faraday" width="320">
   <p><strong>Open-source, air-gapped Solana signing suite.</strong></p>
   <p>
     <a href="https://github.com/Faraday-signer/faraday/actions/workflows/ci.yml"><img src="https://github.com/Faraday-signer/faraday/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -18,7 +18,7 @@ The signer device itself has **no antennas**. No WiFi, no Bluetooth, no NFC, no 
 
 Faraday isn't just a device. It's a suite:
 
-- **The signer** (`hardware/`) — Rust firmware for the air-gapped device, also runnable as a desktop simulator
+- **The signer** (`raspberry-pi/`) — Rust firmware for the air-gapped device, also runnable as a desktop simulator
 - **The browser extension** (`extension/`) — Wallet Standard companion that relays dapp signing requests over QR
 - **The mobile app** (`mobile/`) — Watch-only wallet for the Solana Seeker phone with QR-relay signing
 
@@ -61,7 +61,7 @@ If you have a wallet that's already been online and you want to move to Faraday:
 
 | Path | What it is |
 |------|------------|
-| [`hardware/`](hardware) | Rust firmware for the Pi Zero — also runs as a desktop simulator (`cargo run --features simulator`) for development. Self-contained crate with its own `Cargo.toml`, assets, and test data. |
+| [`raspberry-pi/`](raspberry-pi) | Rust firmware for the Pi Zero — also runs as a desktop simulator (`cargo run --features simulator`) for development. Self-contained crate with its own `Cargo.toml`, assets, and test data. |
 | [`opt/`](opt) | Buildroot recipe that produces the Pi OS image. See [`opt/README.md`](opt/README.md) |
 | [`extension/`](extension) | Chromium browser extension — Wallet Standard companion that relays dapp signing requests to Faraday over QR. See [`extension/README.md`](extension/README.md) |
 | [`mobile/`](mobile) | React Native + Expo wallet for the Solana Seeker phone (work in progress). See [`mobile/README.md`](mobile/README.md) |
@@ -84,7 +84,7 @@ Total cost: **~$35**. Any Pi works — including ones with WiFi, if you already 
 You don't need any hardware to try Faraday — the same code that runs on the Pi runs on macOS/Linux/Windows with a webcam.
 
 ```bash
-cd hardware
+cd raspberry-pi
 cargo run --features simulator
 ```
 
@@ -113,7 +113,7 @@ Run all three locally — no Pi needed — to see the full sign flow.
 
 **1. Simulator:**
 ```bash
-cd hardware
+cd raspberry-pi
 cargo run --features simulator
 ```
 Create a wallet (`CREATE → 12 or 24 WORDS → RANDOM`) or load an existing one. Leave it running.
@@ -169,7 +169,7 @@ You should do this if you care about supply-chain integrity at all. The pre-buil
 ```bash
 # 1. Cross-compile the ARM binary
 cargo install cargo-zigbuild
-cd hardware && cargo zigbuild --release --target arm-unknown-linux-gnueabihf && cd ..
+cd raspberry-pi && cargo zigbuild --release --target arm-unknown-linux-gnueabihf && cd ..
 
 # 2. Build the OS image (uses Docker — first build takes ~30 min, cached rebuilds are fast)
 docker compose up
@@ -216,9 +216,9 @@ Faraday decodes Solana transactions before signing so users see human-readable d
 For Jupiter swaps, mints are resolved offline through a hardcoded registry of ~30 well-known tokens (SOL, USDC, JUP, etc.) plus deterministic ATA derivation — no network call. When a mint can't be resolved, a warning is shown instead of a misleading symbol.
 
 To add a new program:
-1. Create `hardware/src/parser/<program>.rs` with `pub fn parse(data, accounts) -> ParsedInstruction`
-2. Register the program ID in `hardware/src/parser/programs.rs`
-3. Add a match arm in `dispatch()` in `hardware/src/parser/mod.rs`
+1. Create `raspberry-pi/src/parser/<program>.rs` with `pub fn parse(data, accounts) -> ParsedInstruction`
+2. Register the program ID in `raspberry-pi/src/parser/programs.rs`
+3. Add a match arm in `dispatch()` in `raspberry-pi/src/parser/mod.rs`
 
 ## QR payload format
 
@@ -244,7 +244,7 @@ For payloads that exceed a single QR's capacity, Faraday uses [UR](https://githu
 
 ## BIP39 wordlist
 
-The wordlist is **not bundled** in the repo. At build time, `hardware/build.rs` fetches it directly from the canonical [bitcoin/bips](https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt) repository and verifies the SHA256 checksum. If the hash doesn't match, the build fails. No trust required — verify the constant in `hardware/build.rs` yourself.
+The wordlist is **not bundled** in the repo. At build time, `raspberry-pi/build.rs` fetches it directly from the canonical [bitcoin/bips](https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt) repository and verifies the SHA256 checksum. If the hash doesn't match, the build fails. No trust required — verify the constant in `raspberry-pi/build.rs` yourself.
 
 ## Derivation path
 

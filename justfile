@@ -2,11 +2,11 @@
 
 # Run the desktop simulator (webcam + GUI window).
 sim:
-    cd hardware && cargo run --features simulator
+    cd raspberry-pi && cargo run --features simulator
 
 # Cross-compile the ARM binary for Pi Zero.
 arm:
-    cd hardware && cargo zigbuild --release --target arm-unknown-linux-gnueabihf
+    cd raspberry-pi && cargo zigbuild --release --target arm-unknown-linux-gnueabihf
 
 # Build the full Pi OS image (cold Buildroot — slow).
 image: arm
@@ -32,9 +32,9 @@ ext-install:
 
 # Run cargo tests.
 test:
-    cd hardware && cargo test
+    cd raspberry-pi && cargo test
 
 # Type-check both simulator and Pi targets.
 check:
-    cd hardware && cargo check --features simulator
-    cd hardware && cargo check --release --target arm-unknown-linux-gnueabihf
+    cd raspberry-pi && cargo check --features simulator
+    cd raspberry-pi && cargo check --release --target arm-unknown-linux-gnueabihf

@@ -79,8 +79,3 @@ nokhwa = { version = "0.10", features = ["input-avfoundation"], optional = true 
 
 [target.'cfg(target_os = "windows")'.dependencies]
 nokhwa = { version = "0.10", features = ["input-msmf"], optional = true }
-
-[profile.release]
-opt-level = "s"
-lto = true
-strip = true

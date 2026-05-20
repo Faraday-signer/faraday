@@ -36,10 +36,10 @@ opt/faraday-bin
 .buildroot-ccache/
 .ccache/
 
-# Test transaction data (generated via hardware/testdata/capture.sh)
-hardware/testdata/test_txs_bin/
-hardware/testdata/test_txs_qr/
-hardware/testdata/test_txs_ur/
+# Test transaction data (generated via raspberry-pi/testdata/capture.sh)
+raspberry-pi/testdata/test_txs_bin/
+raspberry-pi/testdata/test_txs_qr/
+raspberry-pi/testdata/test_txs_ur/
 
 # Logs
 *.log

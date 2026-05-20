@@ -35,7 +35,7 @@ Real Solana transactions captured from mainnet for testing the parser.
 ## Quick start
 
 ```bash
-cd hardware/testdata
+cd raspberry-pi/testdata
 
 # 1. Find signatures for a program
 ./capture.sh search JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4

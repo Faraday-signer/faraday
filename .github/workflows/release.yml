@@ -41,7 +41,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: hardware
+          workspaces: raspberry-pi
           key: arm
 
       - uses: mlugg/setup-zig@v2
@@ -51,7 +51,7 @@ jobs:
           tool: cargo-zigbuild
 
       - name: Cross-compile ARM binary
-        working-directory: hardware
+        working-directory: raspberry-pi
         run: cargo zigbuild --release --target arm-unknown-linux-gnueabihf
 
       - name: Build Pi OS image (Buildroot via Docker)
