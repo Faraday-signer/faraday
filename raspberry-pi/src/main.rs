@@ -44,7 +44,7 @@ fn run_simulator() {
     type Camera = crate::gui::file_camera::FileCamera;
 
     let mut fb = Framebuffer::new();
-    let mut app = App::new();
+    let mut app = App::new(faraday_core::ui::Theme::faraday_240());
     let mut camera: Option<Camera> = None;
 
     let mut window = Window::new(
@@ -174,7 +174,7 @@ fn run_simulator() {
         use embedded_graphics_core::draw_target::DrawTarget;
         if app.is_blanked() {
             let elapsed_ms = app.splash_anim_start.elapsed().as_millis() as u64;
-            let _ = gui::screens::draw_splash(&mut fb, elapsed_ms);
+            let _ = gui::screens::draw_splash(&mut fb, &app.theme, elapsed_ms);
         } else {
             if app.wants_camera() {
                 match app.latest_frame.clone() {
@@ -219,7 +219,7 @@ fn run_pi() {
         }
     };
 
-    let mut app = App::new();
+    let mut app = App::new(faraday_core::ui::Theme::faraday_240());
     let mut camera: Option<PiCamera> = None;
 
     // Splash — dismiss on any button press (2s fallback for unattended boot).
@@ -297,7 +297,7 @@ fn run_pi() {
 
         if app.is_blanked() {
             let elapsed_ms = app.splash_anim_start.elapsed().as_millis() as u64;
-            let _ = crate::gui::screens::draw_splash(&mut display, elapsed_ms);
+            let _ = crate::gui::screens::draw_splash(&mut display, &app.theme, elapsed_ms);
         } else {
             if app.wants_camera() {
                 match app.latest_frame.clone() {
