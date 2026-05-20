@@ -19,7 +19,7 @@ mod unknown;
 // Shared modules — reusable across dApp parsers
 pub(crate) mod anchor;
 pub(crate) mod bytes;
-pub(crate) mod token_registry;
+pub mod token_registry;
 
 // dApp parsers
 mod dflow;
@@ -613,7 +613,7 @@ fn split_amount_symbol_owned(value: &str) -> (String, String) {
 /// reads as billions of denominated tokens, which is misleading. Better
 /// to show the full number even if long; the user can tell at a glance
 /// it's an unresolved raw amount and read the detail pages.
-pub(crate) fn compact_amount(s: &str) -> String {
+pub fn compact_amount(s: &str) -> String {
     let s = s.trim();
     if let Some(dot) = s.find('.') {
         let whole = &s[..dot];

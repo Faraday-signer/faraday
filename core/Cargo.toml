@@ -3,3 +3,26 @@ name = "faraday-core"
 version = "0.1.0"
 edition = "2021"
 description = "Shared core library for Faraday air-gapped signer"
+build = "build.rs"
+
+[features]
+default = []
+_desktop_sim = []
+
+[dependencies]
+# Crypto (all pure Rust)
+sha2 = "0.10"
+hmac = "0.12"
+pbkdf2 = "0.12"
+ed25519-dalek = "2"
+bs58 = "0.5"
+zeroize = { version = "1", features = ["zeroize_derive"] }
+hex = "0.4"
+base64 = "0.22"
+getrandom = "0.2"
+
+# QR encoding
+qrcode = "0.14"
+
+# UR (Uniform Resource) animated QR streams
+ur = { version = "0.4", default-features = false }

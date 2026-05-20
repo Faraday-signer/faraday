@@ -7,7 +7,7 @@ default-run = "faraday"
 
 [features]
 default = []
-_desktop_sim = ["dep:minifb"]
+_desktop_sim = ["dep:minifb", "faraday-core/_desktop_sim"]
 simulator = ["_desktop_sim", "dep:nokhwa"]
 simulator_no_cam = ["_desktop_sim", "dep:rfd", "image/png", "image/jpeg"]
 templates = ["dep:pdf-writer"]
@@ -32,29 +32,24 @@ path = "src/bin/gen_test_tx.rs"
 required-features = ["simulator"]
 
 [dependencies]
+faraday-core = { path = "../core" }
+
 # Display rendering
 embedded-graphics = "0.8"
 embedded-graphics-core = "0.4"
 u8g2-fonts = { version = "0.5", features = ["embedded_graphics_textstyle"] }
 
-# Crypto (all pure Rust)
+# Used directly by gui modules (will move to core in phase 1.3)
 sha2 = "0.10"
-hmac = "0.12"
-pbkdf2 = "0.12"
-ed25519-dalek = "2"
 bs58 = "0.5"
-zeroize = { version = "1", features = ["zeroize_derive"] }
 hex = "0.4"
 base64 = "0.22"
-qrcode = "0.14"
-ur = { version = "0.4", default-features = false }
+zeroize = { version = "1", features = ["zeroize_derive"] }
 getrandom = "0.2"
 
-# QR decoding + image buffer. Shared by both the macOS simulator (nokhwa)
-# and the Pi camera (MMAL via a raspividyuv subprocess — see pi_camera.rs).
-# `rxing` is paired with an Otsu binarize pass (src/qr/threshold.rs) so it
-# copes with hand-drawn CompactSeedQR sheets (where rxing-only and rqrr
-# both fail).
+# QR decoding + image buffer. `rxing` is paired with an Otsu binarize pass
+# (core/src/qr/threshold.rs) so it copes with hand-drawn CompactSeedQR
+# sheets (where rxing-only and rqrr both fail).
 rxing = { version = "0.7", default-features = false, features = ["image"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 

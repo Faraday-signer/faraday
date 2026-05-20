@@ -2,7 +2,10 @@
 
 #![forbid(unsafe_code)]
 
-mod crypto;
+pub use faraday_core::crypto;
+pub use faraday_core::parser;
+pub use faraday_core::signer;
+pub use faraday_core::qr;
 
 #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
 mod camera;
@@ -12,12 +15,6 @@ mod ui;
 mod gui;
 #[cfg(target_os = "linux")]
 mod hardware;
-#[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
-mod qr;
-#[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
-mod signer;
-#[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
-mod parser;
 
 #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
 use gui::app::{App, InputEvent};

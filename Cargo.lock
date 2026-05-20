@@ -878,30 +878,39 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "bs58",
- "ed25519-dalek",
  "embedded-graphics",
  "embedded-graphics-core",
+ "faraday-core",
  "getrandom 0.2.17",
  "hex",
- "hmac",
  "image",
  "minifb",
  "nokhwa",
- "pbkdf2",
  "pdf-writer",
- "qrcode",
  "rfd",
  "rppal",
  "rxing",
  "sha2",
  "u8g2-fonts",
- "ur",
  "zeroize",
 ]
 
 [[package]]
 name = "faraday-core"
 version = "0.1.0"
+dependencies = [
+ "base64",
+ "bs58",
+ "ed25519-dalek",
+ "getrandom 0.2.17",
+ "hex",
+ "hmac",
+ "pbkdf2",
+ "qrcode",
+ "sha2",
+ "ur",
+ "zeroize",
+]
 
 [[package]]
 name = "fastrand"
