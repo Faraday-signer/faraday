@@ -12,6 +12,7 @@ use crate::gui::app::{App, Screen};
 use crate::gui::colors;
 use crate::gui::components::draw_status_bar;
 use crate::gui::logo;
+use crate::ui::Theme;
 
 /// Menu item. Brutalist layout: one hero label + subtitle at a time.
 struct MenuItem {
@@ -46,26 +47,27 @@ impl App {
     /// Draw the current screen.
     pub fn draw<D: DrawTarget<Color = Rgb565>>(&self, display: &mut D) -> Result<(), D::Error> {
         match &self.screen {
-            Screen::Splash => draw_boot_splash(display),
+            Screen::Splash => draw_boot_splash(display, &self.theme),
 
-            Screen::ModeSelect { selected, .. } => draw_mode_select(display, *selected),
+            Screen::ModeSelect { selected, .. } => draw_mode_select(display, &self.theme, *selected),
 
-            Screen::Help { topic } => draw_help(display, *topic),
+            Screen::Help { topic } => draw_help(display, &self.theme, *topic),
 
             Screen::MainMenu { selected } => {
                 let addr = self.wallet.as_ref().map(|w| w.address.as_str());
-                draw_main_menu(display, *selected, self.seed_loaded(), addr)
+                draw_main_menu(display, &self.theme, *selected, self.seed_loaded(), addr)
             }
 
             // Create flow
-            Screen::CreateWordCount { selected } => draw_create_word_count(display, *selected),
-            Screen::CreateMethod { selected, .. } => draw_create_method(display, *selected),
+            Screen::CreateWordCount { selected } => draw_create_word_count(display, &self.theme, *selected),
+            Screen::CreateMethod { selected, .. } => draw_create_method(display, &self.theme, *selected),
             Screen::CreateCameraEntropy {
                 word_count,
                 frames_collected,
                 ..
             } => draw_camera_entropy(
                 display,
+                &self.theme,
                 *word_count,
                 *frames_collected,
                 self.seed_loaded(),
@@ -75,20 +77,20 @@ impl App {
                 word_count,
                 bits,
                 selected,
-            } => draw_coin_flips(display, *word_count, bits, *selected, self.seed_loaded()),
+            } => draw_coin_flips(display, &self.theme, *word_count, bits, *selected, self.seed_loaded()),
             Screen::CreateDiceRolls {
                 word_count,
                 rolls,
                 selected,
-            } => draw_dice_rolls(display, *word_count, rolls, *selected, self.seed_loaded()),
+            } => draw_dice_rolls(display, &self.theme, *word_count, rolls, *selected, self.seed_loaded()),
             Screen::CreateBackupWarning { selected, .. } => {
-                draw_create_backup_warning(display, *selected)
+                draw_create_backup_warning(display, &self.theme, *selected)
             }
             Screen::CreateShowWords {
                 mnemonic,
                 page,
                 word_count,
-            } => draw_show_words(display, mnemonic, *page, *word_count, self.seed_loaded()),
+            } => draw_show_words(display, &self.theme, mnemonic, *page, *word_count, self.seed_loaded()),
             Screen::CreateVerify {
                 checks,
                 current,
@@ -100,6 +102,7 @@ impl App {
                 let word_num = checks[*current] + 1;
                 draw_verify_word(
                     display,
+                    &self.theme,
                     word_num,
                     options,
                     *selected,
@@ -108,16 +111,16 @@ impl App {
                 )
             }
             Screen::CreatePassphrasePrompt { selected, .. } => {
-                draw_passphrase_prompt(display, *selected)
+                draw_passphrase_prompt(display, &self.theme, *selected)
             }
             Screen::CreatePassphraseInput { grid, .. } => {
-                draw_passphrase_grid(display, grid, "PASSPHRASE")
+                draw_passphrase_grid(display, &self.theme, grid, "PASSPHRASE")
             }
             Screen::CreatePassphraseConfirm { grid, .. } => {
-                draw_passphrase_grid(display, grid, "CONFIRM")
+                draw_passphrase_grid(display, &self.theme, grid, "CONFIRM")
             }
             Screen::CreatePassphraseMismatch { .. } => {
-                draw_passphrase_mismatch(display, self.seed_loaded())
+                draw_passphrase_mismatch(display, &self.theme, self.seed_loaded())
             }
             Screen::CreateConfirm {
                 address,
@@ -126,24 +129,24 @@ impl App {
                 ..
             } => {
                 let wc = mnemonic.split_whitespace().count();
-                draw_wallet_confirm(display, "NEW WALLET CONFIRMATION", address, !passphrase.is_empty(), wc)
+                draw_wallet_confirm(display, &self.theme, "NEW WALLET CONFIRMATION", address, !passphrase.is_empty(), wc)
             }
             Screen::ExportSeedWarning { selected, .. } => {
-                draw_export_seed_warning(display, *selected)
+                draw_export_seed_warning(display, &self.theme, *selected)
             }
             Screen::ShowWordsWarning { selected, .. } => {
                 // Same red-banner gate, specifically before plaintext words.
-                draw_export_seed_warning(display, *selected)
+                draw_export_seed_warning(display, &self.theme, *selected)
             }
             Screen::ExportSeedQrMenu { selected, .. } => {
-                draw_export_seed_qr_menu(display, self.seedqr_title(), *selected)
+                draw_export_seed_qr_menu(display, &self.theme, self.seedqr_title(), *selected)
             }
             Screen::ExportShowWords {
                 mnemonic,
                 page,
                 word_count,
                 ..
-            } => draw_show_words(display, mnemonic, *page, *word_count, self.seed_loaded()),
+            } => draw_show_words(display, &self.theme, mnemonic, *page, *word_count, self.seed_loaded()),
             Screen::ExportSeedQr { compact_data, .. } => {
                 // CompactSeedQR: raw 16/32 entropy bytes at ECL L so the grid
                 // stays as small as possible for hand-transcription (12w →
@@ -151,18 +154,19 @@ impl App {
                 // Seed-QR compare screen. `quiet: 2` (instead of the
                 // standard 4) makes the matrix ~10% larger so side-by-side
                 // visual check vs. the hand-transcribed paper is easier.
-                draw_fullscreen_qr(display, compact_data, crate::qr::encode_qr::QrEcLevel::L, 2)
+                draw_fullscreen_qr(display, &self.theme, compact_data, crate::qr::encode_qr::QrEcLevel::L, 2)
             }
             Screen::ExportSeedQrBlock {
                 compact_data,
                 block_index,
                 ..
-            } => draw_qr_block(display, compact_data, *block_index, self.seed_loaded()),
+            } => draw_qr_block(display, &self.theme, compact_data, *block_index, self.seed_loaded()),
 
             // Load flow
-            Screen::LoadMethod { selected } => draw_load_method(display, *selected),
+            Screen::LoadMethod { selected } => draw_load_method(display, &self.theme, *selected),
             Screen::LoadScanQr => draw_scan_overlay(
                 display,
+                &self.theme,
                 "Scan SeedQR",
                 "Point camera at SeedQR",
                 self.seed_loaded(),
@@ -173,32 +177,32 @@ impl App {
             Screen::LoadWordCount { selected } => {
                 // Same visual as Create's word-count picker — the choice is
                 // the same, only the state-machine edges differ.
-                draw_create_word_count(display, *selected)
+                draw_create_word_count(display, &self.theme, *selected)
             }
-            Screen::LoadEnterWords { picker, .. } => draw_word_picker_new(display, picker),
+            Screen::LoadEnterWords { picker, .. } => draw_word_picker_new(display, &self.theme, picker),
             Screen::LoadWordCommitted {
                 just_committed,
                 picker,
                 word_count,
                 ..
-            } => draw_word_committed(display, just_committed, picker.words.len(), *word_count),
+            } => draw_word_committed(display, &self.theme, just_committed, picker.words.len(), *word_count),
             Screen::LoadInvalidMnemonic { word_count } => {
-                draw_invalid_mnemonic(display, *word_count)
+                draw_invalid_mnemonic(display, &self.theme, *word_count)
             }
             Screen::LoadFinalize { preview_address, selected, .. } => {
-                draw_load_finalize(display, preview_address, *selected)
+                draw_load_finalize(display, &self.theme, preview_address, *selected)
             }
             Screen::LoadPassphrasePrompt { selected, .. } => {
-                draw_passphrase_prompt(display, *selected)
+                draw_passphrase_prompt(display, &self.theme, *selected)
             }
             Screen::LoadPassphraseInput { grid, .. } => {
-                draw_passphrase_grid(display, grid, "PASSPHRASE")
+                draw_passphrase_grid(display, &self.theme, grid, "PASSPHRASE")
             }
             Screen::LoadPassphraseConfirm { grid, .. } => {
-                draw_passphrase_grid(display, grid, "CONFIRM")
+                draw_passphrase_grid(display, &self.theme, grid, "CONFIRM")
             }
             Screen::LoadPassphraseMismatch { .. } => {
-                draw_passphrase_mismatch(display, self.seed_loaded())
+                draw_passphrase_mismatch(display, &self.theme, self.seed_loaded())
             }
             Screen::LoadConfirm {
                 address,
@@ -207,14 +211,15 @@ impl App {
                 ..
             } => {
                 let wc = mnemonic.split_whitespace().count();
-                draw_wallet_confirm(display, "LOAD WALLET", address, !passphrase.is_empty(), wc)
+                draw_wallet_confirm(display, &self.theme, "LOAD WALLET", address, !passphrase.is_empty(), wc)
             }
 
-            Screen::DerivationError => draw_derivation_error(display),
+            Screen::DerivationError => draw_derivation_error(display, &self.theme),
 
             // Sign TX flow
             Screen::SignScanTx => draw_scan_overlay(
                 display,
+                &self.theme,
                 "Sign TX",
                 "Point camera at TX QR",
                 self.seed_loaded(),
@@ -246,6 +251,7 @@ impl App {
                         if let Some(action) = zoned {
                             draw_tx_review_zoned(
                                 display,
+                                &self.theme,
                                 &action,
                                 wallet_pk.as_ref(),
                                 *can_sign,
@@ -254,6 +260,7 @@ impl App {
                         } else {
                             draw_tx_review(
                                 display,
+                                &self.theme,
                                 info_lines,
                                 *scroll,
                                 *selected,
@@ -263,17 +270,18 @@ impl App {
                             )
                         }
                     }
-                    1 => draw_tx_metadata(display, parsed, total_pages),
-                    2 => draw_tx_ix_list(display, parsed, total_pages),
+                    1 => draw_tx_metadata(display, &self.theme, parsed, total_pages),
+                    2 => draw_tx_ix_list(display, &self.theme, parsed, total_pages),
                     p if p < 3 + interesting.len() => {
                         let ix_index = interesting[p - 3];
-                        draw_tx_ix_detail(display, parsed, ix_index, total_pages)
+                        draw_tx_ix_detail(display, &self.theme, parsed, ix_index, total_pages)
                     }
-                    _ => draw_tx_raw(display, tx_bytes, total_pages),
+                    _ => draw_tx_raw(display, &self.theme, tx_bytes, total_pages),
                 }
             }
             Screen::SignShowQr { data } => draw_fullscreen_qr(
                 display,
+                &self.theme,
                 data.as_bytes(),
                 crate::qr::encode_qr::QrEcLevel::M,
                 4,
@@ -282,10 +290,11 @@ impl App {
                 message_bytes,
                 scroll,
                 ..
-            } => draw_message_review(display, message_bytes, *scroll, self.seed_loaded()),
-            Screen::SignMessageInput { grid } => draw_passphrase_grid(display, grid, "SIGN MSG"),
+            } => draw_message_review(display, &self.theme, message_bytes, *scroll, self.seed_loaded()),
+            Screen::SignMessageInput { grid } => draw_passphrase_grid(display, &self.theme, grid, "SIGN MSG"),
             Screen::SignMessageResult { signature_hex } => draw_fullscreen_qr(
                 display,
+                &self.theme,
                 signature_hex.as_bytes(),
                 crate::qr::encode_qr::QrEcLevel::M,
                 4,
@@ -293,16 +302,16 @@ impl App {
 
             // Settings
             Screen::SettingsMenu { selected } => {
-                draw_settings_menu(display, *selected)
+                draw_settings_menu(display, &self.theme, *selected)
             }
             Screen::SettingsShowAddress => {
-                draw_show_address(display, self.wallet.as_ref().map(|w| w.address.as_str()))
+                draw_show_address(display, &self.theme, self.wallet.as_ref().map(|w| w.address.as_str()))
             }
             Screen::SettingsShowAddressText => {
-                draw_show_address_text(display, self.wallet.as_ref().map(|w| w.address.as_str()))
+                draw_show_address_text(display, &self.theme, self.wallet.as_ref().map(|w| w.address.as_str()))
             }
-            Screen::SettingsAbout => draw_about(display, self.seed_loaded()),
-            Screen::SettingsPowerOff { selected } => draw_reset_wallet(display, *selected),
+            Screen::SettingsAbout => draw_about(display, &self.theme, self.seed_loaded()),
+            Screen::SettingsPowerOff { selected } => draw_reset_wallet(display, &self.theme, *selected),
 
             // Verify backup flow
             Screen::VerifyBackupScan => {
@@ -310,6 +319,7 @@ impl App {
                 {
                     draw_scan_overlay(
                         display,
+                        &self.theme,
                         "Verify Backup",
                         "Scan your paper SeedQR",
                         self.seed_loaded(),
@@ -324,25 +334,26 @@ impl App {
                 {
                     draw_message(
                         display,
+                        &self.theme,
                         "Verify Backup",
                         "Scan your paper\nSeedQR",
                         self.seed_loaded(),
                     )
                 }
             }
-            Screen::VerifyBackupSeedMismatch => draw_verify_backup_seed_mismatch(display),
+            Screen::VerifyBackupSeedMismatch => draw_verify_backup_seed_mismatch(display, &self.theme),
             Screen::VerifyBackupPassphrase { grid } => {
-                draw_passphrase_grid(display, grid, "PASSPHRASE")
+                draw_passphrase_grid(display, &self.theme, grid, "PASSPHRASE")
             }
             Screen::VerifyBackupPassphraseMismatch => {
-                draw_verify_backup_passphrase_mismatch(display)
+                draw_verify_backup_passphrase_mismatch(display, &self.theme)
             }
             Screen::VerifyBackupSuccess => {
                 let has_passphrase = self
                     .wallet
                     .as_ref()
                     .map_or(false, |w| !w.passphrase.is_empty());
-                draw_verify_backup_success(display, has_passphrase)
+                draw_verify_backup_success(display, &self.theme, has_passphrase)
             }
         }
     }
@@ -352,14 +363,16 @@ impl App {
 /// ~2 s power-on beat before the menu comes up.
 pub fn draw_boot_splash<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
 ) -> Result<(), D::Error> {
     display.clear(colors::FD_BG)?;
-    const SCREEN: i32 = 240;
+    let screen_w = theme.width as i32;
+    let screen_h = theme.height as i32;
     const SCALE: u32 = 3;
     let logo_w = (logo::LOGO_WIDTH * SCALE) as i32;
     let logo_h = (logo::LOGO_HEIGHT * SCALE) as i32;
-    let x = (SCREEN - logo_w) / 2;
-    let y = (SCREEN - logo_h) / 2;
+    let x = (screen_w - logo_w) / 2;
+    let y = (screen_h - logo_h) / 2;
     logo::draw_logo(display, x, y, SCALE, colors::FD_ACCENT)?;
     Ok(())
 }
@@ -370,20 +383,22 @@ pub fn draw_boot_splash<D: DrawTarget<Color = Rgb565>>(
 /// with a hard inset from the edges so the logo never touches the corners.
 pub fn draw_splash<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     elapsed_ms: u64,
 ) -> Result<(), D::Error> {
     display.clear(colors::FD_BG)?;
 
-    const SCREEN: i32 = 240;
-    const INSET: i32 = 16; // hard margin from any edge — corners never touch
+    let screen_w = theme.width as i32;
+    let screen_h = theme.height as i32;
+    const INSET: i32 = 16;
     const SCALE: u32 = 3;
     let logo_w = (logo::LOGO_WIDTH * SCALE) as i32;
     let logo_h = (logo::LOGO_HEIGHT * SCALE) as i32;
 
     let x_min = INSET;
-    let x_max = SCREEN - INSET - logo_w;
+    let x_max = screen_w - INSET - logo_w;
     let y_min = INSET;
-    let y_max = SCREEN - INSET - logo_h;
+    let y_max = screen_h - INSET - logo_h;
 
     // Slow overall, and y clearly faster than x relative to its range so
     // the logo climbs / falls across several rows between side bounces.
@@ -424,12 +439,13 @@ fn triangle(t_ms: u64, min: i32, max: i32, speed_pps: u64) -> i32 {
 
 fn draw_mode_select<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     selected: usize,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
-    use crate::ui::{screens::ListScreen, Theme};
+    use crate::ui::screens::ListScreen;
 
-    let theme = Theme::faraday_240();
+
     // Mode-named rows so the screen reads at a glance — no question to
     // parse, no YES/NO ambiguity. The brand logo header keeps the
     // welcome feeling without competing for the eye. Row order is
@@ -461,13 +477,14 @@ fn draw_mode_select<D: DrawTarget<Color = Rgb565>>(
 /// rather than truncating.
 fn draw_help<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     topic: crate::gui::app::HelpTopic,
 ) -> Result<(), D::Error> {
     use crate::ui::layout::split_top;
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
-    use crate::ui::Theme;
 
-    let theme = Theme::faraday_240();
+
+
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
 
@@ -536,14 +553,15 @@ fn draw_help<D: DrawTarget<Color = Rgb565>>(
 /// Main menu: list register (Header + List + right-edge hints) via `src/ui/`.
 fn draw_main_menu<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     selected: usize,
     seed_loaded: bool,
     address: Option<&str>,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
-    use crate::ui::{screens::ListScreen, Theme};
+    use crate::ui::screens::ListScreen;
 
-    let theme = Theme::faraday_240();
+
 
     let row = |i: usize| ListRow::with_subtitle(MENU_ITEMS[i].label, MENU_ITEMS[i].subtitle);
 
@@ -589,13 +607,14 @@ fn shorten_address(addr: &str) -> String {
 /// valid BIP39 seed. CONFIRM retries from scratch, BACK bails out of Load.
 fn draw_invalid_mnemonic<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     word_count: usize,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
-    use crate::ui::{screens::CardScreen, Theme};
+    use crate::ui::screens::CardScreen;
 
     let _ = word_count;
-    let theme = Theme::faraday_240();
+
     let rows: [CardRow; 1] = [
         CardRow::new("CHECK", "BIP39 failed"),
     ];
@@ -622,11 +641,12 @@ fn draw_invalid_mnemonic<D: DrawTarget<Color = Rgb565>>(
 
 fn draw_derivation_error<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, CardRow, HeaderKind};
-    use crate::ui::{screens::CardScreen, Theme};
+    use crate::ui::screens::CardScreen;
 
-    let theme = Theme::faraday_240();
+
     let rows: [CardRow; 1] = [
         CardRow::new("CAUSE", "HMAC / crypto lib"),
     ];
@@ -657,19 +677,20 @@ fn draw_derivation_error<D: DrawTarget<Color = Rgb565>>(
 /// The selected cell renders full-bleed cyan with the char in bg color (inverted).
 fn draw_passphrase_grid<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     grid: &crate::gui::app::CharGrid,
     title: &str,
 ) -> Result<(), D::Error> {
     use crate::gui::app::{GridAction, GRID_COLS};
     use crate::ui::layout::split_top;
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
-    use crate::ui::Theme;
+
     use embedded_graphics::{
         geometry::{Point, Size},
         primitives::Rectangle,
     };
 
-    let theme = Theme::faraday_240();
+
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
 
@@ -691,7 +712,7 @@ fn draw_passphrase_grid<D: DrawTarget<Color = Rgb565>>(
     // Preview band.
     let preview_h = 28i32;
     let (preview_rect, grid_rect) = split_top(body_rect, preview_h);
-    draw_preview(display, &theme, preview_rect, &grid.text)?;
+    draw_preview(display, theme, preview_rect, &grid.text)?;
 
     // Grid: 6 rows (5 char rows + 1 action row), 10 cols each. Cell width
     // derives from the narrowed body width so cells stay inside the gutter.
@@ -835,13 +856,14 @@ fn draw_preview<D: DrawTarget<Color = Rgb565>>(
 /// `App::seedqr_title()` so it shows `SeedQR +P` when a passphrase is set.
 fn draw_export_seed_qr_menu<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     title: &str,
     selected: usize,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
-    use crate::ui::{screens::ListScreen, Theme};
+    use crate::ui::screens::ListScreen;
 
-    let theme = Theme::faraday_240();
+
     let rows: [ListRow; 3] = [
         ListRow::with_subtitle("PAPER BACKUP", "Transcribe QR blocks"),
         ListRow::with_subtitle("SHOW WORDS", "to write them down"),
@@ -865,13 +887,14 @@ fn draw_export_seed_qr_menu<D: DrawTarget<Color = Rgb565>>(
 
 fn draw_load_finalize<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     preview_address: &str,
     selected: usize,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
-    use crate::ui::{screens::ListScreen, Theme};
+    use crate::ui::screens::ListScreen;
 
-    let theme = Theme::faraday_240();
+
 
     // Address moves to the header chip (same slot as the main menu's
     // wallet short) so users keep continuity from the preceding
@@ -900,12 +923,13 @@ fn draw_load_finalize<D: DrawTarget<Color = Rgb565>>(
 
 fn draw_passphrase_prompt<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     selected: usize,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
-    use crate::ui::{screens::ListScreen, Theme};
+    use crate::ui::screens::ListScreen;
 
-    let theme = Theme::faraday_240();
+
     let rows: [ListRow; 2] = [
         ListRow::with_subtitle("SKIP", "Words only"),
         ListRow::with_subtitle("ENCRYPT", "Extra security"),
@@ -931,15 +955,16 @@ fn draw_passphrase_prompt<D: DrawTarget<Color = Rgb565>>(
 /// button bar (BACK = cancel, CONFIRM = accept) — no row selection needed.
 fn draw_wallet_confirm<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     title: &str,
     address: &str,
     has_passphrase: bool,
     word_count: usize,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
-    use crate::ui::{screens::CardScreen, Theme};
+    use crate::ui::screens::CardScreen;
 
-    let theme = Theme::faraday_240();
+
 
     // Split the 32–44 char address into two halves so it wraps inside the
     // card body. Rendered via `body_lines` (not rows) because 22+ base58
@@ -983,12 +1008,13 @@ fn draw_wallet_confirm<D: DrawTarget<Color = Rgb565>>(
 /// Load-method picker. Scan an existing SeedQR or type the words in manually.
 fn draw_load_method<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     selected: usize,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
-    use crate::ui::{screens::ListScreen, Theme};
+    use crate::ui::screens::ListScreen;
 
-    let theme = Theme::faraday_240();
+
     let rows: [ListRow; 2] = [
         ListRow::with_subtitle("SCAN QR", "From SeedQR backup"),
         ListRow::with_subtitle("TYPE", "Enter BIP39 words"),
@@ -1012,12 +1038,13 @@ fn draw_load_method<D: DrawTarget<Color = Rgb565>>(
 /// Word-count picker (step 1 of create). 12 or 24 BIP39 words.
 fn draw_create_word_count<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     selected: usize,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
-    use crate::ui::{screens::ListScreen, Theme};
+    use crate::ui::screens::ListScreen;
 
-    let theme = Theme::faraday_240();
+
     let rows: [ListRow; 2] = [
         ListRow::with_subtitle("12 WORDS", "128-bit entropy"),
         ListRow::with_subtitle("24 WORDS", "256-bit entropy"),
@@ -1041,12 +1068,13 @@ fn draw_create_word_count<D: DrawTarget<Color = Rgb565>>(
 /// Entropy-method picker (step 2 of create).
 fn draw_create_method<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     selected: usize,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
-    use crate::ui::{screens::ListScreen, Theme};
+    use crate::ui::screens::ListScreen;
 
-    let theme = Theme::faraday_240();
+
     let rows: [ListRow; 4] = [
         ListRow::with_subtitle("RANDOM", "Device entropy"),
         ListRow::with_subtitle("CAMERA", "Sensor entropy"),
@@ -1073,12 +1101,13 @@ fn draw_create_method<D: DrawTarget<Color = Rgb565>>(
 /// a wallet is loaded.
 fn draw_settings_menu<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     selected: usize,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
-    use crate::ui::{screens::ListScreen, Theme};
+    use crate::ui::screens::ListScreen;
 
-    let theme = Theme::faraday_240();
+
 
     let items: [ListRow; 4] = [
         ListRow::with_subtitle("ADDRESS", "Read or write down"),
@@ -1105,15 +1134,16 @@ fn draw_settings_menu<D: DrawTarget<Color = Rgb565>>(
 /// Show mnemonic words, 6 per page in a 2x3 card grid.
 fn draw_show_words<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     mnemonic: &str,
     page: usize,
     word_count: usize,
     _seed_loaded: bool,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
-    use crate::ui::{screens::ListScreen, Theme};
+    use crate::ui::screens::ListScreen;
 
-    let theme = Theme::faraday_240();
+
     let words_per_page = 4usize;
     let total_pages = (word_count + words_per_page - 1) / words_per_page;
     let page = page.min(total_pages - 1);
@@ -1157,6 +1187,7 @@ fn draw_show_words<D: DrawTarget<Color = Rgb565>>(
 /// usual.
 fn draw_verify_word<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     word_num: usize,
     options: &[String],
     selected: usize,
@@ -1164,9 +1195,9 @@ fn draw_verify_word<D: DrawTarget<Color = Rgb565>>(
     total_checks: usize,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
-    use crate::ui::{screens::ListScreen, Theme};
+    use crate::ui::screens::ListScreen;
 
-    let theme = Theme::faraday_240();
+
     let title = alloc::format!("WORD {:02}?", word_num);
     let rows: Vec<ListRow> = options.iter().map(|s| ListRow::new(s)).collect();
     let sel = selected.min(options.len().saturating_sub(1));
@@ -1192,14 +1223,15 @@ fn draw_verify_word<D: DrawTarget<Color = Rgb565>>(
 /// full QR with the current block highlighted.
 fn draw_qr_block<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     compact_data: &[u8],
     block_index: usize,
     _seed_loaded: bool,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
-    use crate::ui::Theme;
 
-    let theme = Theme::faraday_240();
+
+
     display.fill_solid(
         &Rectangle::new(Point::zero(), Size::new(theme.width, theme.height)),
         theme.bg,
@@ -1286,7 +1318,7 @@ fn draw_qr_block<D: DrawTarget<Color = Rgb565>>(
     let mini_scale = 2i32;
     let mini_size = qr_size as i32 * mini_scale;
     let mini_x = (body_w - mini_size) / 2;
-    let mini_y = 240 - mini_size - 4;
+    let mini_y = theme.height as i32 - mini_size - 4;
 
     Rectangle::new(
         Point::new(mini_x - 2, mini_y - 2),
@@ -1368,12 +1400,13 @@ fn draw_qr_block<D: DrawTarget<Color = Rgb565>>(
 #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
 fn draw_message<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     title: &str,
     message: &str,
     seed_loaded: bool,
 ) -> Result<(), D::Error> {
     display.clear(colors::BG_DARK)?;
-    draw_status_bar(display, title, seed_loaded)?;
+    draw_status_bar(display, theme, title, seed_loaded)?;
 
     let style = MonoTextStyle::new(&FONT_9X15, colors::TEXT_SECONDARY);
     let mut y = 100i32;
@@ -1403,6 +1436,7 @@ fn draw_message<D: DrawTarget<Color = Rgb565>>(
 /// multi-step txs, unknown programs).
 fn draw_tx_review_zoned<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     action: &crate::parser::ZonedAction,
     wallet_pubkey: Option<&[u8; 32]>,
     can_sign: bool,
@@ -1410,10 +1444,10 @@ fn draw_tx_review_zoned<D: DrawTarget<Color = Rgb565>>(
 ) -> Result<(), D::Error> {
     use crate::ui::layout::split_top;
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
-    use crate::ui::Theme;
+
     use embedded_graphics::primitives::{Line, PrimitiveStyle};
 
-    let theme = Theme::faraday_240();
+
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
 
@@ -1798,6 +1832,7 @@ fn draw_zone_fee<D: DrawTarget<Color = Rgb565>>(
 /// pubkey isn't in the tx's required-signer set.
 fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     info_lines: &[String],
     scroll: usize,
     _selected: usize,
@@ -1811,10 +1846,10 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
 ) -> Result<(), D::Error> {
     use crate::ui::layout::{split_bottom, split_top};
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
-    use crate::ui::Theme;
+
     use embedded_graphics::primitives::{Line, PrimitiveStyle};
 
-    let theme = Theme::faraday_240();
+
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
 
@@ -2134,6 +2169,7 @@ struct DetailRow<'a> {
 /// standard sign / next / cancel triplet.
 fn draw_detail_shell<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     title: &str,
     page_one_indexed: usize,
     total_pages: usize,
@@ -2141,9 +2177,9 @@ fn draw_detail_shell<D: DrawTarget<Color = Rgb565>>(
 ) -> Result<(), D::Error> {
     use crate::ui::layout::split_top;
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
-    use crate::ui::Theme;
 
-    let theme = Theme::faraday_240();
+
+
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
 
@@ -2272,6 +2308,7 @@ fn lamports_to_sol_str(lamports: u64) -> String {
 /// glance before drilling into instructions.
 fn draw_tx_metadata<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     parsed: &crate::parser::ParsedTransaction,
     total_pages: usize,
 ) -> Result<(), D::Error> {
@@ -2312,7 +2349,7 @@ fn draw_tx_metadata<D: DrawTarget<Color = Rgb565>>(
         },
     ];
 
-    draw_detail_shell(display, "TX METADATA", 2, total_pages, &rows)
+    draw_detail_shell(display, theme, "TX METADATA", 2, total_pages, &rows)
 }
 
 /// Page 2 — Instructions overview. One row per top-level instruction
@@ -2320,6 +2357,7 @@ fn draw_tx_metadata<D: DrawTarget<Color = Rgb565>>(
 /// happens on pages 3..3+N.
 fn draw_tx_ix_list<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     parsed: &crate::parser::ParsedTransaction,
     total_pages: usize,
 ) -> Result<(), D::Error> {
@@ -2333,7 +2371,7 @@ fn draw_tx_ix_list<D: DrawTarget<Color = Rgb565>>(
         })
         .collect();
 
-    draw_detail_shell(display, "INSTRUCTIONS", 3, total_pages, &rows)
+    draw_detail_shell(display, theme, "INSTRUCTIONS", 3, total_pages, &rows)
 }
 
 /// Pages 3..3+N — single-instruction detail. Renders the program name as
@@ -2342,6 +2380,7 @@ fn draw_tx_ix_list<D: DrawTarget<Color = Rgb565>>(
 /// the user can fall back to the raw bytes page if they need the full hex.
 fn draw_tx_ix_detail<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     parsed: &crate::parser::ParsedTransaction,
     ix_index: usize,
     total_pages: usize,
@@ -2352,6 +2391,7 @@ fn draw_tx_ix_detail<D: DrawTarget<Color = Rgb565>>(
         // panicking.
         return draw_detail_shell(
             display,
+            theme,
             "INSTRUCTION",
             ix_index + 4,
             total_pages,
@@ -2402,7 +2442,7 @@ fn draw_tx_ix_detail<D: DrawTarget<Color = Rgb565>>(
     // the firmware redraws on event, not 60Hz. If it becomes hot, swap to a
     // fixed-size stack buffer.
     let title_static: &'static str = Box::leak(title.into_boxed_str());
-    draw_detail_shell(display, title_static, ix_index + 4, total_pages, &rows)
+    draw_detail_shell(display, theme, title_static, ix_index + 4, total_pages, &rows)
 }
 
 /// Last page — raw bytes preview. Shows length, signing hash, and
@@ -2412,6 +2452,7 @@ fn draw_tx_ix_detail<D: DrawTarget<Color = Rgb565>>(
 /// screens. The user already scanned the QR for the full bytes.
 fn draw_tx_raw<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     tx_bytes: &[u8],
     total_pages: usize,
 ) -> Result<(), D::Error> {
@@ -2453,7 +2494,7 @@ fn draw_tx_raw<D: DrawTarget<Color = Rgb565>>(
         });
     }
 
-    draw_detail_shell(display, "RAW", total_pages, total_pages, &rows)
+    draw_detail_shell(display, theme, "RAW", total_pages, total_pages, &rows)
 }
 
 #[derive(Clone, Copy)]
@@ -2567,16 +2608,17 @@ fn wrap_line_for_width(text: &str, max_chars: usize) -> Vec<String> {
 
 fn draw_message_review<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     message_bytes: &[u8],
     scroll: usize,
     seed_loaded: bool,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, GUTTER_W};
-    use crate::ui::Theme;
+
     use embedded_graphics::geometry::Size;
 
     display.clear(colors::BG_DARK)?;
-    draw_status_bar(display, "Sign Message", seed_loaded)?;
+    draw_status_bar(display, theme, "Sign Message", seed_loaded)?;
 
     let label_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
     let text_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
@@ -2604,7 +2646,7 @@ fn draw_message_review<D: DrawTarget<Color = Rgb565>>(
     )
     .draw(display)?;
 
-    let theme = Theme::faraday_240();
+
     EdgeHints::new()
         .k1(EdgeIcon::Check)
         .k3(EdgeIcon::Cross)
@@ -2629,13 +2671,14 @@ fn draw_message_review<D: DrawTarget<Color = Rgb565>>(
 /// screens.
 fn draw_show_address_text<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     address: Option<&str>,
 ) -> Result<(), D::Error> {
     use crate::ui::layout::split_top;
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
-    use crate::ui::Theme;
 
-    let theme = Theme::faraday_240();
+
+
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
 
@@ -2683,7 +2726,7 @@ fn draw_show_address_text<D: DrawTarget<Color = Rgb565>>(
             }
         }
         None => {
-            return draw_no_wallet_alert(display, "ADDRESS", "Create or load a", "wallet to view.");
+            return draw_no_wallet_alert(display, theme, "ADDRESS", "Create or load a", "wallet to view.");
         }
     }
 
@@ -2703,11 +2746,12 @@ fn draw_show_address_text<D: DrawTarget<Color = Rgb565>>(
 /// wallet; the truncated caption is for a quick visual double-check.
 fn draw_show_address<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     address: Option<&str>,
 ) -> Result<(), D::Error> {
-    use crate::ui::Theme;
 
-    let theme = Theme::faraday_240();
+
+
 
     match address {
         Some(addr) => {
@@ -2732,7 +2776,7 @@ fn draw_show_address<D: DrawTarget<Color = Rgb565>>(
         }
         None => {
             // No wallet loaded — chunky alert: "!" sigil + NO WALLET title.
-            draw_no_wallet_alert(display, "ADDRESS", "Create or load a", "wallet to view.")
+            draw_no_wallet_alert(display, theme, "ADDRESS", "Create or load a", "wallet to view.")
         }
     }
 }
@@ -2742,14 +2786,15 @@ fn draw_show_address<D: DrawTarget<Color = Rgb565>>(
 /// reference rows.
 fn draw_about<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     _seed_loaded: bool,
 ) -> Result<(), D::Error> {
     use crate::gui::logo;
     use crate::ui::layout::split_top;
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
-    use crate::ui::Theme;
 
-    let theme = Theme::faraday_240();
+
+
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
 
@@ -2844,13 +2889,14 @@ fn draw_about<D: DrawTarget<Color = Rgb565>>(
 /// selection is CANCEL.
 fn draw_create_backup_warning<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     selected: usize,
 ) -> Result<(), D::Error> {
     use crate::ui::layout::split_top;
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, List, ListRow, GUTTER_W};
-    use crate::ui::Theme;
 
-    let theme = Theme::faraday_240();
+
+
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
 
@@ -2918,12 +2964,13 @@ fn draw_create_backup_warning<D: DrawTarget<Color = Rgb565>>(
 /// selection is CANCEL.
 fn draw_export_seed_warning<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     selected: usize,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
-    use crate::ui::{screens::ListScreen, Theme};
+    use crate::ui::screens::ListScreen;
 
-    let theme = Theme::faraday_240();
+
     let rows: [ListRow; 2] = [
         ListRow::with_subtitle("CANCEL", "Keep the seed private"),
         ListRow::with_subtitle("SHOW", "I accept the risk"),
@@ -2948,12 +2995,13 @@ fn draw_export_seed_warning<D: DrawTarget<Color = Rgb565>>(
 /// exposed as the subtitle on the YES row. Default selection is NO.
 fn draw_reset_wallet<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     selected: usize,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
-    use crate::ui::{screens::ListScreen, Theme};
+    use crate::ui::screens::ListScreen;
 
-    let theme = Theme::faraday_240();
+
     let rows: [ListRow; 2] = [
         ListRow::with_subtitle("NO", "Back to wallet data"),
         ListRow::with_subtitle("YES", "Wipes wallet from RAM"),
@@ -2980,14 +3028,15 @@ fn draw_reset_wallet<D: DrawTarget<Color = Rgb565>>(
 /// ("app[l]"), and the filtered candidates appear as a scrollable list.
 fn draw_word_picker_new<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     picker: &crate::gui::app::WordPicker,
 ) -> Result<(), D::Error> {
     use crate::gui::app::{WordPicker, WORD_GRID_COLS, WORD_GRID_ROWS};
     use crate::ui::layout::split_top;
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
-    use crate::ui::Theme;
 
-    let theme = Theme::faraday_240();
+
+
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
 
@@ -3088,15 +3137,16 @@ fn draw_word_picker_new<D: DrawTarget<Color = Rgb565>>(
 /// "WORD N/M" counter in the header. Auto-dismissed by `App::tick`.
 fn draw_word_committed<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     word: &str,
     committed: usize,
     word_count: usize,
 ) -> Result<(), D::Error> {
     use crate::ui::layout::split_top;
     use crate::ui::widgets::{Header, HeaderKind};
-    use crate::ui::Theme;
 
-    let theme = Theme::faraday_240();
+
+
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
 
@@ -3128,15 +3178,16 @@ fn draw_word_committed<D: DrawTarget<Color = Rgb565>>(
 /// when the user reaches a wallet-required screen with no seed loaded.
 fn draw_no_wallet_alert<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     header_title: &str,
     body_l1: &str,
     body_l2: &str,
 ) -> Result<(), D::Error> {
     use crate::ui::layout::split_top;
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
-    use crate::ui::Theme;
 
-    let theme = Theme::faraday_240();
+
+
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
 
@@ -3213,10 +3264,11 @@ fn draw_no_wallet_alert<D: DrawTarget<Color = Rgb565>>(
 /// Paper-seed didn't decode to the currently-loaded wallet's mnemonic.
 fn draw_verify_backup_seed_mismatch<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
-    use crate::ui::{screens::CardScreen, Theme};
-    let theme = Theme::faraday_240();
+    use crate::ui::screens::CardScreen;
+
     let body = ["The scanned QR is not", "this wallet's seed."];
     let rows: [CardRow; 0] = [];
     CardScreen {
@@ -3237,10 +3289,11 @@ fn draw_verify_backup_seed_mismatch<D: DrawTarget<Color = Rgb565>>(
 /// wallet address.
 fn draw_verify_backup_passphrase_mismatch<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
-    use crate::ui::{screens::CardScreen, Theme};
-    let theme = Theme::faraday_240();
+    use crate::ui::screens::CardScreen;
+
     let body = ["Passphrase doesn't", "match this wallet."];
     let rows: [CardRow; 0] = [];
     CardScreen {
@@ -3260,11 +3313,12 @@ fn draw_verify_backup_passphrase_mismatch<D: DrawTarget<Color = Rgb565>>(
 /// Paper backup confirmed to derive the loaded wallet (with passphrase if set).
 fn draw_verify_backup_success<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     has_passphrase: bool,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
-    use crate::ui::{screens::CardScreen, Theme};
-    let theme = Theme::faraday_240();
+    use crate::ui::screens::CardScreen;
+
     let subtitle = if has_passphrase {
         "Seed + passphrase OK"
     } else {
@@ -3296,18 +3350,19 @@ fn draw_verify_backup_success<D: DrawTarget<Color = Rgb565>>(
 /// previous screen (handled by the state machine).
 fn draw_fullscreen_qr<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     data: &[u8],
     ec: crate::qr::encode_qr::QrEcLevel,
     quiet: u32,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::Qr;
-    use crate::ui::Theme;
+
     use embedded_graphics::{
         geometry::{Point, Size},
         primitives::Rectangle,
     };
 
-    let theme = Theme::faraday_240();
+
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
     Qr { data, ec, quiet }.draw(display, &theme, screen)
@@ -3316,12 +3371,13 @@ fn draw_fullscreen_qr<D: DrawTarget<Color = Rgb565>>(
 /// Passphrase mismatch error card. Any key retries the input.
 fn draw_passphrase_mismatch<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     _seed_loaded: bool,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
-    use crate::ui::{screens::CardScreen, Theme};
+    use crate::ui::screens::CardScreen;
 
-    let theme = Theme::faraday_240();
+
     let body = ["Your two entries did", "not match. Try again."];
     let rows: [CardRow; 0] = [];
 
@@ -3344,6 +3400,7 @@ fn draw_passphrase_mismatch<D: DrawTarget<Color = Rgb565>>(
 /// collect a frame of sensor noise.
 fn draw_camera_entropy<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     _word_count: usize,
     frames_collected: usize,
     _seed_loaded: bool,
@@ -3351,13 +3408,13 @@ fn draw_camera_entropy<D: DrawTarget<Color = Rgb565>>(
 ) -> Result<(), D::Error> {
     use crate::ui::layout::split_top;
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
-    use crate::ui::Theme;
+
     use embedded_graphics::{
         geometry::{Point, Size},
         primitives::Rectangle,
     };
 
-    let theme = Theme::faraday_240();
+
     // Keep in sync with src/gui/flows/create.rs::handle CreateCameraEntropy.
     let target = 2;
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
@@ -3457,6 +3514,7 @@ fn draw_progress_bar<D: DrawTarget<Color = Rgb565>>(
 /// Coin-flip entropy collector. H / T picker, selected gets the cyan highlight.
 fn draw_coin_flips<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     word_count: usize,
     bits: &[bool],
     selected: usize,
@@ -3470,6 +3528,7 @@ fn draw_coin_flips<D: DrawTarget<Color = Rgb565>>(
         .collect();
     draw_entropy_picker(
         display,
+        theme,
         "COIN FLIPS",
         bits.len(),
         target,
@@ -3483,6 +3542,7 @@ fn draw_coin_flips<D: DrawTarget<Color = Rgb565>>(
 /// Dice-roll entropy collector. 1–6 picker, selected gets the cyan highlight.
 fn draw_dice_rolls<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     word_count: usize,
     rolls: &[u8],
     selected: usize,
@@ -3496,6 +3556,7 @@ fn draw_dice_rolls<D: DrawTarget<Color = Rgb565>>(
         .collect();
     draw_entropy_picker(
         display,
+        theme,
         "DICE ROLLS",
         rolls.len(),
         target,
@@ -3518,6 +3579,7 @@ enum PickerLayout {
 /// dice-roll screens.
 fn draw_entropy_picker<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     title: &str,
     progress: usize,
     target: usize,
@@ -3528,13 +3590,13 @@ fn draw_entropy_picker<D: DrawTarget<Color = Rgb565>>(
 ) -> Result<(), D::Error> {
     use crate::ui::layout::{split_bottom, split_top};
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
-    use crate::ui::Theme;
+
     use embedded_graphics::{
         geometry::{Point, Size},
         primitives::Rectangle,
     };
 
-    let theme = Theme::faraday_240();
+
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
     display.fill_solid(&screen, theme.bg)?;
 
@@ -3554,7 +3616,7 @@ fn draw_entropy_picker<D: DrawTarget<Color = Rgb565>>(
 
     // Progress bar band, then recent-history strip, then picker fills the rest.
     let (progress_rect, rest) = split_top(body_rect, 16);
-    draw_progress_bar(display, &theme, progress_rect, progress, target)?;
+    draw_progress_bar(display, theme, progress_rect, progress, target)?;
 
     let (recent_rect, picker_rect) = split_top(rest, 22);
     let cx = recent_rect.top_left.x + recent_rect.size.width as i32 / 2;
@@ -3619,6 +3681,7 @@ extern crate alloc;
 /// while warming up, and a centered reticle + hint bar once a frame is live.
 fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     title: &str,
     _hint: &str,
     _seed_loaded: bool,
@@ -3628,9 +3691,9 @@ fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
 ) -> Result<(), D::Error> {
     use crate::ui::layout::split_top;
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
-    use crate::ui::Theme;
 
-    let theme = Theme::faraday_240();
+
+
     let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
 
     // Camera states we handle differently:
@@ -3730,7 +3793,7 @@ fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
     .draw(display)?;
 
     // Scan-pipeline heartbeat (pulsing dot + UR seq/total when assembling).
-    draw_scan_diag(display, diag)?;
+    draw_scan_diag(display, theme, diag)?;
 
     // Right-edge hint column — K3 = back on every scan screen. K1/K2 have
     // no explicit action (scan auto-advances on a successful decode), so
@@ -3748,6 +3811,7 @@ fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
 
 fn draw_scan_diag<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
+    theme: &Theme,
     diag: crate::camera::ScanDiagnostics,
 ) -> Result<(), D::Error> {
     // Only render the diagnostic strip when an animated UR stream is in
@@ -3759,7 +3823,7 @@ fn draw_scan_diag<D: DrawTarget<Color = Rgb565>>(
     };
 
     // Thin band just under the status bar.
-    let strip = Rectangle::new(Point::new(0, 28), Size::new(240, 14));
+    let strip = Rectangle::new(Point::new(0, 28), Size::new(theme.width, 14));
     strip
         .into_styled(PrimitiveStyle::with_fill(colors::BG_DARK))
         .draw(display)?;

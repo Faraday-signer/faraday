@@ -3,6 +3,7 @@
 use crate::crypto::derivation;
 use crate::crypto::slip0010::SolanaKeypair;
 use crate::gui::flows;
+use crate::ui::Theme;
 use zeroize::Zeroize;
 
 /// Platform-independent input event.
@@ -752,6 +753,7 @@ pub fn should_blank(idle_ms: u64, timeout_ms: u64, on_camera_screen: bool) -> bo
 
 /// Top-level application.
 pub struct App {
+    pub theme: Theme,
     pub screen: Screen,
     pub guided: bool,
     pub pending_screen: Option<Screen>,
@@ -772,8 +774,9 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> Self {
+    pub fn new(theme: Theme) -> Self {
         App {
+            theme,
             screen: Screen::Splash,
             guided: false,
             pending_screen: None,
