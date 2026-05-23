@@ -18,7 +18,12 @@ import {
 } from "@/lib/camera-permission";
 import { FaradayLogo } from "@/lib/brand";
 import { sendRuntimeMessage } from "@/lib/runtime";
-import { FARADAY_SIG_PREFIX, spliceFaradaySignature } from "@/lib/solana";
+import {
+  decodeSignMessageQrPayload,
+  describeSignMessageBytes,
+  FARADAY_SIG_PREFIX,
+  spliceFaradaySignature
+} from "@/lib/solana";
 import { colors, fontFamily, font, radius, space } from "@/lib/theme";
 import { type TxRiskReport } from "@/lib/tx-risk";
 import type { GetSignSessionResult } from "@/lib/types";
@@ -285,6 +290,35 @@ const riskScrollStyle: CSSProperties = {
   paddingBottom: space.md,
 };
 
+const messagePreviewStyle: CSSProperties = {
+  width: "100%",
+  maxWidth: 420,
+  border: `1px solid ${colors.border}`,
+  borderRadius: radius.md,
+  background: colors.panel,
+  padding: space.sm,
+};
+
+const messagePreviewTitleStyle: CSSProperties = {
+  color: colors.textMuted,
+  fontSize: font.xs,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  marginBottom: space.xs,
+};
+
+const messagePreviewTextStyle: CSSProperties = {
+  margin: 0,
+  color: colors.text,
+  fontFamily: fontFamily.mono,
+  fontSize: font.sm,
+  lineHeight: 1.5,
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+  maxHeight: 120,
+  overflowY: "auto",
+};
+
 
 function RiskScreen({
   session,
@@ -343,6 +377,16 @@ function DisplayScreen({
     }
     return encodeTxForQr(qrValue);
   }, [isMessage, qrValue]);
+  const messagePreview = useMemo(() => {
+    if (!isMessage || !session.messageQrBase64) {
+      return null;
+    }
+    try {
+      return describeSignMessageBytes(decodeSignMessageQrPayload(session.messageQrBase64));
+    } catch {
+      return null;
+    }
+  }, [isMessage, session.messageQrBase64]);
   const [animatedIndex, setAnimatedIndex] = useState(0);
 
   useEffect(() => {
@@ -415,6 +459,13 @@ function DisplayScreen({
         <p style={{ ...subtitleStyle, fontFamily: fontFamily.mono, fontSize: font.sm }}>
           Animated UR frame {animatedIndex + 1}/{qrPayload.frames.length}
         </p>
+      ) : null}
+
+      {messagePreview ? (
+        <div style={messagePreviewStyle}>
+          <div style={messagePreviewTitleStyle}>{messagePreview.title}</div>
+          <pre style={messagePreviewTextStyle}>{messagePreview.text}</pre>
+        </div>
       ) : null}
 
       <p style={{ ...subtitleStyle, textAlign: "center" }}>

@@ -23,6 +23,7 @@ pub(crate) mod token_registry;
 
 // dApp parsers
 mod dflow;
+mod ika;
 mod jupiter;
 mod jupiter_rfq;
 mod jupiter_ultra;
@@ -1263,6 +1264,7 @@ fn dispatch(
             jupiter_rfq::parse(&ix.data, &ix.account_indices, all_accounts)
         }
         Some("DFlow") => dflow::parse(&ix.data, &ix.account_indices, all_accounts, ata_map),
+        Some("Ika clear-msig") => ika::parse(&ix.data, &resolved_accounts),
         Some("Raydium AMM") => {
             raydium::amm_v4::parse(&ix.data, &ix.account_indices, all_accounts, ata_map)
         }

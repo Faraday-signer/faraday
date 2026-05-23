@@ -4,6 +4,11 @@ import nacl from "tweetnacl";
 const BASE58_RE = /^[1-9A-HJ-NP-Za-km-z]+$/;
 const SIGN_MESSAGE_QR_PREFIX = 0xff;
 const MIN_SIGN_MESSAGE_QR_BASE64_LENGTH = 51;
+const SOLANA_OFFCHAIN_DOMAIN = new Uint8Array([
+  0xff, 0x73, 0x6f, 0x6c, 0x61, 0x6e, 0x61, 0x20,
+  0x6f, 0x66, 0x66, 0x63, 0x68, 0x61, 0x69, 0x6e
+]);
+const SOLANA_OFFCHAIN_HEADER_LENGTH = 20;
 
 export const FARADAY_SIG_PREFIX = "faraday:sig:";
 const FARADAY_SIG_ENVELOPE_VERSION = 1;
@@ -25,6 +30,38 @@ interface TxEnvelope {
   signatures: Uint8Array[];
   messageBytes: Uint8Array;
   signerAddresses: string[];
+}
+
+export interface SolanaOffchainMessage {
+  version: number;
+  format: number;
+  bodyBytes: Uint8Array;
+  bodyText: string;
+}
+
+export interface SignMessagePreview {
+  title: string;
+  text: string;
+  wrapped: boolean;
+  ika?: IkaApprovalDetails;
+}
+
+export type IkaAction = "propose" | "approve" | "cancel";
+
+export type IkaContent =
+  | { kind: "transfer"; amountLamports: bigint; to: string }
+  | { kind: "spl-transfer"; amount: string; mint: string; to: string }
+  | { kind: "add-intent"; definitionHash: string }
+  | { kind: "remove-intent"; index: string }
+  | { kind: "update-intent"; index: string; definitionHash: string }
+  | { kind: "other"; text: string };
+
+export interface IkaApprovalDetails {
+  action: IkaAction;
+  expires: string;
+  walletName: string;
+  proposalIndex: string;
+  content: IkaContent;
 }
 
 export function encodeBase64(data: Uint8Array): string {
@@ -81,6 +118,212 @@ export function buildSignMessageQrPayload(messageBytes: Uint8Array): string {
     );
   }
   return encoded;
+}
+
+export function decodeSignMessageQrPayload(qrBase64: string): Uint8Array {
+  const payload = decodeBase64(qrBase64.trim());
+  if (payload[0] !== SIGN_MESSAGE_QR_PREFIX) {
+    throw new Error("Sign-message QR payload is missing the 0xFF prefix.");
+  }
+  return payload.slice(1);
+}
+
+export function buildSolanaOffchainMessage(messageText: string): Uint8Array {
+  const body = new TextEncoder().encode(messageText);
+  if (body.length === 0) {
+    throw new Error("Solana off-chain message must not be empty.");
+  }
+  if (body.length > 0xffff) {
+    throw new Error("Solana off-chain message is too long.");
+  }
+
+  const out = new Uint8Array(SOLANA_OFFCHAIN_HEADER_LENGTH + body.length);
+  out.set(SOLANA_OFFCHAIN_DOMAIN, 0);
+  out[16] = 0;
+  out[17] = 0;
+  out[18] = body.length & 0xff;
+  out[19] = body.length >> 8;
+  out.set(body, SOLANA_OFFCHAIN_HEADER_LENGTH);
+  return out;
+}
+
+export function parseSolanaOffchainMessage(
+  messageBytes: Uint8Array
+): SolanaOffchainMessage | null {
+  if (messageBytes.length < SOLANA_OFFCHAIN_HEADER_LENGTH) {
+    return null;
+  }
+  for (let i = 0; i < SOLANA_OFFCHAIN_DOMAIN.length; i += 1) {
+    if (messageBytes[i] !== SOLANA_OFFCHAIN_DOMAIN[i]) {
+      return null;
+    }
+  }
+  // clear-msig-ika and the Solana off-chain spec both pin version=0,
+  // format=0 (restricted ASCII). Reject anything else so a future spec
+  // bump can't slip past the preview.
+  if (messageBytes[16] !== 0 || messageBytes[17] !== 0) {
+    return null;
+  }
+
+  const bodyLength = messageBytes[18] | (messageBytes[19] << 8);
+  const expectedLength = SOLANA_OFFCHAIN_HEADER_LENGTH + bodyLength;
+  if (messageBytes.length !== expectedLength) {
+    throw new Error("Solana off-chain message length does not match the header.");
+  }
+
+  const bodyBytes = messageBytes.slice(SOLANA_OFFCHAIN_HEADER_LENGTH);
+  let bodyText: string;
+  try {
+    bodyText = new TextDecoder("utf-8", { fatal: true }).decode(bodyBytes);
+  } catch {
+    throw new Error("Solana off-chain message body is not valid UTF-8.");
+  }
+
+  return {
+    version: messageBytes[16],
+    format: messageBytes[17],
+    bodyBytes,
+    bodyText
+  };
+}
+
+/**
+ * Recognize a clear-msig-ika approval message body. Master shape (verified
+ * against `programs/clear-wallet/src/utils/message.rs:109-121` in
+ * `Iamknownasfesal/clear-msig-ika`):
+ *
+ *   expires <YYYY-MM-DD HH:MM:SS>: <action> <content> | wallet: <name> proposal: <idx>
+ *
+ * `<action>` ∈ {propose, approve, cancel}. Returns `null` when the body
+ * doesn't carry the Ika trailer — callers fall back to the raw body text.
+ */
+export function parseIkaApprovalMessage(bodyText: string): IkaApprovalDetails | null {
+  if (!bodyText.startsWith("expires ")) {
+    return null;
+  }
+  const afterExpires = bodyText.slice("expires ".length);
+  const colonIdx = afterExpires.indexOf(": ");
+  if (colonIdx < 0) {
+    return null;
+  }
+  const expires = afterExpires.slice(0, colonIdx);
+  const rest = afterExpires.slice(colonIdx + 2);
+
+  const pipeIdx = rest.indexOf(" | ");
+  if (pipeIdx < 0) {
+    return null;
+  }
+  const actionAndContent = rest.slice(0, pipeIdx);
+  const metadata = rest.slice(pipeIdx + 3);
+
+  const spaceIdx = actionAndContent.indexOf(" ");
+  if (spaceIdx < 0) {
+    return null;
+  }
+  const action = actionAndContent.slice(0, spaceIdx);
+  const content = actionAndContent.slice(spaceIdx + 1);
+  if (action !== "propose" && action !== "approve" && action !== "cancel") {
+    return null;
+  }
+
+  if (!metadata.startsWith("wallet: ")) {
+    return null;
+  }
+  const walletAndProposal = metadata.slice("wallet: ".length);
+  const proposalIdx = walletAndProposal.indexOf(" proposal: ");
+  if (proposalIdx < 0) {
+    return null;
+  }
+  const walletName = walletAndProposal.slice(0, proposalIdx);
+  const proposalIndex = walletAndProposal.slice(proposalIdx + " proposal: ".length);
+
+  return {
+    action: action as IkaAction,
+    expires,
+    walletName,
+    proposalIndex,
+    content: classifyIkaContent(content)
+  };
+}
+
+function classifyIkaContent(content: string): IkaContent {
+  if (content.startsWith("transfer ")) {
+    const rest = content.slice("transfer ".length);
+    const lamportsIdx = rest.indexOf(" lamports to ");
+    if (lamportsIdx >= 0) {
+      const amountStr = rest.slice(0, lamportsIdx);
+      const to = rest.slice(lamportsIdx + " lamports to ".length);
+      try {
+        return { kind: "transfer", amountLamports: BigInt(amountStr), to };
+      } catch {
+        // Unparseable amount — fall through to `other` so the user still sees text.
+      }
+    }
+    const ofMintIdx = rest.indexOf(" of mint ");
+    if (ofMintIdx >= 0) {
+      const amount = rest.slice(0, ofMintIdx);
+      const afterMint = rest.slice(ofMintIdx + " of mint ".length);
+      const toIdx = afterMint.indexOf(" to ");
+      if (toIdx >= 0) {
+        return {
+          kind: "spl-transfer",
+          amount,
+          mint: afterMint.slice(0, toIdx),
+          to: afterMint.slice(toIdx + " to ".length)
+        };
+      }
+    }
+  }
+
+  if (content.startsWith("add intent definition_hash: ")) {
+    return {
+      kind: "add-intent",
+      definitionHash: content.slice("add intent definition_hash: ".length)
+    };
+  }
+  if (content.startsWith("remove intent ")) {
+    return { kind: "remove-intent", index: content.slice("remove intent ".length) };
+  }
+  if (content.startsWith("update intent ")) {
+    const rest = content.slice("update intent ".length);
+    const hashIdx = rest.indexOf(" definition_hash: ");
+    if (hashIdx >= 0) {
+      return {
+        kind: "update-intent",
+        index: rest.slice(0, hashIdx),
+        definitionHash: rest.slice(hashIdx + " definition_hash: ".length)
+      };
+    }
+  }
+
+  return { kind: "other", text: content };
+}
+
+export function describeSignMessageBytes(messageBytes: Uint8Array): SignMessagePreview {
+  const offchain = parseSolanaOffchainMessage(messageBytes);
+  if (offchain) {
+    const ika = parseIkaApprovalMessage(offchain.bodyText);
+    return {
+      title: "Solana off-chain message",
+      text: offchain.bodyText,
+      wrapped: true,
+      ...(ika ? { ika } : {})
+    };
+  }
+
+  try {
+    return {
+      title: "Message",
+      text: new TextDecoder("utf-8", { fatal: true }).decode(messageBytes),
+      wrapped: false
+    };
+  } catch {
+    return {
+      title: "Message",
+      text: "(binary data)",
+      wrapped: false
+    };
+  }
 }
 
 export function decodeHexSignature(signatureHex: string): Uint8Array {
