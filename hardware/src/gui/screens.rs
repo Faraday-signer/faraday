@@ -2889,7 +2889,7 @@ fn classify_ika_content(content: &str) -> (&'static str, Vec<DetailRow<'static>>
                     vec![
                         DetailRow {
                             label: "AMOUNT",
-                            value: amount.to_string(),
+                            value: format_spl_amount(amount, mint),
                         },
                         DetailRow {
                             label: "MINT",
@@ -2948,6 +2948,30 @@ fn classify_ika_content(content: &str) -> (&'static str, Vec<DetailRow<'static>>
             value: content.to_string(),
         }],
     )
+}
+
+/// Format an SPL transfer amount for the review screen. For mints in the
+/// device's token registry, emit `<decimal-amount> <SYMBOL>` (e.g. "1.5 USDC")
+/// so the user reads the value the same way they would on any block explorer.
+/// Falls back to the raw integer when the mint is unknown or the amount /
+/// mint don't parse — Faraday never invents a symbol it can't verify.
+fn format_spl_amount(amount: &str, mint_b58: &str) -> String {
+    let raw = match amount.parse::<u64>() {
+        Ok(n) => n,
+        Err(_) => return amount.to_string(),
+    };
+    let mint_bytes: [u8; 32] = match bs58::decode(mint_b58).into_vec() {
+        Ok(v) if v.len() == 32 => v.try_into().expect("len checked"),
+        _ => return amount.to_string(),
+    };
+    match crate::parser::token_registry::lookup(&mint_bytes) {
+        Some(info) => format!(
+            "{} {}",
+            crate::parser::token_registry::format_amount(raw, info.decimals),
+            info.symbol
+        ),
+        None => amount.to_string(),
+    }
 }
 
 /// Shorten a hex blob (32+ chars) to `head...tail`. Mirrors `shorten_address`'s
@@ -3082,9 +3106,25 @@ mod message_review_tests {
         );
         let review = message_review(&msg);
         assert_eq!(review.title, "APPROVE SPL TRANSFER");
-        assert_eq!(row_value(&review, "AMOUNT"), Some("1500000"));
+        assert_eq!(row_value(&review, "AMOUNT"), Some("1.5 USDC"));
         assert_eq!(row_value(&review, "MINT"), Some("EPjF...Dt1v"));
         assert_eq!(row_value(&review, "TO"), Some("9abc...efgh"));
+    }
+
+    #[test]
+    fn spl_transfer_unknown_mint_keeps_raw_amount() {
+        // 32-byte all-ones mint (`4vJ9JU…`) isn't in the token registry — we
+        // must not invent a symbol; show the raw integer instead.
+        let unknown_mint = bs58::encode([1u8; 32]).into_string();
+        let body = format!(
+            "expires 2030-01-01 00:00:00: approve transfer 1500000 of mint {} to \
+             9abcDEFghijKLMnopQRstuvWXyz12345678ABCDefgh | wallet: treasury proposal: 99",
+            unknown_mint,
+        );
+        let msg = wrapped(&body);
+        let review = message_review(&msg);
+        assert_eq!(review.title, "APPROVE SPL TRANSFER");
+        assert_eq!(row_value(&review, "AMOUNT"), Some("1500000"));
     }
 
     #[test]
