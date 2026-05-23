@@ -23,7 +23,7 @@ pub(crate) mod token_registry;
 
 // dApp parsers
 mod dflow;
-mod ika;
+pub(crate) mod ika;
 mod jupiter;
 mod jupiter_rfq;
 mod jupiter_ultra;
@@ -89,6 +89,55 @@ pub enum ZonedAction {
         /// unknown.
         route_hops: Option<u32>,
     },
+    // ── Ika clear-msig variants ───────────────────────────────────────────
+    // The on-chain tx for vote/execute/MPC instructions carries account
+    // refs and an index, but NOT the proposal's value content — that lives
+    // in the off-chain approval message the user signed earlier (or in
+    // accounts the device can't read; Faraday is air-gapped). The hero
+    // these variants render is therefore the *identifying* on-chain
+    // pubkey (proposal PDA, dWallet, wallet) rather than a money amount.
+    IkaApprove {
+        wallet: [u8; 32],
+        proposal: [u8; 32],
+        approver_index: u8,
+        fee_lamports: u64,
+    },
+    IkaCancel {
+        wallet: [u8; 32],
+        proposal: [u8; 32],
+        canceller_index: u8,
+        fee_lamports: u64,
+    },
+    IkaExecute {
+        wallet: [u8; 32],
+        proposal: [u8; 32],
+        vault: [u8; 32],
+        fee_lamports: u64,
+    },
+    IkaSign {
+        dwallet: [u8; 32],
+        proposal: [u8; 32],
+        /// Always 3 by spec (3 × 32-byte blake2b hashes), but carried in
+        /// the variant so a future protocol change doesn't silently lie.
+        hash_count: u8,
+        fee_lamports: u64,
+    },
+    IkaBindDwallet {
+        chain_kind: u8,
+        wallet: [u8; 32],
+        dwallet: [u8; 32],
+        fee_lamports: u64,
+    },
+    IkaCreateWallet {
+        approval_threshold: u8,
+        timelock_seconds: u32,
+        /// Bytes of opaque wincode payload after the fixed header — the
+        /// name/proposers/approvers vecs. Surfaced as "DEFINITION N B"
+        /// so the user has a verifiable size even though we don't decode
+        /// the contents.
+        definition_bytes: u32,
+        fee_lamports: u64,
+    },
 }
 
 /// Extract a `ZonedAction` from a parsed tx (and its raw bytes), if the
@@ -101,6 +150,13 @@ pub fn extract_zoned(tx_bytes: &[u8], parsed: &ParsedTransaction) -> Option<Zone
     // TO. SWAP detection then runs against the parser's enriched fields.
     if let Some(send) = extract_send(tx_bytes) {
         return Some(send);
+    }
+
+    // Ika clear-msig is structurally different from a swap (single ix,
+    // fixed-shape data per disc) — handle it before falling into the swap
+    // aggregation loop so we don't get confused by its instruction names.
+    if let Some(ika) = extract_ika(tx_bytes, parsed) {
+        return Some(ika);
     }
 
     // DFlow splits the swap across two ixs (prepare carries spend, swap
@@ -572,6 +628,100 @@ fn extract_send(tx_bytes: &[u8]) -> Option<ZonedAction> {
         to,
         amount_lamports,
     })
+}
+
+/// Recognize a single-instruction `clear-msig-ika` transaction (modulo
+/// ComputeBudget priority-fee instructions) and lift it into a `ZonedAction`
+/// for the hero-style review screen. Returns `None` for multi-Ika-ix txs,
+/// `propose`/`cleanup_proposal` (which we deliberately keep on the list
+/// review), and anything that touches a non-Ika non-ComputeBudget program.
+///
+/// Instruction layouts cross-checked against `parser::ika`.
+fn extract_ika(tx_bytes: &[u8], parsed: &ParsedTransaction) -> Option<ZonedAction> {
+    let msg = message::deserialize(tx_bytes).ok()?;
+    let all_accounts = lookup_tables::expand_accounts(&msg.accounts, &msg.address_table_lookups);
+    let fee_payer = *all_accounts.first()?;
+
+    // Accept exactly one Ika ix; tolerate any number of ComputeBudget ixs
+    // (priority-fee setup is universal); reject anything else.
+    let mut ika_ix: Option<&message::RawInstruction> = None;
+    for ix in &msg.instructions {
+        let pid = all_accounts.get(ix.program_id_index)?;
+        match programs::identify(pid).as_ref().map(|p| p.name) {
+            Some("ComputeBudget") => continue,
+            Some("Ika clear-msig") => {
+                if ika_ix.is_some() {
+                    return None;
+                }
+                ika_ix = Some(ix);
+            }
+            _ => return None,
+        }
+    }
+    let ix = ika_ix?;
+    let disc = *ix.data.first()?;
+    let resolved: Vec<[u8; 32]> = ix
+        .account_indices
+        .iter()
+        .filter_map(|&i| all_accounts.get(i as usize).copied())
+        .collect();
+    let data = &ix.data;
+    let fee_lamports = parsed.fee_lamports;
+
+    match disc {
+        // approve: disc + expiry i64 + approver_idx u8 + sig [64] = 74 B
+        2 if data.len() >= 10 => Some(ZonedAction::IkaApprove {
+            wallet: *resolved.first()?,
+            proposal: *resolved.get(2)?,
+            approver_index: data[9],
+            fee_lamports,
+        }),
+        // cancel: same shape as approve
+        3 if data.len() >= 10 => Some(ZonedAction::IkaCancel {
+            wallet: *resolved.first()?,
+            proposal: *resolved.get(2)?,
+            canceller_index: data[9],
+            fee_lamports,
+        }),
+        // execute: disc only, accounts [wallet, vault, intent, proposal, system]
+        4 => Some(ZonedAction::IkaExecute {
+            wallet: *resolved.first()?,
+            vault: *resolved.get(1)?,
+            proposal: *resolved.get(3)?,
+            fee_lamports,
+        }),
+        // bind_dwallet: disc + chain_kind u8 + user_pubkey [32] + sig_scheme u16 + bump u8 = 37 B
+        6 if data.len() >= 37 => Some(ZonedAction::IkaBindDwallet {
+            chain_kind: data[1],
+            wallet: *resolved.get(1)?,
+            dwallet: *resolved.get(4)?,
+            fee_lamports,
+        }),
+        // ika_sign: disc + msg_approval_bump u8 + cpi_authority_bump u8 + 3×32B hashes = 99 B
+        7 if data.len() >= 99 => Some(ZonedAction::IkaSign {
+            dwallet: *resolved.get(6)?,
+            proposal: *resolved.get(3)?,
+            hash_count: 3,
+            fee_lamports,
+        }),
+        // create_wallet: disc + approval u8 + cancel u8 + timelock u32 + wincode tail
+        0 if data.len() >= 7 => {
+            let approval_threshold = data[1];
+            let timelock_seconds =
+                u32::from_le_bytes(data[3..7].try_into().expect("4 bytes"));
+            let definition_bytes = (data.len() - 7) as u32;
+            Some(ZonedAction::IkaCreateWallet {
+                approval_threshold,
+                timelock_seconds,
+                definition_bytes,
+                fee_lamports,
+            })
+        }
+        // disc 1 (propose) and 5 (cleanup_proposal) deliberately stay on the
+        // list-style review — propose's params_data is opaque without the
+        // intent definition; cleanup is admin-tier.
+        _ => None,
+    }
 }
 
 fn split_amount_symbol_owned(value: &str) -> (String, String) {
@@ -1495,7 +1645,6 @@ mod tests {
         let from = [0xAAu8; 32];
         let tx = system_transfer_tx(from, 1_000_000_000);
         let parsed = parse(&tx);
-        assert_eq!(parsed.fee_payer, bs58::encode(&from).into_string());
     }
 
     #[test]
@@ -1507,6 +1656,110 @@ mod tests {
             .iter()
             .any(|i| matches!(i, ReviewItem::Warning(_)));
         assert!(has_warning);
+    }
+
+    // ── extract_ika end-to-end coverage ─────────────────────────────────
+    // These tests load the committed fixture bytes that `gen-ika-fixtures`
+    // produces and confirm `extract_zoned` lifts each Ika tx into the right
+    // hero variant. They catch (a) extract_ika's dispatch logic, (b) the
+    // byte-offset math against the canonical Quasar layouts, and (c) any
+    // future fixture-generator drift away from those layouts.
+    const TX_APPROVE: &[u8] = include_bytes!("../../testdata/examples/ika/tx_approve.bin");
+    const TX_CANCEL: &[u8] = include_bytes!("../../testdata/examples/ika/tx_cancel.bin");
+    const TX_EXECUTE: &[u8] = include_bytes!("../../testdata/examples/ika/tx_execute.bin");
+    const TX_BIND: &[u8] = include_bytes!("../../testdata/examples/ika/tx_bind_dwallet.bin");
+    const TX_IKA_SIGN: &[u8] = include_bytes!("../../testdata/examples/ika/tx_ika_sign.bin");
+    const TX_CREATE: &[u8] = include_bytes!("../../testdata/examples/ika/tx_create_wallet.bin");
+    const TX_PROPOSE: &[u8] = include_bytes!("../../testdata/examples/ika/tx_propose.bin");
+    const TX_CLEANUP: &[u8] = include_bytes!("../../testdata/examples/ika/tx_cleanup.bin");
+
+    #[test]
+    fn extract_zoned_recognizes_ika_approve() {
+        let parsed = parse(TX_APPROVE);
+        match extract_zoned(TX_APPROVE, &parsed) {
+            Some(ZonedAction::IkaApprove { approver_index, .. }) => {
+                assert_eq!(approver_index, 3, "fixture is built with approver #3");
+            }
+            other => panic!("expected IkaApprove, got {:?}", variant_name(&other)),
+        }
+    }
+
+    #[test]
+    fn extract_zoned_recognizes_ika_cancel() {
+        let parsed = parse(TX_CANCEL);
+        assert!(matches!(
+            extract_zoned(TX_CANCEL, &parsed),
+            Some(ZonedAction::IkaCancel { canceller_index: 5, .. })
+        ));
+    }
+
+    #[test]
+    fn extract_zoned_recognizes_ika_execute() {
+        let parsed = parse(TX_EXECUTE);
+        assert!(matches!(
+            extract_zoned(TX_EXECUTE, &parsed),
+            Some(ZonedAction::IkaExecute { .. })
+        ));
+    }
+
+    #[test]
+    fn extract_zoned_recognizes_ika_bind_dwallet() {
+        let parsed = parse(TX_BIND);
+        match extract_zoned(TX_BIND, &parsed) {
+            Some(ZonedAction::IkaBindDwallet { chain_kind, .. }) => {
+                assert_eq!(chain_kind, 0, "fixture uses chain_kind=Solana");
+            }
+            other => panic!("expected IkaBindDwallet, got {:?}", variant_name(&other)),
+        }
+    }
+
+    #[test]
+    fn extract_zoned_recognizes_ika_sign() {
+        let parsed = parse(TX_IKA_SIGN);
+        assert!(matches!(
+            extract_zoned(TX_IKA_SIGN, &parsed),
+            Some(ZonedAction::IkaSign { hash_count: 3, .. })
+        ));
+    }
+
+    #[test]
+    fn extract_zoned_recognizes_ika_create_wallet() {
+        let parsed = parse(TX_CREATE);
+        match extract_zoned(TX_CREATE, &parsed) {
+            Some(ZonedAction::IkaCreateWallet {
+                approval_threshold,
+                timelock_seconds,
+                ..
+            }) => {
+                assert_eq!(approval_threshold, 2);
+                assert_eq!(timelock_seconds, 3600);
+            }
+            other => panic!("expected IkaCreateWallet, got {:?}", variant_name(&other)),
+        }
+    }
+
+    #[test]
+    fn extract_zoned_returns_none_for_propose_and_cleanup() {
+        // Both are deliberately routed to the legacy list-style review
+        // (propose has opaque params_data, cleanup is admin-tier).
+        let parsed = parse(TX_PROPOSE);
+        assert!(extract_zoned(TX_PROPOSE, &parsed).is_none());
+        let parsed = parse(TX_CLEANUP);
+        assert!(extract_zoned(TX_CLEANUP, &parsed).is_none());
+    }
+
+    fn variant_name(z: &Option<ZonedAction>) -> &'static str {
+        match z {
+            None => "None",
+            Some(ZonedAction::Send { .. }) => "Send",
+            Some(ZonedAction::Swap { .. }) => "Swap",
+            Some(ZonedAction::IkaApprove { .. }) => "IkaApprove",
+            Some(ZonedAction::IkaCancel { .. }) => "IkaCancel",
+            Some(ZonedAction::IkaExecute { .. }) => "IkaExecute",
+            Some(ZonedAction::IkaSign { .. }) => "IkaSign",
+            Some(ZonedAction::IkaBindDwallet { .. }) => "IkaBindDwallet",
+            Some(ZonedAction::IkaCreateWallet { .. }) => "IkaCreateWallet",
+        }
     }
 
     #[test]

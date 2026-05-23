@@ -249,7 +249,7 @@ fn decode_bind_dwallet(
 }
 
 /// `ChainKind` enum from `programs/clear-wallet/src/chains/mod.rs:56-77`.
-fn chain_kind_name(kind: u8) -> &'static str {
+pub(crate) fn chain_kind_name(kind: u8) -> &'static str {
     match kind {
         0 => "Solana",
         1 => "EVM (1559)",
@@ -355,7 +355,7 @@ fn decode_create_wallet(data: &[u8]) -> Result<Vec<ReviewItem>, &'static str> {
 
 /// Render seconds as a human-friendly duration. Falls back to the raw value
 /// for anything past 1 day so the user can spot suspiciously large windows.
-fn format_seconds(secs: u32) -> String {
+pub(crate) fn format_seconds(secs: u32) -> String {
     if secs == 0 {
         "none".to_string()
     } else if secs < 60 {

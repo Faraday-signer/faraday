@@ -1559,6 +1559,202 @@ fn draw_tx_review_zoned<D: DrawTarget<Color = Rgb565>>(
                 dex_name.as_str(),
             )?;
         }
+        crate::parser::ZonedAction::IkaApprove {
+            wallet,
+            proposal,
+            approver_index,
+            fee_lamports,
+            ..
+        } => {
+            draw_ika_vote_zones(
+                display,
+                &theme,
+                wallet_pubkey,
+                zone_rect(zone1_top, zone_h as u32),
+                zone_rect(zone2_top, zone_h as u32),
+                zone_rect(zone3_top, bottom_h as u32),
+                wallet,
+                proposal,
+                "APPROVER",
+                *approver_index,
+                *fee_lamports,
+            )?;
+        }
+        crate::parser::ZonedAction::IkaCancel {
+            wallet,
+            proposal,
+            canceller_index,
+            fee_lamports,
+            ..
+        } => {
+            draw_ika_vote_zones(
+                display,
+                &theme,
+                wallet_pubkey,
+                zone_rect(zone1_top, zone_h as u32),
+                zone_rect(zone2_top, zone_h as u32),
+                zone_rect(zone3_top, bottom_h as u32),
+                wallet,
+                proposal,
+                "CANCELLER",
+                *canceller_index,
+                *fee_lamports,
+            )?;
+        }
+        crate::parser::ZonedAction::IkaExecute {
+            wallet,
+            proposal,
+            vault,
+            fee_lamports,
+            ..
+        } => {
+            const ADDR_WRAP: usize = 22;
+            let wallet_is_self = wallet_pubkey.map_or(false, |w| w == wallet);
+            draw_zone_address(
+                display,
+                &theme,
+                zone_rect(zone1_top, zone_h as u32),
+                "PROPOSAL",
+                &bs58::encode(proposal).into_string(),
+                false,
+                ADDR_WRAP,
+            )?;
+            draw_zone_address(
+                display,
+                &theme,
+                zone_rect(zone2_top, zone_h as u32),
+                "WALLET",
+                &bs58::encode(wallet).into_string(),
+                wallet_is_self,
+                ADDR_WRAP,
+            )?;
+            let fee_str = fee_sol_str(*fee_lamports);
+            let vault_short = pubkey_short(vault);
+            draw_zone_fee_with_secondary(
+                display,
+                &theme,
+                zone_rect(zone3_top, bottom_h as u32),
+                &fee_str,
+                "VAULT",
+                &vault_short,
+            )?;
+        }
+        crate::parser::ZonedAction::IkaSign {
+            dwallet,
+            proposal,
+            hash_count,
+            fee_lamports,
+            ..
+        } => {
+            const ADDR_WRAP: usize = 22;
+            // dWallet is the hero — it's the cross-chain key whose MPC
+            // signature is about to be produced. Show it before the
+            // proposal so the user reads "MPC SIGN — dWALLET … — proposal …".
+            draw_zone_address(
+                display,
+                &theme,
+                zone_rect(zone1_top, zone_h as u32),
+                "dWALLET",
+                &bs58::encode(dwallet).into_string(),
+                false,
+                ADDR_WRAP,
+            )?;
+            draw_zone_address(
+                display,
+                &theme,
+                zone_rect(zone2_top, zone_h as u32),
+                "PROPOSAL",
+                &bs58::encode(proposal).into_string(),
+                false,
+                ADDR_WRAP,
+            )?;
+            let fee_str = fee_sol_str(*fee_lamports);
+            let count_str = alloc::format!("{}", hash_count);
+            draw_zone_fee_with_secondary(
+                display,
+                &theme,
+                zone_rect(zone3_top, bottom_h as u32),
+                &fee_str,
+                "HASHES",
+                &count_str,
+            )?;
+        }
+        crate::parser::ZonedAction::IkaBindDwallet {
+            chain_kind,
+            wallet,
+            dwallet,
+            fee_lamports,
+            ..
+        } => {
+            const ADDR_WRAP: usize = 22;
+            let chain_name = crate::parser::ika::chain_kind_name(*chain_kind);
+            // Reuse the amount zone with empty symbol — gives us a big
+            // right-aligned text value ("SOLANA"/"EVM (1559)"/etc.) with
+            // the muted "CHAIN" label.
+            draw_zone_amount(
+                display,
+                &theme,
+                zone_rect(zone1_top, zone_h as u32),
+                "CHAIN",
+                chain_name,
+                "",
+            )?;
+            draw_zone_address(
+                display,
+                &theme,
+                zone_rect(zone2_top, zone_h as u32),
+                "dWALLET",
+                &bs58::encode(dwallet).into_string(),
+                false,
+                ADDR_WRAP,
+            )?;
+            let fee_str = fee_sol_str(*fee_lamports);
+            let wallet_short = pubkey_short(wallet);
+            draw_zone_fee_with_secondary(
+                display,
+                &theme,
+                zone_rect(zone3_top, bottom_h as u32),
+                &fee_str,
+                "WALLET",
+                &wallet_short,
+            )?;
+        }
+        crate::parser::ZonedAction::IkaCreateWallet {
+            approval_threshold,
+            timelock_seconds,
+            definition_bytes,
+            fee_lamports,
+            ..
+        } => {
+            let threshold_str = alloc::format!("{}", approval_threshold);
+            let timelock_str = crate::parser::ika::format_seconds(*timelock_seconds);
+            draw_zone_amount(
+                display,
+                &theme,
+                zone_rect(zone1_top, zone_h as u32),
+                "THRESHOLD",
+                &threshold_str,
+                "",
+            )?;
+            draw_zone_amount(
+                display,
+                &theme,
+                zone_rect(zone2_top, zone_h as u32),
+                "TIMELOCK",
+                &timelock_str,
+                "",
+            )?;
+            let fee_str = fee_sol_str(*fee_lamports);
+            let def_str = alloc::format!("{} B", definition_bytes);
+            draw_zone_fee_with_secondary(
+                display,
+                &theme,
+                zone_rect(zone3_top, bottom_h as u32),
+                &fee_str,
+                "DEFINITION",
+                &def_str,
+            )?;
+        }
     }
 
     // K1 = sign (dim if can't), K2 = next page, K3 = reject.
@@ -1672,7 +1868,120 @@ fn build_zoned_title(action: &crate::parser::ZonedAction) -> alloc::borrow::Cow<
     match action {
         crate::parser::ZonedAction::Send { .. } => Cow::Borrowed("APPROVE SEND"),
         crate::parser::ZonedAction::Swap { .. } => Cow::Borrowed("APPROVE SWAP"),
+        crate::parser::ZonedAction::IkaApprove { .. } => Cow::Borrowed("APPROVE"),
+        crate::parser::ZonedAction::IkaCancel { .. } => Cow::Borrowed("CANCEL"),
+        crate::parser::ZonedAction::IkaExecute { .. } => Cow::Borrowed("EXECUTE"),
+        crate::parser::ZonedAction::IkaSign { .. } => Cow::Borrowed("MPC SIGN"),
+        crate::parser::ZonedAction::IkaBindDwallet { .. } => Cow::Borrowed("BIND dWALLET"),
+        crate::parser::ZonedAction::IkaCreateWallet { .. } => Cow::Borrowed("CREATE WALLET"),
     }
+}
+
+/// Shared painter for `IkaApprove` / `IkaCancel` — the two have identical
+/// 3-zone layouts (PROPOSAL → WALLET → FEE + voter index), only the
+/// secondary-row label differs (`APPROVER` vs `CANCELLER`).
+fn draw_ika_vote_zones<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    theme: &crate::ui::Theme,
+    wallet_pubkey: Option<&[u8; 32]>,
+    z1: Rectangle,
+    z2: Rectangle,
+    z3: Rectangle,
+    wallet: &[u8; 32],
+    proposal: &[u8; 32],
+    voter_label: &str,
+    voter_index: u8,
+    fee_lamports: u64,
+) -> Result<(), D::Error> {
+    const ADDR_WRAP: usize = 22;
+    let wallet_is_self = wallet_pubkey.map_or(false, |w| w == wallet);
+    draw_zone_address(
+        display,
+        theme,
+        z1,
+        "PROPOSAL",
+        &bs58::encode(proposal).into_string(),
+        false,
+        ADDR_WRAP,
+    )?;
+    draw_zone_address(
+        display,
+        theme,
+        z2,
+        "WALLET",
+        &bs58::encode(wallet).into_string(),
+        wallet_is_self,
+        ADDR_WRAP,
+    )?;
+    let fee_str = fee_sol_str(fee_lamports);
+    let voter_str = alloc::format!("#{}", voter_index);
+    draw_zone_fee_with_secondary(display, theme, z3, &fee_str, voter_label, &voter_str)
+}
+
+/// Format a fee in lamports as "0.000005 SOL" — same compact form the
+/// Send/Swap zoned screens use.
+fn fee_sol_str(fee_lamports: u64) -> String {
+    let v = crate::parser::compact_amount(
+        &crate::parser::token_registry::format_amount(fee_lamports, 9),
+    );
+    alloc::format!("{} SOL", v)
+}
+
+/// Shortened `first4...last4` rendering of a pubkey for secondary-row
+/// values where the full base58 won't fit.
+fn pubkey_short(key: &[u8; 32]) -> String {
+    shorten_address(&bs58::encode(key).into_string())
+}
+
+/// Variant of `draw_zone_fee` that paints `FEE | <value>` on the top row
+/// and an explicit `(label, value)` pair on the second row. The existing
+/// `draw_zone_fee` has Swap-specific priority logic (SLIPPAGE / ROUTE /
+/// PAYER); keeping the Ika cases on a separate path avoids tangling the
+/// two surfaces.
+fn draw_zone_fee_with_secondary<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    theme: &crate::ui::Theme,
+    rect: Rectangle,
+    fee: &str,
+    label2: &str,
+    value2: &str,
+) -> Result<(), D::Error> {
+    let inner_x = rect.top_left.x + theme.space_md;
+    let right_x = rect.top_left.x + rect.size.width as i32 - theme.space_sm;
+
+    let fee_y = rect.top_left.y + 14;
+    Text::with_alignment(
+        "FEE",
+        Point::new(inner_x, fee_y),
+        theme.style_sm(theme.muted),
+        Alignment::Left,
+    )
+    .draw(display)?;
+    Text::with_alignment(
+        fee,
+        Point::new(right_x, fee_y),
+        theme.style_sm(theme.text),
+        Alignment::Right,
+    )
+    .draw(display)?;
+
+    let row2_y = fee_y + 18;
+    Text::with_alignment(
+        label2,
+        Point::new(inner_x, row2_y),
+        theme.style_sm(theme.muted),
+        Alignment::Left,
+    )
+    .draw(display)?;
+    Text::with_alignment(
+        value2,
+        Point::new(right_x, row2_y),
+        theme.style_sm(theme.text),
+        Alignment::Right,
+    )
+    .draw(display)?;
+
+    Ok(())
 }
 
 /// FEE row + secondary row, picked in priority order:
