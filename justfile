@@ -30,6 +30,10 @@ ext:
 ext-install:
     cd extension && npm install
 
+# Generate Ika fixture QRs (8 messages + 8 txs) into testdata/examples/ika/.
+ika-fixtures:
+    cd hardware && cargo run --features simulator --bin gen-ika-fixtures
+
 # Run cargo tests.
 test:
     cd hardware && cargo test
