@@ -640,7 +640,7 @@ fn extract_send(tx_bytes: &[u8]) -> Option<ZonedAction> {
 fn extract_ika(tx_bytes: &[u8], parsed: &ParsedTransaction) -> Option<ZonedAction> {
     let msg = message::deserialize(tx_bytes).ok()?;
     let all_accounts = lookup_tables::expand_accounts(&msg.accounts, &msg.address_table_lookups);
-    let fee_payer = *all_accounts.first()?;
+    all_accounts.first()?; // confirms a fee payer exists; the value isn't surfaced on Ika hero zones today
 
     // Accept exactly one Ika ix; tolerate any number of ComputeBudget ixs
     // (priority-fee setup is universal); reject anything else.
@@ -1644,7 +1644,7 @@ mod tests {
     fn test_parse_fee_payer_is_first_account() {
         let from = [0xAAu8; 32];
         let tx = system_transfer_tx(from, 1_000_000_000);
-        let parsed = parse(&tx);
+        let _ = parse(&tx);
     }
 
     #[test]
