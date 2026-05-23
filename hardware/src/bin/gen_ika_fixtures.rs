@@ -238,31 +238,78 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (
             "tx_bind_dwallet",
             // disc 6 + chain_kind u8 + user_pubkey [32] + sig_scheme u16 LE + cpi_bump u8.
-            {
-                let mut d = vec![6u8, 0u8]; // chain_kind = Solana
-                d.extend_from_slice(&signer_pubkey); // user_pubkey
-                d.extend_from_slice(&1u16.to_le_bytes()); // sig_scheme
-                d.push(255); // cpi_authority_bump
-                // Accounts (per quasar_client/bind_dwallet.rs):
-                //   [payer, wallet, ika_config, dwallet_ownership, dwallet,
-                //    cpi_authority, caller_program, dwallet_program, system]
-                build_tx(
-                    &signer_pubkey,
-                    &ika_program,
-                    &[
-                        signer_pubkey,
-                        signer_pubkey,
-                        ika_config,
-                        dwallet_ownership,
-                        dwallet,
-                        cpi_authority,
-                        caller_program,
-                        dwallet_program,
-                        system_program,
-                    ],
-                    &d,
-                )
-            },
+            bind_dwallet_tx(
+                0, // Solana
+                &signer_pubkey,
+                &ika_program,
+                &ika_config,
+                &dwallet_ownership,
+                &dwallet,
+                &cpi_authority,
+                &caller_program,
+                &dwallet_program,
+                &system_program,
+            ),
+        ),
+        (
+            "tx_bind_dwallet_evm",
+            bind_dwallet_tx(
+                1, // EVM (1559)
+                &signer_pubkey,
+                &ika_program,
+                &ika_config,
+                &dwallet_ownership,
+                &dwallet,
+                &cpi_authority,
+                &caller_program,
+                &dwallet_program,
+                &system_program,
+            ),
+        ),
+        (
+            "tx_bind_dwallet_btc",
+            bind_dwallet_tx(
+                2, // Bitcoin
+                &signer_pubkey,
+                &ika_program,
+                &ika_config,
+                &dwallet_ownership,
+                &dwallet,
+                &cpi_authority,
+                &caller_program,
+                &dwallet_program,
+                &system_program,
+            ),
+        ),
+        (
+            "tx_bind_dwallet_zcash",
+            bind_dwallet_tx(
+                3, // Zcash
+                &signer_pubkey,
+                &ika_program,
+                &ika_config,
+                &dwallet_ownership,
+                &dwallet,
+                &cpi_authority,
+                &caller_program,
+                &dwallet_program,
+                &system_program,
+            ),
+        ),
+        (
+            "tx_bind_dwallet_erc20",
+            bind_dwallet_tx(
+                4, // ERC-20
+                &signer_pubkey,
+                &ika_program,
+                &ika_config,
+                &dwallet_ownership,
+                &dwallet,
+                &cpi_authority,
+                &caller_program,
+                &dwallet_program,
+                &system_program,
+            ),
         ),
         (
             "tx_ika_sign",
@@ -421,6 +468,41 @@ fn encode_compact_u16(mut n: u16) -> Vec<u8> {
 
 fn filler(byte: u8) -> [u8; 32] {
     [byte; 32]
+}
+
+#[allow(clippy::too_many_arguments)]
+fn bind_dwallet_tx(
+    chain_kind: u8,
+    signer_pubkey: &[u8; 32],
+    ika_program: &[u8; 32],
+    ika_config: &[u8; 32],
+    dwallet_ownership: &[u8; 32],
+    dwallet: &[u8; 32],
+    cpi_authority: &[u8; 32],
+    caller_program: &[u8; 32],
+    dwallet_program: &[u8; 32],
+    system_program: &[u8; 32],
+) -> Vec<u8> {
+    let mut d = vec![6u8, chain_kind];
+    d.extend_from_slice(signer_pubkey); // user_pubkey
+    d.extend_from_slice(&1u16.to_le_bytes()); // sig_scheme
+    d.push(255); // cpi_authority_bump
+    build_tx(
+        signer_pubkey,
+        ika_program,
+        &[
+            *signer_pubkey,
+            *signer_pubkey,
+            *ika_config,
+            *dwallet_ownership,
+            *dwallet,
+            *cpi_authority,
+            *caller_program,
+            *dwallet_program,
+            *system_program,
+        ],
+        &d,
+    )
 }
 
 fn write_qr_png(text_bytes: &[u8], path: &str) -> Result<(), Box<dyn std::error::Error>> {
