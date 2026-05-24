@@ -41,6 +41,9 @@ hardware/testdata/test_txs_bin/
 hardware/testdata/test_txs_qr/
 hardware/testdata/test_txs_ur/
 
+# Ika demo QRs (generated via `just ika-fixtures`)
+hardware/testdata/examples/ika/*.png
+
 # Logs
 *.log
 npm-debug.log*

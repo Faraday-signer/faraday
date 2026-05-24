@@ -14,9 +14,11 @@ Load that mnemonic on the simulator first (Load Wallet → Enter Words).
 
 ## How to use
 
-Display any `.png` on your Mac screen (Preview at 100% works) and scan it
-from the simulator's Sign flow. The iPhone Continuity Camera works well at
-index 2 (`FARADAY_CAMERA_INDEX=2 cargo run --features simulator`).
+The `.png` QRs aren't checked in (they're generated artifacts). Run
+`just ika-fixtures` first to materialize them next to the `.bin` files.
+Then display any `.png` on your Mac screen (Preview at 100% works) and
+scan it from the simulator's Sign flow. The iPhone Continuity Camera
+works well at index 2 (`FARADAY_CAMERA_INDEX=2 cargo run --features simulator`).
 
 ## Message-signing fixtures (Sign Message flow)
 
