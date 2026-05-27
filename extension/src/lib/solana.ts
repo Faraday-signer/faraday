@@ -209,7 +209,13 @@ export function parseIkaApprovalMessage(bodyText: string): IkaApprovalDetails | 
   const expires = afterExpires.slice(0, colonIdx);
   const rest = afterExpires.slice(colonIdx + 2);
 
-  const pipeIdx = rest.indexOf(" | ");
+  // `lastIndexOf` so the canonical trailer always wins: the on-chain
+  // body shape is `<action> <content> | wallet: <name> proposal: <idx>`,
+  // but `<content>` may carry free-text from cross-chain intents. A
+  // forward `indexOf` would peel an injected ` | wallet: spoof proposal: 0`
+  // first and surface SPOOF to the user, while the signed bytes still
+  // bind to the real trailer.
+  const pipeIdx = rest.lastIndexOf(" | ");
   if (pipeIdx < 0) {
     return null;
   }
@@ -230,7 +236,9 @@ export function parseIkaApprovalMessage(bodyText: string): IkaApprovalDetails | 
     return null;
   }
   const walletAndProposal = metadata.slice("wallet: ".length);
-  const proposalIdx = walletAndProposal.indexOf(" proposal: ");
+  // Same defense-in-depth: take the LAST " proposal: " in case a wallet
+  // name ever carries that substring.
+  const proposalIdx = walletAndProposal.lastIndexOf(" proposal: ");
   if (proposalIdx < 0) {
     return null;
   }

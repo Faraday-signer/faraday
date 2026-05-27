@@ -3120,7 +3120,13 @@ fn build_message_detail_rows(
 /// still render readably.
 fn parse_ika_message(text: &str) -> Option<MessageReview> {
     let (expires, rest) = text.strip_prefix("expires ")?.split_once(": ")?;
-    let (action_and_content, metadata) = rest.split_once(" | ")?;
+    // `rsplit_once` so the canonical trailer always wins: the on-chain
+    // body shape is fixed (`<action> <content> | wallet: <name> proposal: <idx>`),
+    // but `<content>` may carry free-text from cross-chain intents. If an
+    // intent's text contains an extra ` | wallet: spoof proposal: 0`, a
+    // forward `split_once` would peel the SPOOF trailer first and display
+    // it to the user while the signed bytes still bind to the real one.
+    let (action_and_content, metadata) = rest.rsplit_once(" | ")?;
     let (action, content) = action_and_content.split_once(' ')?;
 
     let action_label = match action {
@@ -3133,7 +3139,9 @@ fn parse_ika_message(text: &str) -> Option<MessageReview> {
     let mut wallet = None;
     let mut proposal = None;
     if let Some(meta) = metadata.strip_prefix("wallet: ") {
-        if let Some((w, p)) = meta.split_once(" proposal: ") {
+        // Same defense-in-depth: take the LAST " proposal: " in case a
+        // wallet name ever carries that substring.
+        if let Some((w, p)) = meta.rsplit_once(" proposal: ") {
             wallet = Some(w);
             proposal = Some(p);
         }
@@ -3489,6 +3497,125 @@ mod message_review_tests {
         let review = message_review(b"ordinary message");
         assert_eq!(review.title, "MESSAGE");
         assert_eq!(review.raw_text.as_deref(), Some("ordinary message"));
+    }
+
+    // ── Edge cases ──────────────────────────────────────────────────────
+
+    /// An injected ` | wallet: spoof proposal: 0` embedded inside the
+    /// content portion must NOT win over the canonical trailer at the
+    /// end. The display has to agree with what the on-chain program
+    /// validates against — otherwise an approver could be tricked into
+    /// signing for one wallet while the bytes bind to another.
+    #[test]
+    fn trailer_uses_last_pipe_against_content_injection() {
+        let msg = wrapped(
+            "expires 2030-01-01 00:00:00: approve send free-text-payload \
+             | wallet: SPOOF proposal: 0 | wallet: REAL proposal: 99",
+        );
+        let review = message_review(&msg);
+        assert_eq!(row_value(&review, "WALLET"), Some("REAL"));
+        assert_eq!(row_value(&review, "PROPOSAL"), Some("99"));
+        assert_eq!(review.subtitle, "IKA PROPOSAL 99");
+    }
+
+    /// Same defense for an injected ` proposal: ` inside a wallet name.
+    /// The on-chain trailer always emits ` proposal: ` last, so we
+    /// `rsplit` to keep the displayed proposal index canonical.
+    #[test]
+    fn proposal_uses_last_separator_against_wallet_name_injection() {
+        let msg = wrapped(
+            "expires 2030-01-01 00:00:00: approve transfer 1 lamports to \
+             9abcDEFghijKLMnopQRstuvWXyz12345678ABCDefgh \
+             | wallet: weird name proposal: 7 proposal: 42",
+        );
+        let review = message_review(&msg);
+        assert_eq!(row_value(&review, "WALLET"), Some("weird name proposal: 7"));
+        assert_eq!(row_value(&review, "PROPOSAL"), Some("42"));
+    }
+
+    /// Header says 0-length body — valid per the off-chain spec but the
+    /// Ika classifier has nothing to parse. Must fall through to the
+    /// generic Solana off-chain review without panicking.
+    #[test]
+    fn handles_zero_length_offchain_body() {
+        let msg = wrapped("");
+        let review = message_review(&msg);
+        assert_eq!(review.title, "SOLANA MESSAGE");
+    }
+
+    /// Max-size body the off-chain envelope allows (u16 length field).
+    /// Has to parse without OOM or panic — Pi has plenty of headroom,
+    /// but this guards against accidental quadratic scans.
+    #[test]
+    fn handles_max_length_offchain_body() {
+        let body = "A".repeat(0xffff);
+        let msg = wrapped(&body);
+        let review = message_review(&msg);
+        // Not a recognized Ika body → generic fallback path. The point
+        // is to confirm we don't blow up handling 64 KiB of input.
+        assert_eq!(review.title, "SOLANA MESSAGE");
+    }
+
+    /// A truncated message (header says N bytes, fewer bytes follow)
+    /// must reject cleanly so the device never reads past the buffer.
+    #[test]
+    fn rejects_truncated_body_under_announced_length() {
+        let mut msg = wrapped("expires 2030-01-01 00:00:00: approve x | wallet: w proposal: 1");
+        msg.pop(); // header still says full length
+        assert!(solana_offchain_message_body(&msg).is_none());
+    }
+
+    /// Header smaller than the 20-byte off-chain prefix — rejected
+    /// without indexing into bytes we don't have.
+    #[test]
+    fn rejects_under_header_length() {
+        assert!(solana_offchain_message_body(&[]).is_none());
+        assert!(solana_offchain_message_body(b"\xffsolana offchain\x00\x00\x00").is_none());
+    }
+
+    /// Non-UTF8 body. `message_review` reads via `from_utf8`, so a body
+    /// with invalid sequences must not crash — it falls through to the
+    /// generic "Off-chain message" header with raw-text omitted.
+    #[test]
+    fn handles_non_utf8_body() {
+        let body = [0xc3, 0x28]; // invalid UTF-8 (lone continuation)
+        let mut msg = Vec::with_capacity(20 + body.len());
+        msg.extend_from_slice(b"\xffsolana offchain");
+        msg.push(0);
+        msg.push(0);
+        msg.extend_from_slice(&(body.len() as u16).to_le_bytes());
+        msg.extend_from_slice(&body);
+        let review = message_review(&msg);
+        // Falls through to the binary fallback — title is the raw
+        // wrapper, not "SOLANA MESSAGE", because the body never
+        // decoded as UTF-8 in the first place.
+        assert_eq!(review.title, "MESSAGE");
+    }
+
+    /// Proposal index at u64 boundary — Ika stores it as u64, the
+    /// device renders the string straight from the body. No
+    /// parse/overflow path touches it.
+    #[test]
+    fn handles_u64_max_proposal_index() {
+        let msg = wrapped(
+            "expires 2030-01-01 00:00:00: approve transfer 1 lamports to \
+             9abcDEFghijKLMnopQRstuvWXyz12345678ABCDefgh \
+             | wallet: t proposal: 18446744073709551615",
+        );
+        let review = message_review(&msg);
+        assert_eq!(row_value(&review, "PROPOSAL"), Some("18446744073709551615"));
+    }
+
+    /// Body that LOOKS Ika-shaped but has no content after the verb.
+    /// The classifier requires `<verb> <content>`, so a verb-only body
+    /// has to fall back rather than crash on the empty content split.
+    #[test]
+    fn rejects_verb_only_body() {
+        let msg = wrapped("expires 2030-01-01 00:00:00: approve | wallet: t proposal: 1");
+        let review = message_review(&msg);
+        // No space between verb and content → split_once fails →
+        // fall through.
+        assert_eq!(review.title, "SOLANA MESSAGE");
     }
 }
 

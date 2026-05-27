@@ -669,15 +669,19 @@ fn extract_ika(tx_bytes: &[u8], parsed: &ParsedTransaction) -> Option<ZonedActio
     let fee_lamports = parsed.fee_lamports;
 
     match disc {
-        // approve: disc + expiry i64 + approver_idx u8 + sig [64] = 74 B
-        2 if data.len() >= 10 => Some(ZonedAction::IkaApprove {
+        // approve: disc + expiry i64 + approver_idx u8 + sig [64] = 74 B.
+        // Match the on-chain shape exactly — a 10-byte payload (no sig)
+        // would parse as a hero variant here even though the program
+        // would reject it on submission, which is a worse review than
+        // falling back to the list view.
+        2 if data.len() == 74 => Some(ZonedAction::IkaApprove {
             wallet: *resolved.first()?,
             proposal: *resolved.get(2)?,
             approver_index: data[9],
             fee_lamports,
         }),
         // cancel: same shape as approve
-        3 if data.len() >= 10 => Some(ZonedAction::IkaCancel {
+        3 if data.len() == 74 => Some(ZonedAction::IkaCancel {
             wallet: *resolved.first()?,
             proposal: *resolved.get(2)?,
             canceller_index: data[9],
@@ -1746,6 +1750,91 @@ mod tests {
         assert!(extract_zoned(TX_PROPOSE, &parsed).is_none());
         let parsed = parse(TX_CLEANUP);
         assert!(extract_zoned(TX_CLEANUP, &parsed).is_none());
+    }
+
+    /// Build a legacy Solana tx that invokes the `clear-msig-ika` program
+    /// with a single instruction carrying `data` and three placeholder
+    /// account refs (wallet, intent, proposal). Used for length/shape
+    /// edge-case tests where we don't want to redo the full fixture
+    /// generator.
+    fn ika_one_ix_tx(data: &[u8]) -> Vec<u8> {
+        const IKA_PROGRAM_B58: &str = "2jsLpMRZAJUJJ7weNhBJqVAgLjpngi6xTEPUbttmTUjA";
+        let ika_program: [u8; 32] = bs58::decode(IKA_PROGRAM_B58)
+            .into_vec()
+            .unwrap()
+            .try_into()
+            .unwrap();
+
+        let mut tx = Vec::new();
+        tx.push(1u8); // 1 signature
+        tx.extend_from_slice(&[0u8; 64]);
+        // Message header: 1 signer, 0 readonly-signed, 1 readonly-unsigned (program).
+        tx.push(1);
+        tx.push(0);
+        tx.push(1);
+        // Account table: signer + wallet + intent + proposal + ika program.
+        tx.push(5);
+        tx.extend_from_slice(&[0x11u8; 32]); // signer
+        tx.extend_from_slice(&[0x21u8; 32]); // wallet
+        tx.extend_from_slice(&[0x22u8; 32]); // intent
+        tx.extend_from_slice(&[0x23u8; 32]); // proposal
+        tx.extend_from_slice(&ika_program);
+        tx.extend_from_slice(&[0xABu8; 32]); // blockhash
+        // 1 instruction.
+        tx.push(1);
+        tx.push(4); // program_id_index = 4 (ika program)
+        tx.push(3); // 3 accounts
+        tx.push(1); // wallet idx
+        tx.push(2); // intent idx
+        tx.push(3); // proposal idx
+        tx.push(data.len() as u8); // assumes data.len() < 128
+        tx.extend_from_slice(data);
+        tx
+    }
+
+    /// Truncated approve (10 bytes: disc + expiry + idx, no sig) must
+    /// fall back to the list view rather than render a hero — the
+    /// program would reject this on submit anyway, but a hero variant
+    /// gives the user false confidence in a malformed payload.
+    #[test]
+    fn extract_zoned_rejects_truncated_approve() {
+        let mut data = vec![2u8]; // disc=approve
+        data.extend_from_slice(&1_893_456_000i64.to_le_bytes()); // expiry
+        data.push(3); // approver_idx
+        // No signature — total length 10 bytes.
+        assert_eq!(data.len(), 10);
+        let tx = ika_one_ix_tx(&data);
+        let parsed = parse(&tx);
+        assert!(extract_zoned(&tx, &parsed).is_none());
+    }
+
+    /// A full 74-byte approve still lifts to the hero variant after
+    /// the tightened check — guards against accidentally rejecting
+    /// the canonical shape.
+    #[test]
+    fn extract_zoned_accepts_canonical_approve_length() {
+        let mut data = vec![2u8];
+        data.extend_from_slice(&1_893_456_000i64.to_le_bytes());
+        data.push(3);
+        data.extend_from_slice(&[0u8; 64]); // signature
+        assert_eq!(data.len(), 74);
+        let tx = ika_one_ix_tx(&data);
+        let parsed = parse(&tx);
+        assert!(matches!(
+            extract_zoned(&tx, &parsed),
+            Some(ZonedAction::IkaApprove { approver_index: 3, .. })
+        ));
+    }
+
+    /// Same shape, same defence for the cancel discriminator.
+    #[test]
+    fn extract_zoned_rejects_truncated_cancel() {
+        let mut data = vec![3u8]; // disc=cancel
+        data.extend_from_slice(&1_893_456_000i64.to_le_bytes());
+        data.push(5);
+        let tx = ika_one_ix_tx(&data);
+        let parsed = parse(&tx);
+        assert!(extract_zoned(&tx, &parsed).is_none());
     }
 
     fn variant_name(z: &Option<ZonedAction>) -> &'static str {
