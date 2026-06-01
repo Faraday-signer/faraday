@@ -61,7 +61,9 @@ If you have a wallet that's already been online and you want to move to Faraday:
 
 | Path | What it is |
 |------|------------|
+| [`core/`](core) | Shared platform-agnostic library (`faraday-core`). Crypto, parser, signer, QR, GUI state machine, and UI widgets — used by all hardware targets. |
 | [`raspberry-pi/`](raspberry-pi) | Rust firmware for the Pi Zero — also runs as a desktop simulator (`cargo run --features simulator`) for development. Self-contained crate with its own `Cargo.toml`, assets, and test data. |
+| [`esp32/`](esp32) | Rust firmware for the Waveshare ESP32-S3-Touch-LCD-2. Touch-driven UI on a 240×320 display. |
 | [`opt/`](opt) | Buildroot recipe that produces the Pi OS image. See [`opt/README.md`](opt/README.md) |
 | [`extension/`](extension) | Chromium browser extension — Wallet Standard companion that relays dapp signing requests to Faraday over QR. See [`extension/README.md`](extension/README.md) |
 | [`mobile/`](mobile) | React Native + Expo wallet for the Solana Seeker phone (work in progress). See [`mobile/README.md`](mobile/README.md) |
@@ -71,6 +73,10 @@ If you have a wallet that's already been online and you want to move to Faraday:
 
 ## Hardware
 
+Faraday supports two hardware platforms. Both are fully air-gapped — no WiFi, no Bluetooth, no network.
+
+### Raspberry Pi Zero 1.3
+
 | Component | Model | Purpose |
 |-----------|-------|---------|
 | Computer | Raspberry Pi Zero 1.3 | No WiFi/BT chip on this revision (v1.3, **not** Zero W) |
@@ -78,6 +84,17 @@ If you have a wallet that's already been online and you want to move to Faraday:
 | Camera | Pi Camera v1.3 (OV5647) | QR code scanning + entropy capture |
 
 Total cost: **~$35**. Any Pi works — including ones with WiFi, if you already own one. The original Zero v1.3 is recommended because the network chip simply isn't there, so there's nothing to misconfigure or trust to "off".
+
+### Waveshare ESP32-S3-Touch-LCD-2
+
+| Component | Model | Purpose |
+|-----------|-------|---------|
+| MCU | ESP32-S3R8 | Dual-core Xtensa, 8MB PSRAM, no WiFi enabled |
+| Display | 2.0" IPS LCD | 240×320, ST7789T3 via SPI |
+| Input | CST816D capacitive touch | Tap zones + swipe gestures |
+| Camera | OV2640 | QR code scanning + entropy capture |
+
+Total cost: **~$30**. A single self-contained board with display, touch, and camera. WiFi/BT radios exist on the chip but are never initialized in Faraday firmware — the binary simply doesn't call the WiFi driver. For maximum paranoia, the Pi Zero 1.3 remains the gold standard (no radio hardware at all).
 
 ## Quick start (desktop simulator)
 
@@ -180,6 +197,73 @@ just flash DEVICE=/dev/diskN
 
 Image lands at `images/faraday_os.pi0.img`. See [`opt/README.md`](opt/README.md) for what's inside the OS, what's stripped out, and how to customize it.
 
+## Building the ESP32-S3 firmware
+
+### Prerequisites (one-time setup)
+
+```bash
+# 1. Install the Espressif Rust toolchain
+cargo install espup
+espup install
+
+# 2. Source the environment (add to your .bashrc to make it permanent)
+. ~/export-esp.sh
+
+# 3. Install the linker proxy and flash tool
+cargo install ldproxy
+cargo install espflash
+
+# 4. On Debian/Ubuntu, ensure python3-venv is available (needed by ESP-IDF)
+sudo apt install python3-venv
+```
+
+### Build
+
+```bash
+just esp
+```
+
+The first build takes several minutes — it downloads ESP-IDF v5.3.2 and compiles the standard library for Xtensa. Subsequent builds are fast.
+
+### Flash and monitor
+
+Connect the board via USB, then:
+
+```bash
+just esp-flash
+```
+
+This flashes the firmware and opens a serial monitor. The board boots into the same UI as the Pi — splash screen, then main menu.
+
+### Flashing from Windows (when building in WSL)
+
+USB serial devices aren't accessible from WSL, so flash from the Windows side:
+
+```powershell
+# Install espflash on Windows (one-time, requires native Windows Rust)
+cargo install espflash
+
+# Flash directly from the WSL build output (adjust your WSL distro/username)
+espflash flash --monitor \\wsl$\Ubuntu\home\<user>\development\faraday\target\xtensa-esp32s3-espidf\release\faraday-esp32
+```
+
+Alternatively, copy the binary first:
+```powershell
+copy \\wsl$\Ubuntu\home\<user>\development\faraday\target\xtensa-esp32s3-espidf\release\faraday-esp32 C:\temp\faraday-esp32.bin
+espflash flash --monitor C:\temp\faraday-esp32.bin
+```
+
+### Touch controls
+
+| Gesture | Action |
+|---------|--------|
+| Swipe up/down/left/right | Navigate (Up/Down/Left/Right) |
+| Tap body area | Confirm |
+| Tap bottom bar — left third | Back |
+| Tap bottom bar — center | Secondary action |
+| Tap bottom bar — right third | Confirm |
+| Long press (>1.5s) | Power off |
+
 ## `just` commands
 
 ```
@@ -188,6 +272,8 @@ just arm          # Cross-compile the ARM binary for Pi Zero
 just image        # Build the full Pi OS image (cold Buildroot — slow)
 just image-fast   # Rebuild reusing warm Buildroot state
 just flash DEVICE # Flash to SD card (DEVICE=/dev/diskN)
+just esp          # Build the ESP32-S3 firmware
+just esp-flash    # Flash ESP32-S3 and open serial monitor
 just ext          # Build the browser extension
 just test         # cargo test
 just check        # Type-check both simulator and Pi targets
@@ -216,9 +302,9 @@ Faraday decodes Solana transactions before signing so users see human-readable d
 For Jupiter swaps, mints are resolved offline through a hardcoded registry of ~30 well-known tokens (SOL, USDC, JUP, etc.) plus deterministic ATA derivation — no network call. When a mint can't be resolved, a warning is shown instead of a misleading symbol.
 
 To add a new program:
-1. Create `raspberry-pi/src/parser/<program>.rs` with `pub fn parse(data, accounts) -> ParsedInstruction`
-2. Register the program ID in `raspberry-pi/src/parser/programs.rs`
-3. Add a match arm in `dispatch()` in `raspberry-pi/src/parser/mod.rs`
+1. Create `core/src/parser/<program>.rs` with `pub fn parse(data, accounts) -> ParsedInstruction`
+2. Register the program ID in `core/src/parser/programs.rs`
+3. Add a match arm in `dispatch()` in `core/src/parser/mod.rs`
 
 ## QR payload format
 
@@ -244,7 +330,7 @@ For payloads that exceed a single QR's capacity, Faraday uses [UR](https://githu
 
 ## BIP39 wordlist
 
-The wordlist is **not bundled** in the repo. At build time, `raspberry-pi/build.rs` fetches it directly from the canonical [bitcoin/bips](https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt) repository and verifies the SHA256 checksum. If the hash doesn't match, the build fails. No trust required — verify the constant in `raspberry-pi/build.rs` yourself.
+The wordlist is **not bundled** in the repo. At build time, `core/build.rs` fetches it directly from the canonical [bitcoin/bips](https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt) repository and verifies the SHA256 checksum. If the hash doesn't match, the build fails. No trust required — verify the constant in `core/build.rs` yourself.
 
 ## Derivation path
 

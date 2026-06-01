@@ -1,0 +1,23 @@
+[package]
+name = "faraday-esp32"
+version = "0.1.0"
+edition = "2021"
+description = "Faraday air-gapped signer — ESP32-S3 target"
+
+[[bin]]
+name = "faraday-esp32"
+path = "src/main.rs"
+
+[dependencies]
+faraday-core = { path = "../core" }
+
+embedded-graphics-core = "0.4"
+
+esp-idf-hal = "0.46"
+esp-idf-svc = { version = "0.52", features = ["alloc"] }
+esp-idf-sys = { version = "0.37", features = ["binstart"] }
+
+log = "0.4"
+
+[build-dependencies]
+embuild = { version = "0.32", features = ["espidf"] }

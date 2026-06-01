@@ -1,0 +1,102 @@
+//! Faraday ESP32-S3 — air-gapped Solana signer.
+
+use esp_idf_hal::delay::FreeRtos;
+use esp_idf_hal::gpio::{PinDriver, Pull};
+use esp_idf_hal::i2c::{I2cConfig, I2cDriver};
+use esp_idf_hal::peripherals::Peripherals;
+use esp_idf_hal::spi::{
+    config::{Config as SpiConfig, DriverConfig},
+    SpiDeviceDriver, SpiDriver,
+};
+use esp_idf_hal::units::FromValueType;
+use esp_idf_svc::log::EspLogger;
+use faraday_core::gui::app::App;
+use faraday_core::gui::screens;
+use faraday_core::ui::Theme;
+
+mod display;
+mod touch;
+
+fn main() {
+    esp_idf_svc::sys::link_patches();
+    EspLogger::initialize_default();
+    log::info!("Faraday ESP32-S3 v0.1.0");
+
+    let peripherals = Peripherals::take().expect("failed to take peripherals");
+
+    // SPI bus: SCLK=39, MOSI=38, MISO=40 (shared with SD; unused for the
+    // write-only display but reserved to match the board wiring).
+    let spi_driver = SpiDriver::new(
+        peripherals.spi2,
+        peripherals.pins.gpio39,
+        peripherals.pins.gpio38,
+        Some(peripherals.pins.gpio40),
+        &DriverConfig::new(),
+    )
+    .expect("SPI driver init failed");
+
+    // No hardware CS — the driver manages CS manually (see display.rs).
+    let spi_config = SpiConfig::new().baudrate(40.MHz().into());
+    let spi_device = SpiDeviceDriver::new(spi_driver, None::<esp_idf_hal::gpio::Gpio45>, &spi_config)
+        .expect("SPI device init failed");
+
+    // GPIO 42 (DC) is JTAG MTMS — PinDriver alone leaves it attached to the
+    // JTAG peripheral with its output driver disabled, so it can never go high
+    // and every command parameter / pixel byte is silently dropped. Reset it to
+    // plain GPIO function first.
+    unsafe {
+        esp_idf_svc::sys::gpio_reset_pin(42);
+    }
+
+    let cs = PinDriver::output(peripherals.pins.gpio45).expect("CS pin init failed");
+    let dc = PinDriver::output(peripherals.pins.gpio42).expect("DC pin init failed");
+    let bl = PinDriver::output(peripherals.pins.gpio1).expect("BL pin init failed");
+
+    let mut display = display::Display::new(spi_device, cs, dc, bl);
+
+    // I2C touch: SDA=48, SCL=47, INT=46.
+    let i2c_config = I2cConfig::new().baudrate(400.kHz().into());
+    let i2c = I2cDriver::new(
+        peripherals.i2c0,
+        peripherals.pins.gpio48,
+        peripherals.pins.gpio47,
+        &i2c_config,
+    )
+    .expect("I2C init failed");
+
+    let touch_int = PinDriver::input(peripherals.pins.gpio46, Pull::Up).expect("INT pin init failed");
+    let mut touch = touch::Touch::new(i2c, touch_int);
+
+    let mut app = App::new(Theme::faraday_320());
+
+    // Splash screen
+    let _ = app.draw(&mut display);
+    display.flush();
+    let splash_start = std::time::Instant::now();
+    while splash_start.elapsed() < std::time::Duration::from_secs(2) {
+        if touch.poll().is_some() {
+            break;
+        }
+        FreeRtos::delay_ms(33);
+    }
+    app.enter_main_menu();
+    app.last_activity = std::time::Instant::now();
+
+    loop {
+        if let Some(event) = touch.poll() {
+            app.handle_input(event);
+        }
+
+        app.tick();
+
+        if app.is_blanked() {
+            let elapsed_ms = app.splash_anim_start.elapsed().as_millis() as u64;
+            let _ = screens::draw_splash(&mut display, &app.theme, elapsed_ms);
+        } else {
+            let _ = app.draw(&mut display);
+        }
+        display.flush();
+
+        FreeRtos::delay_ms(33);
+    }
+}

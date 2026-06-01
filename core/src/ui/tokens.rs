@@ -53,6 +53,29 @@ impl Theme {
         }
     }
 
+    /// Faraday theme for the 240x320 ESP32-S3 portrait display.
+    /// Width stays 240 so horizontal layouts are identical to the Pi;
+    /// the extra 80px height gives more room for list items and touch targets.
+    pub fn faraday_320() -> Self {
+        Self {
+            width: 240,
+            height: 320,
+            header_h: 29,
+            footer_h: 32,
+
+            bg: Rgb565::new(0, 5, 4),
+            text: Rgb565::new(28, 57, 28),
+            muted: Rgb565::new(17, 39, 21),
+            dim: Rgb565::new(11, 28, 16),
+            accent: Rgb565::new(3, 62, 31),
+            border: Rgb565::new(2, 16, 11),
+            danger: Rgb565::new(31, 13, 13),
+
+            space_sm: 8,
+            space_md: 12,
+        }
+    }
+
     /// Primary label text (list row label, card value).
     pub fn style_lg(&self, color: Rgb565) -> U8g2TextStyle<Rgb565> {
         U8g2TextStyle::new(fonts::u8g2_font_profont29_mr, color)

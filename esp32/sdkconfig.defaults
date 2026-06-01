@@ -1,0 +1,18 @@
+# ESP-IDF configuration for Waveshare ESP32-S3-Touch-LCD-2
+
+# PSRAM (octal, 8MB)
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# SPI for ST7789T3 display
+CONFIG_SPI_MASTER_IN_IRAM=y
+
+# I2C for CST816D touch
+CONFIG_I2C_ISR_IRAM_SAFE=y
+
+# Stack size — GUI rendering needs headroom
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
+
+# Logging
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y

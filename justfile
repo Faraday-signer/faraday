@@ -38,3 +38,11 @@ test:
 check:
     cd raspberry-pi && cargo check --features simulator
     cd raspberry-pi && cargo check --release --target arm-unknown-linux-gnueabihf
+
+# Build the ESP32-S3 firmware.
+esp:
+    cd esp32 && cargo build --release
+
+# Build and flash the ESP32-S3 firmware with serial monitor.
+esp-flash:
+    cd esp32 && cargo run --release
