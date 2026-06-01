@@ -10,12 +10,15 @@ use esp_idf_hal::spi::{
 };
 use esp_idf_hal::units::FromValueType;
 use esp_idf_svc::log::EspLogger;
-use faraday_core::gui::app::App;
+use faraday_core::gui::app::{App, InputEvent};
 use faraday_core::gui::screens;
 use faraday_core::ui::Theme;
+use faraday_core::ui::widgets::list::visible_start;
+use touch::TouchEvent;
 
 mod display;
 mod touch;
+
 
 fn main() {
     esp_idf_svc::sys::link_patches();
@@ -82,21 +85,76 @@ fn main() {
     app.enter_main_menu();
     app.last_activity = std::time::Instant::now();
 
+    // Delay (ms) between tapping a list row and firing Confirm — long enough
+    // for one display frame to render the highlight before the transition.
+    const TAP_CONFIRM_DELAY_MS: u64 = 100;
+
+    let mut last_draw = std::time::Instant::now();
+    let mut pending_tap_confirm: Option<std::time::Instant> = None;
     loop {
-        if let Some(event) = touch.poll() {
-            app.handle_input(event);
+        // Touch checked at 5 ms resolution to catch short INT pulses reliably.
+        match touch.poll() {
+            Some(TouchEvent::Input(event)) => {
+                // Any directional gesture or footer tap cancels a pending
+                // tap-confirm so the two don't stack.
+                pending_tap_confirm = None;
+                app.handle_input(event);
+            }
+            Some(TouchEvent::BodyTap { x, y }) => {
+                if let Some(layout) = app.tap_layout() {
+                    // List screen: move selection then fire Confirm after a
+                    // short delay so the highlight is visible for one frame.
+                    if y >= layout.list_top {
+                        let body_y = (y - layout.list_top) as usize;
+                        let list_h = (app.theme.height as u16 - layout.list_top) as usize;
+                        let slot = if list_h > 0 {
+                            (body_y * layout.max_visible / list_h).min(layout.max_visible - 1)
+                        } else {
+                            0
+                        };
+                        let start = visible_start(
+                            layout.total_items,
+                            layout.max_visible,
+                            layout.current_selected,
+                        );
+                        let row = (start + slot).min(layout.total_items.saturating_sub(1));
+                        app.set_selected(row);
+                    }
+                    pending_tap_confirm = Some(std::time::Instant::now());
+                } else if app.tap_char_grid(x, y) {
+                    // Character grid (passphrase / message): type immediately.
+                    pending_tap_confirm = None;
+                    app.handle_input(InputEvent::Confirm);
+                } else if app.tap_word_grid(x, y) {
+                    // Word-entry alphabet grid: append the tapped letter.
+                    pending_tap_confirm = None;
+                    app.handle_input(InputEvent::Confirm);
+                }
+            }
+            None => {}
+        }
+
+        if let Some(t) = pending_tap_confirm {
+            if t.elapsed().as_millis() >= TAP_CONFIRM_DELAY_MS as u128 {
+                pending_tap_confirm = None;
+                app.handle_input(InputEvent::Confirm);
+            }
         }
 
         app.tick();
 
-        if app.is_blanked() {
-            let elapsed_ms = app.splash_anim_start.elapsed().as_millis() as u64;
-            let _ = screens::draw_splash(&mut display, &app.theme, elapsed_ms);
-        } else {
-            let _ = app.draw(&mut display);
+        // Display refreshed at ~30 Hz independently of the touch poll rate.
+        if last_draw.elapsed().as_millis() >= 33 {
+            if app.is_blanked() {
+                let elapsed_ms = app.splash_anim_start.elapsed().as_millis() as u64;
+                let _ = screens::draw_splash(&mut display, &app.theme, elapsed_ms);
+            } else {
+                let _ = app.draw(&mut display);
+            }
+            display.flush();
+            last_draw = std::time::Instant::now();
         }
-        display.flush();
 
-        FreeRtos::delay_ms(33);
+        FreeRtos::delay_ms(5);
     }
 }

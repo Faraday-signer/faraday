@@ -738,6 +738,22 @@ impl Drop for LoadedWallet {
     }
 }
 
+/// Layout information for the selectable list on the current screen.
+/// Returned by `App::tap_layout()` for use by touch-screen platforms.
+pub struct TapLayout {
+    /// Number of slots the list widget divides the body area into.
+    pub max_visible: usize,
+    /// Total number of items in the list (may exceed `max_visible`).
+    pub total_items: usize,
+    /// Currently highlighted item index (absolute, not slot-relative).
+    pub current_selected: usize,
+    /// Y coordinate (pixels) where the tappable list area begins.
+    /// For standard `ListScreen`s this equals `theme.header_h`.
+    /// For screens with a text preamble (e.g. `CreateBackupWarning`)
+    /// it is further down the screen.
+    pub list_top: u16,
+}
+
 /// Default screen-blanking timeout. Zero disables blanking entirely.
 pub const DEFAULT_BLANK_TIMEOUT_MS: u64 = 120_000; // 2 minutes
 
@@ -934,6 +950,151 @@ impl App {
             self.screen,
             Screen::LoadScanQr | Screen::SignScanTx | Screen::VerifyBackupScan
         )
+    }
+
+    /// Geometry of the selectable list on the current screen, if any.
+    /// Used by touch-screen platforms to map a tap y-coordinate to a row
+    /// index. Returns `None` for screens without a tappable list.
+    pub fn tap_layout(&self) -> Option<TapLayout> {
+        let header_h = self.theme.header_h as u16;
+        // Most screens are standard ListScreens whose list begins right
+        // below the header.
+        let t = |max_visible, total_items, current_selected| TapLayout {
+            max_visible,
+            total_items,
+            current_selected,
+            list_top: header_h,
+        };
+        match &self.screen {
+            Screen::ModeSelect { selected, .. } => Some(t(2, 2, *selected)),
+            Screen::MainMenu { selected } => Some(t(3, self.menu_items().len(), *selected)),
+            Screen::CreateWordCount { selected } => Some(t(3, 2, *selected)),
+            Screen::LoadWordCount { selected } => Some(t(3, 2, *selected)),
+            Screen::CreateMethod { selected, .. } => Some(t(3, 4, *selected)),
+            Screen::LoadMethod { selected } => Some(t(3, 2, *selected)),
+            Screen::CreatePassphrasePrompt { selected, .. } => Some(t(3, 2, *selected)),
+            Screen::LoadPassphrasePrompt { selected, .. } => Some(t(3, 2, *selected)),
+            Screen::LoadFinalize { selected, .. } => Some(t(3, 2, *selected)),
+            Screen::CreateVerify { options, selected, .. } => Some(t(4, options.len(), *selected)),
+            Screen::ExportSeedQrMenu { selected, .. } => Some(t(3, 3, *selected)),
+            Screen::ExportSeedWarning { selected, .. } => Some(t(3, 2, *selected)),
+            Screen::ShowWordsWarning { selected, .. } => Some(t(3, 2, *selected)),
+            Screen::SettingsMenu { selected } => Some(t(3, 4, *selected)),
+            Screen::SettingsPowerOff { selected } => Some(t(3, 2, *selected)),
+            // Custom layout: top third is instruction text, bottom two-thirds
+            // is the 2-item list.
+            Screen::CreateBackupWarning { selected, .. } => {
+                let body_h = self.theme.height as u16 - header_h;
+                Some(TapLayout {
+                    max_visible: 2,
+                    total_items: 2,
+                    current_selected: *selected,
+                    list_top: header_h + body_h / 3,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// Move the cursor to `row` on the current screen without triggering a
+    /// screen transition. Used by touch-screen platforms to highlight the
+    /// tapped row before firing a `Confirm` event.
+    pub fn set_selected(&mut self, row: usize) {
+        match &mut self.screen {
+            Screen::ModeSelect { selected, .. } => *selected = row,
+            Screen::MainMenu { selected } => *selected = row,
+            Screen::CreateWordCount { selected } => *selected = row,
+            Screen::LoadWordCount { selected } => *selected = row,
+            Screen::CreateMethod { selected, .. } => *selected = row,
+            Screen::LoadMethod { selected } => *selected = row,
+            Screen::CreatePassphrasePrompt { selected, .. } => *selected = row,
+            Screen::LoadPassphrasePrompt { selected, .. } => *selected = row,
+            Screen::LoadFinalize { selected, .. } => *selected = row,
+            Screen::CreateVerify { selected, .. } => *selected = row,
+            Screen::ExportSeedQrMenu { selected, .. } => *selected = row,
+            Screen::ExportSeedWarning { selected, .. } => *selected = row,
+            Screen::ShowWordsWarning { selected, .. } => *selected = row,
+            Screen::CreateBackupWarning { selected, .. } => *selected = row,
+            Screen::SettingsMenu { selected } => *selected = row,
+            Screen::SettingsPowerOff { selected } => *selected = row,
+            _ => {}
+        }
+    }
+
+    /// If the current screen contains a `CharGrid` (passphrase / message
+    /// entry), compute which grid cell `(x, y)` falls in, move the cursor
+    /// there, and return `true`. The caller should then fire `Confirm` to
+    /// type the character. Returns `false` if the tap is outside the grid
+    /// or the screen has no `CharGrid`.
+    pub fn tap_char_grid(&mut self, x: u16, y: u16) -> bool {
+        let is_grid = matches!(
+            &self.screen,
+            Screen::CreatePassphraseInput { .. }
+            | Screen::CreatePassphraseConfirm { .. }
+            | Screen::LoadPassphraseInput { .. }
+            | Screen::LoadPassphraseConfirm { .. }
+            | Screen::VerifyBackupPassphrase { .. }
+            | Screen::SignMessageInput { .. }
+        );
+        if !is_grid { return false; }
+
+        const PREVIEW_H: u16 = 28;
+        let gutter_w = crate::ui::widgets::GUTTER_W as u16;
+        let grid_top = self.theme.header_h as u16 + PREVIEW_H;
+        let body_w = self.theme.width as u16 - gutter_w;
+        if y < grid_top || x >= body_w { return false; }
+        let cell_w = body_w / GRID_COLS as u16;
+        let row_h = (self.theme.height as u16 - grid_top) / GRID_ROWS as u16;
+        if cell_w == 0 || row_h == 0 { return false; }
+
+        let col = ((x / cell_w) as usize).min(GRID_COLS - 1);
+        let row = (((y - grid_top) / row_h) as usize).min(GRID_ROWS - 1);
+
+        match &mut self.screen {
+            Screen::CreatePassphraseInput { grid, .. }
+            | Screen::CreatePassphraseConfirm { grid, .. }
+            | Screen::LoadPassphraseInput { grid, .. }
+            | Screen::LoadPassphraseConfirm { grid, .. }
+            | Screen::VerifyBackupPassphrase { grid }
+            | Screen::SignMessageInput { grid } => {
+                grid.row = row;
+                grid.col = col;
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    /// If the current screen is `LoadEnterWords`, compute which alphabet
+    /// cell `(x, y)` falls in. Moves the cursor to that cell and returns
+    /// `true` only if the letter is non-blank and currently valid (not
+    /// dimmed). The caller should then fire `Confirm` to append the letter.
+    pub fn tap_word_grid(&mut self, x: u16, y: u16) -> bool {
+        const PREFIX_H: u16 = 36;
+        let gutter_w = crate::ui::widgets::GUTTER_W as u16;
+        let grid_top = self.theme.header_h as u16 + PREFIX_H;
+        let body_w = self.theme.width as u16 - gutter_w;
+        if y < grid_top || x >= body_w { return false; }
+        let cell_w = body_w / WORD_GRID_COLS as u16;
+        let cell_h = (self.theme.height as u16 - grid_top) / WORD_GRID_ROWS as u16;
+        if cell_w == 0 || cell_h == 0 { return false; }
+
+        let col = ((x / cell_w) as u8).min(WORD_GRID_COLS - 1);
+        let row = (((y - grid_top) / cell_h) as u8).min(WORD_GRID_ROWS - 1);
+
+        // Reject blank trailing cells (the last row of the 6×5 grid only
+        // carries 'y' and 'z'; the remaining 4 cells are empty).
+        let Some(ch) = WordPicker::cell_letter(row, col) else { return false };
+
+        let Screen::LoadEnterWords { picker, .. } = &mut self.screen else { return false };
+
+        // Only confirm letters that are still valid for the current prefix.
+        let valid = picker.valid_letters();
+        if !valid[(ch as u8 - b'a') as usize] { return false; }
+
+        picker.cursor_row = row;
+        picker.cursor_col = col;
+        true
     }
 
     pub fn wants_small_qr_scan(&self) -> bool {
