@@ -21,6 +21,7 @@ use embedded_graphics_core::{
 };
 use esp_idf_hal::delay::FreeRtos;
 use esp_idf_hal::gpio::{Output, PinDriver};
+use esp_idf_hal::ledc::LedcDriver;
 use esp_idf_hal::spi::{SpiDeviceDriver, SpiDriver};
 
 pub const WIDTH: u32 = 240;
@@ -30,7 +31,7 @@ pub struct Display<'d> {
     spi: SpiDeviceDriver<'d, SpiDriver<'d>>,
     cs: PinDriver<'d, Output>,
     dc: PinDriver<'d, Output>,
-    bl: PinDriver<'d, Output>,
+    bl: LedcDriver<'d>,
     buffer: Vec<u8>,
 }
 
@@ -39,13 +40,13 @@ impl<'d> Display<'d> {
         spi: SpiDeviceDriver<'d, SpiDriver<'d>>,
         cs: PinDriver<'d, Output>,
         dc: PinDriver<'d, Output>,
-        bl: PinDriver<'d, Output>,
+        bl: LedcDriver<'d>,
     ) -> Self {
         let buffer = vec![0u8; (WIDTH * HEIGHT * 2) as usize];
 
         let mut display = Self { spi, cs, dc, bl, buffer };
         display.init();
-        display.set_backlight(true);
+        display.set_backlight(30);
 
         display
     }
@@ -150,11 +151,14 @@ impl<'d> Display<'d> {
         self.flush();
     }
 
-    pub fn set_backlight(&mut self, on: bool) {
-        if on {
-            let _ = self.bl.set_high();
+    /// Set backlight brightness. `pct` is 0–100; 0 disables the channel.
+    pub fn set_backlight(&mut self, pct: u8) {
+        if pct == 0 {
+            let _ = self.bl.disable();
         } else {
-            let _ = self.bl.set_low();
+            let duty = self.bl.get_max_duty() * pct.min(100) as u32 / 100;
+            let _ = self.bl.enable();
+            let _ = self.bl.set_duty(duty);
         }
     }
 }

@@ -9,7 +9,7 @@
 //!   0x00 = PRESS DOWN, 0x01 = LIFT UP, 0x02 = CONTACT
 //!
 //! We emit on PRESS DOWN by checking finger_num > 0 (reliable) rather than
-//! comparing the event-flag byte (chip-revision-sensitive).  The 50 ms
+//! comparing the event-flag byte (chip-revision-sensitive).  The 120 ms
 //! debounce absorbs the paired LIFT-UP interrupt and any stale
 //! GESTURE_SINGLE_TAP that arrives with the finger-up report.
 //!
@@ -43,10 +43,11 @@ const GESTURE_LONG_PRESS: u8 = 0x0C;
 
 static INT_FIRED: AtomicBool = AtomicBool::new(false);
 
-// 50 ms absorbs the LIFT-UP interrupt (~50 ms after contact) and any
-// GESTURE_SINGLE_TAP that arrives with it, without blocking rapid tapping
-// or typing (minimum inter-tap gap is 50 ms ≈ 20 taps/second).
-const DEBOUNCE: Duration = Duration::from_millis(50);
+// 120 ms gives a 2× margin over the LIFT-UP interrupt (~50 ms after contact)
+// and any GESTURE_SINGLE_TAP that arrives with it. 50 ms was right at the
+// boundary: elapsed() == 50 ms >= 50 ms passed the debounce check, causing
+// double-fires. 120 ms ≈ 8 taps/second — sufficient for a hardware-wallet UI.
+const DEBOUNCE: Duration = Duration::from_millis(120);
 
 /// What the touch driver delivers to the main loop.
 ///

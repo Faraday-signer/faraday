@@ -2,6 +2,7 @@
 
 use esp_idf_hal::delay::FreeRtos;
 use esp_idf_hal::gpio::{PinDriver, Pull};
+use esp_idf_hal::ledc::{config::TimerConfig, LedcDriver, LedcTimerDriver};
 use esp_idf_hal::i2c::{I2cConfig, I2cDriver};
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_hal::spi::{
@@ -57,7 +58,12 @@ fn main() {
 
     let cs = PinDriver::output(peripherals.pins.gpio45).expect("CS pin init failed");
     let dc = PinDriver::output(peripherals.pins.gpio42).expect("DC pin init failed");
-    let bl = PinDriver::output(peripherals.pins.gpio1).expect("BL pin init failed");
+    let ledc_timer = LedcTimerDriver::new(
+        peripherals.ledc.timer0,
+        &TimerConfig::default().frequency(1.kHz().into()),
+    ).expect("LEDC timer init failed");
+    let bl = LedcDriver::new(peripherals.ledc.channel0, ledc_timer, peripherals.pins.gpio1)
+        .expect("LEDC BL init failed");
 
     let mut display = display::Display::new(spi_device, cs, dc, bl);
 
