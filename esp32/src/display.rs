@@ -124,11 +124,16 @@ impl<'d> Display<'d> {
     pub fn flush(&mut self) {
         self.set_window(0, 0, WIDTH as u16, HEIGHT as u16);
         // RAMWR + pixel data within a single CS assertion.
+        // ESP32-S3 SPI hardware limits each transaction to 32 767 bytes
+        // (18-bit bit-length register), so the frame buffer (153 600 bytes)
+        // must be chunked.  With DMA enabled, each write yields to FreeRTOS
+        // via a semaphore — the watchdog idle task gets to run between chunks.
+        // 32 764 bytes = just under the limit, 4-byte aligned, 5 chunks total.
         let _ = self.dc.set_low();
         let _ = self.cs.set_low();
         let _ = self.spi.write(&[0x2C]);
         let _ = self.dc.set_high();
-        for chunk in self.buffer.chunks(4096) {
+        for chunk in self.buffer.chunks(32764) {
             let _ = self.spi.write(chunk);
         }
         let _ = self.cs.set_high();

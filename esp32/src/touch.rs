@@ -13,13 +13,12 @@
 //! debounce absorbs the paired LIFT-UP interrupt and any stale
 //! GESTURE_SINGLE_TAP that arrives with the finger-up report.
 //!
-//! Touch zone mapping (240×320 portrait):
-//!   Body area (y < 288): BodyTap { x, y } — caller maps to list row / grid cell.
-//!   Bottom bar (y >= 288):
-//!     x < 80  = Back
-//!     80..160 = Secondary
-//!     x >= 160 = Confirm
-//!   Gestures:
+//! All non-gesture taps produce `BodyTap { x, y }` regardless of position.
+//! The main loop decides how to interpret the coordinates; this keeps the
+//! driver free of any knowledge about screen layout (char grids, list rows,
+//! footer zones) that belongs in the application layer.
+//!
+//! Gestures:
 //!     Swipe up    = Up
 //!     Swipe down  = Down
 //!     Swipe left  = Left
@@ -41,8 +40,6 @@ const GESTURE_SWIPE_RIGHT: u8 = 0x04;
 const GESTURE_SINGLE_TAP: u8 = 0x05;
 const GESTURE_LONG_PRESS: u8 = 0x0C;
 
-const FOOTER_Y: u16 = 288;
-const THIRD_WIDTH: u16 = 80;
 
 static INT_FIRED: AtomicBool = AtomicBool::new(false);
 
@@ -142,17 +139,6 @@ impl<'d> Touch<'d> {
     }
 
     fn map_tap(x: u16, y: u16) -> TouchEvent {
-        if y >= FOOTER_Y {
-            let input = if x < THIRD_WIDTH {
-                InputEvent::Back
-            } else if x < THIRD_WIDTH * 2 {
-                InputEvent::Secondary
-            } else {
-                InputEvent::Confirm
-            };
-            TouchEvent::Input(input)
-        } else {
-            TouchEvent::BodyTap { x, y }
-        }
+        TouchEvent::BodyTap { x, y }
     }
 }

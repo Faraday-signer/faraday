@@ -6,7 +6,7 @@ use esp_idf_hal::i2c::{I2cConfig, I2cDriver};
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_hal::spi::{
     config::{Config as SpiConfig, DriverConfig},
-    SpiDeviceDriver, SpiDriver,
+    Dma, SpiDeviceDriver, SpiDriver,
 };
 use esp_idf_hal::units::FromValueType;
 use esp_idf_svc::log::EspLogger;
@@ -34,7 +34,11 @@ fn main() {
         peripherals.pins.gpio39,
         peripherals.pins.gpio38,
         Some(peripherals.pins.gpio40),
-        &DriverConfig::new(),
+        // DMA lets the CPU yield to FreeRTOS (and the watchdog idle task)
+        // during each SPI transfer instead of busy-polling.  Size matches
+        // the chunk size used in flush() — just under the 32 767-byte
+        // ESP32-S3 hardware limit per transaction.
+        &DriverConfig::new().dma(Dma::Auto(32764)),
     )
     .expect("SPI driver init failed");
 
@@ -89,6 +93,12 @@ fn main() {
     // for one display frame to render the highlight before the transition.
     const TAP_CONFIRM_DELAY_MS: u64 = 100;
 
+    // Footer zone: bottom strip of the 320px display, divided into three
+    // equal thirds.  Applied only when the tap doesn't fall on a grid or
+    // list area, so char-grid action rows are never shadowed.
+    const FOOTER_Y: u16 = 288;
+    const FOOTER_THIRD: u16 = 80;
+
     let mut last_draw = std::time::Instant::now();
     let mut pending_tap_confirm: Option<std::time::Instant> = None;
     loop {
@@ -101,7 +111,30 @@ fn main() {
                 app.handle_input(event);
             }
             Some(TouchEvent::BodyTap { x, y }) => {
-                if let Some(layout) = app.tap_layout() {
+                if app.tap_char_grid(x, y) {
+                    // Char grid (passphrase / message entry): the action row
+                    // (SPC CAPS DEL DONE) lives at the bottom of the grid and
+                    // physically overlaps the footer zone — check this first so
+                    // action-row taps are never shadowed by the footer mapping.
+                    pending_tap_confirm = None;
+                    app.handle_input(InputEvent::Confirm);
+                } else if app.tap_word_grid(x, y) {
+                    // Word-entry alphabet grid: same reasoning as char grid.
+                    pending_tap_confirm = None;
+                    app.handle_input(InputEvent::Confirm);
+                } else if y >= FOOTER_Y {
+                    // Footer zone (Back / Secondary / Confirm thirds).
+                    // Only reached when neither grid type claimed the tap.
+                    pending_tap_confirm = None;
+                    let event = if x < FOOTER_THIRD {
+                        InputEvent::Back
+                    } else if x < FOOTER_THIRD * 2 {
+                        InputEvent::Secondary
+                    } else {
+                        InputEvent::Confirm
+                    };
+                    app.handle_input(event);
+                } else if let Some(layout) = app.tap_layout() {
                     // List screen: move selection then fire Confirm after a
                     // short delay so the highlight is visible for one frame.
                     if y >= layout.list_top {
@@ -121,12 +154,10 @@ fn main() {
                         app.set_selected(row);
                     }
                     pending_tap_confirm = Some(std::time::Instant::now());
-                } else if app.tap_char_grid(x, y) {
-                    // Character grid (passphrase / message): type immediately.
-                    pending_tap_confirm = None;
-                    app.handle_input(InputEvent::Confirm);
-                } else if app.tap_word_grid(x, y) {
-                    // Word-entry alphabet grid: append the tapped letter.
+                } else {
+                    // Read-only / advance-only screen (word display, card
+                    // confirm, QR view, about, errors…): tap anywhere fires
+                    // Confirm so the user can page forward.
                     pending_tap_confirm = None;
                     app.handle_input(InputEvent::Confirm);
                 }
