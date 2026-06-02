@@ -14,5 +14,10 @@ CONFIG_I2C_ISR_IRAM_SAFE=y
 # Stack size — GUI rendering needs headroom
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
 
+# PBKDF2-HMAC-SHA512 (2048 rounds) runs for several seconds on the main task
+# without yielding, which starves IDLE0 and triggers the watchdog. This device
+# intentionally runs long crypto operations, so suppress the IDLE0 check.
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
+
 # Logging
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y

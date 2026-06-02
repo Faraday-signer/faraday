@@ -639,6 +639,29 @@ fn draw_invalid_mnemonic<D: DrawTarget<Color = Rgb565>>(
     .draw(display, &theme)
 }
 
+pub fn draw_computing<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    theme: &Theme,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{EdgeHints, HeaderKind};
+    use crate::ui::screens::CardScreen;
+
+    let body = ["Deriving keys.", "", "Please wait…"];
+
+    CardScreen {
+        header: HeaderKind::Title("COMPUTING"),
+        counter: None,
+        right_label: None,
+        title: Some("KEY DERIVATION"),
+        subtitle: None,
+        body_lines: &body,
+        rows: &[],
+        title_danger: false,
+        edge_hints: EdgeHints::new(),
+    }
+    .draw(display, theme)
+}
+
 fn draw_derivation_error<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     theme: &Theme,

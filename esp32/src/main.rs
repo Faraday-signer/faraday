@@ -117,6 +117,10 @@ fn main() {
                     // physically overlaps the footer zone — check this first so
                     // action-row taps are never shadowed by the footer mapping.
                     pending_tap_confirm = None;
+                    if app.confirm_will_derive() {
+                        let _ = screens::draw_computing(&mut display, &app.theme);
+                        display.flush();
+                    }
                     app.handle_input(InputEvent::Confirm);
                 } else if app.tap_word_grid(x, y) {
                     // Word-entry alphabet grid: same reasoning as char grid.
@@ -133,6 +137,10 @@ fn main() {
                     } else {
                         InputEvent::Confirm
                     };
+                    if event == InputEvent::Confirm && app.confirm_will_derive() {
+                        let _ = screens::draw_computing(&mut display, &app.theme);
+                        display.flush();
+                    }
                     app.handle_input(event);
                 } else if let Some(layout) = app.tap_layout() {
                     // List screen: move selection then fire Confirm after a
@@ -168,6 +176,10 @@ fn main() {
         if let Some(t) = pending_tap_confirm {
             if t.elapsed().as_millis() >= TAP_CONFIRM_DELAY_MS as u128 {
                 pending_tap_confirm = None;
+                if app.confirm_will_derive() {
+                    let _ = screens::draw_computing(&mut display, &app.theme);
+                    display.flush();
+                }
                 app.handle_input(InputEvent::Confirm);
             }
         }

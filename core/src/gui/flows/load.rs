@@ -45,13 +45,14 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     );
 
                     if let Some(mnemonic) = decoded.mnemonic {
-                        let preview_address = match app.derive_address(&mnemonic, "") {
-                            Some(a) => a,
+                        let (keypair, preview_address) = match app.derive_keypair_and_address(&mnemonic, "") {
+                            Some(pair) => pair,
                             None => return Screen::DerivationError,
                         };
                         return Screen::LoadFinalize {
                             mnemonic,
                             preview_address,
+                            keypair,
                             selected: 0,
                         };
                     }
@@ -164,7 +165,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             Screen::LoadInvalidMnemonic { word_count }
         }
 
-        Screen::LoadFinalize { mnemonic, preview_address, mut selected } => {
+        Screen::LoadFinalize { mnemonic, preview_address, keypair, mut selected } => {
             match event {
                 InputEvent::Up => {
                     if selected > 0 {
@@ -179,7 +180,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 InputEvent::Confirm => {
                     if selected == 0 {
                         // DONE — load wallet with no passphrase and go home.
-                        app.load_wallet(mnemonic, String::new());
+                        app.set_wallet(mnemonic, String::new(), keypair);
                         return Screen::MainMenu { selected: app.menu_index_of(2) };
                     }
                     // ADD PASSPHRASE — jump straight into the char grid.
@@ -194,6 +195,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             Screen::LoadFinalize {
                 mnemonic,
                 preview_address,
+                keypair,
                 selected,
             }
         }
@@ -209,11 +211,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 InputEvent::Confirm => {
                     if selected == 0 {
                         let passphrase = String::new();
-                        let address = match app.derive_address(&mnemonic, &passphrase) {
-                            Some(a) => a,
+                        let (keypair, address) = match app.derive_keypair_and_address(&mnemonic, &passphrase) {
+                            Some(pair) => pair,
                             None => return Screen::DerivationError,
                         };
-                        return Screen::LoadConfirm { mnemonic, passphrase, address, selected: 0 };
+                        return Screen::LoadConfirm { mnemonic, passphrase, keypair, address, selected: 0 };
                     } else {
                         return Screen::LoadPassphraseInput {
                             mnemonic,
@@ -262,11 +264,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     };
                 }
                 if grid.text == passphrase {
-                    let address = match app.derive_address(&mnemonic, &passphrase) {
-                        Some(a) => a,
+                    let (keypair, address) = match app.derive_keypair_and_address(&mnemonic, &passphrase) {
+                        Some(pair) => pair,
                         None => return Screen::DerivationError,
                     };
-                    return Screen::LoadConfirm { mnemonic, passphrase, address, selected: 0 };
+                    return Screen::LoadConfirm { mnemonic, passphrase, keypair, address, selected: 0 };
                 } else {
                     return Screen::LoadPassphraseMismatch { mnemonic };
                 }
@@ -294,6 +296,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         Screen::LoadConfirm {
             mnemonic,
             passphrase,
+            keypair,
             address,
             mut selected,
         } => {
@@ -303,7 +306,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 }
                 InputEvent::Confirm => {
                     if selected == 0 {
-                        app.load_wallet(mnemonic, passphrase);
+                        app.set_wallet(mnemonic, passphrase, keypair);
                         return Screen::MainMenu { selected: app.menu_index_of(2) };
                     }
                     return Screen::MainMenu { selected: 0 };
@@ -319,6 +322,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             Screen::LoadConfirm {
                 mnemonic,
                 passphrase,
+                keypair,
                 address,
                 selected,
             }

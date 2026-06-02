@@ -411,11 +411,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 InputEvent::Confirm => {
                     if selected == 0 {
                         let passphrase = String::new();
-                        let address = match app.derive_address(&mnemonic, &passphrase) {
-                            Some(a) => a,
+                        let (keypair, address) = match app.derive_keypair_and_address(&mnemonic, &passphrase) {
+                            Some(pair) => pair,
                             None => return Screen::DerivationError,
                         };
-                        return Screen::CreateConfirm { mnemonic, passphrase, address, selected: 0 };
+                        return Screen::CreateConfirm { mnemonic, passphrase, keypair, address, selected: 0 };
                     } else {
                         return Screen::CreatePassphraseInput {
                             mnemonic,
@@ -467,11 +467,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     };
                 }
                 if grid.text == passphrase {
-                    let address = match app.derive_address(&mnemonic, &passphrase) {
-                        Some(a) => a,
+                    let (keypair, address) = match app.derive_keypair_and_address(&mnemonic, &passphrase) {
+                        Some(pair) => pair,
                         None => return Screen::DerivationError,
                     };
-                    return Screen::CreateConfirm { mnemonic, passphrase, address, selected: 0 };
+                    return Screen::CreateConfirm { mnemonic, passphrase, keypair, address, selected: 0 };
                 } else {
                     return Screen::CreatePassphraseMismatch { mnemonic };
                 }
@@ -499,6 +499,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         Screen::CreateConfirm {
             mnemonic,
             passphrase,
+            keypair,
             address,
             mut selected,
         } => {
@@ -510,7 +511,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     if selected == 0 {
                         let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(&mnemonic)
                             .unwrap_or_default();
-                        app.load_wallet(mnemonic, passphrase);
+                        app.set_wallet(mnemonic, passphrase, keypair);
                         let next = Screen::ExportSeedQrMenu {
                             compact_data,
                             selected: 0,
@@ -532,6 +533,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             Screen::CreateConfirm {
                 mnemonic,
                 passphrase,
+                keypair,
                 address,
                 selected,
             }

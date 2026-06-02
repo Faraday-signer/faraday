@@ -150,6 +150,7 @@ pub enum Screen {
     CreateConfirm {
         mnemonic: String,
         passphrase: String,
+        keypair: SolanaKeypair,
         address: String,
         selected: usize,
     },
@@ -242,6 +243,7 @@ pub enum Screen {
     LoadFinalize {
         mnemonic: String,
         preview_address: String,
+        keypair: SolanaKeypair,
         selected: usize,
     },
     LoadPassphrasePrompt {
@@ -263,6 +265,7 @@ pub enum Screen {
     LoadConfirm {
         mnemonic: String,
         passphrase: String,
+        keypair: SolanaKeypair,
         address: String,
         selected: usize,
     },
@@ -907,11 +910,12 @@ impl App {
                     if picker.words.len() == word_count {
                         let mnemonic = picker.words.join(" ");
                         if crate::crypto::bip39::validate_mnemonic(&mnemonic) {
-                            match self.derive_address(&mnemonic, "") {
-                                Some(preview_address) => {
+                            match self.derive_keypair_and_address(&mnemonic, "") {
+                                Some((keypair, preview_address)) => {
                                     self.screen = Screen::LoadFinalize {
                                         mnemonic,
                                         preview_address,
+                                        keypair,
                                         selected: 0,
                                     };
                                 }
@@ -1104,6 +1108,24 @@ impl App {
         )
     }
 
+    /// Returns true when the next `InputEvent::Confirm` will synchronously run
+    /// PBKDF2 key derivation. Callers that can draw a frame before the blocking
+    /// work should check this and show a "please wait" screen first.
+    pub fn confirm_will_derive(&self) -> bool {
+        match &self.screen {
+            Screen::LoadPassphrasePrompt { selected: 0, .. }
+            | Screen::CreatePassphrasePrompt { selected: 0, .. } => true,
+            Screen::LoadPassphraseConfirm { passphrase, grid, .. }
+            | Screen::CreatePassphraseConfirm { passphrase, grid, .. } => {
+                grid.action_region() == Some(GridAction::Done) && grid.text == *passphrase
+            }
+            Screen::VerifyBackupPassphrase { grid } => {
+                grid.action_region() == Some(GridAction::Done)
+            }
+            _ => false,
+        }
+    }
+
     fn transition(&mut self, screen: Screen, event: InputEvent) -> Screen {
         if event == InputEvent::Back {
             if let (Some(topic), Some(disc)) = (self.help_return, self.help_return_for) {
@@ -1291,16 +1313,19 @@ impl App {
         self.menu_items().iter().position(|&a| a == action).unwrap_or(0)
     }
 
-    pub(crate) fn derive_address(&self, mnemonic: &str, passphrase: &str) -> Option<String> {
+    pub(crate) fn derive_keypair_and_address(&self, mnemonic: &str, passphrase: &str) -> Option<(SolanaKeypair, String)> {
         let keypair = derivation::derive_keypair(mnemonic, passphrase, 0)?;
-        Some(derivation::address(&keypair))
+        let address = derivation::address(&keypair);
+        Some((keypair, address))
     }
 
-    pub(crate) fn load_wallet(&mut self, mnemonic: String, passphrase: String) {
-        if let Some(keypair) = derivation::derive_keypair(&mnemonic, &passphrase, 0) {
-            let address = crate::qr::encode_qr::encode_address(&keypair.public_key);
-            self.wallet = Some(LoadedWallet { mnemonic, passphrase, keypair, address });
-        }
+    pub(crate) fn derive_address(&self, mnemonic: &str, passphrase: &str) -> Option<String> {
+        self.derive_keypair_and_address(mnemonic, passphrase).map(|(_, addr)| addr)
+    }
+
+    pub(crate) fn set_wallet(&mut self, mnemonic: String, passphrase: String, keypair: SolanaKeypair) {
+        let address = derivation::address(&keypair);
+        self.wallet = Some(LoadedWallet { mnemonic, passphrase, keypair, address });
     }
 }
 
