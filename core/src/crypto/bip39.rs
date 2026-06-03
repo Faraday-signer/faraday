@@ -1,11 +1,17 @@
 //! BIP39 mnemonic implementation.
 //!
-//! No external crypto dependencies — uses sha2 + pbkdf2 + hmac (all pure Rust).
+//! Seed derivation uses PBKDF2-HMAC-SHA512 (2048 rounds). On ESP32-S3 with the
+//! `hardware-sha512` feature, this is handled by ESP-IDF's mbedtls using the
+//! hardware SHA accelerator. Otherwise it falls back to pure-Rust sha2/pbkdf2.
 //! The BIP39 wordlist is embedded at compile time.
 
+#[cfg(not(feature = "hardware-sha512"))]
 use hmac::Hmac;
+#[cfg(not(feature = "hardware-sha512"))]
 use pbkdf2::pbkdf2;
-use sha2::{Digest, Sha256, Sha512};
+use sha2::{Digest, Sha256};
+#[cfg(not(feature = "hardware-sha512"))]
+use sha2::Sha512;
 use zeroize::{Zeroize, Zeroizing};
 
 /// BIP39 English wordlist, fetched from bitcoin/bips at build time and SHA256-verified.
@@ -164,6 +170,7 @@ pub fn validate_mnemonic(mnemonic: &str) -> bool {
 /// Returns a 64-byte seed. The seed is zeroized on drop.
 /// Callers must borrow (`&seed`), not clone — copying the inner Vec
 /// produces a plain buffer that won't be zeroized.
+#[cfg(not(feature = "hardware-sha512"))]
 pub fn mnemonic_to_seed(mnemonic: &str, passphrase: &str) -> Zeroizing<Vec<u8>> {
     let salt = format!("mnemonic{}", passphrase);
     let mut seed = Zeroizing::new(vec![0u8; 64]);
@@ -175,6 +182,49 @@ pub fn mnemonic_to_seed(mnemonic: &str, passphrase: &str) -> Zeroizing<Vec<u8>> 
         &mut seed,
     )
     .expect("PBKDF2 should not fail");
+
+    seed
+}
+
+/// BIP39 seed generation using ESP32-S3 hardware SHA512 accelerator via mbedtls.
+///
+/// `mbedtls_pkcs5_pbkdf2_hmac_ext` is not included in esp-idf-sys's generated
+/// bindings, so we declare it manually. The symbol is present in the linked
+/// ESP-IDF libraries.
+#[cfg(feature = "hardware-sha512")]
+pub fn mnemonic_to_seed(mnemonic: &str, passphrase: &str) -> Zeroizing<Vec<u8>> {
+    extern "C" {
+        fn mbedtls_pkcs5_pbkdf2_hmac_ext(
+            md_type: u32,
+            password: *const u8,
+            plen: usize,
+            salt: *const u8,
+            slen: usize,
+            iteration_count: u32,
+            key_length: u32,
+            output: *mut u8,
+        ) -> i32;
+    }
+
+    const MBEDTLS_MD_SHA512: u32 = 11;
+
+    let salt = format!("mnemonic{}", passphrase);
+    let mut seed = Zeroizing::new(vec![0u8; 64]);
+
+    let ret = unsafe {
+        mbedtls_pkcs5_pbkdf2_hmac_ext(
+            MBEDTLS_MD_SHA512,
+            mnemonic.as_bytes().as_ptr(),
+            mnemonic.len(),
+            salt.as_bytes().as_ptr(),
+            salt.len(),
+            2048,
+            64,
+            seed.as_mut_ptr(),
+        )
+    };
+
+    assert_eq!(ret, 0, "mbedtls PBKDF2 failed: {}", ret);
 
     seed
 }

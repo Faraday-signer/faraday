@@ -8,8 +8,12 @@ build = "build.rs"
 [features]
 default = []
 _desktop_sim = []
+hardware-sha512 = ["dep:esp-idf-sys"]
 
 [dependencies]
+# Hardware SHA512 via ESP-IDF mbedtls (ESP32 only)
+esp-idf-sys = { version = "0.37", optional = true }
+
 # Display rendering
 embedded-graphics = "0.8"
 embedded-graphics-core = "0.4"
