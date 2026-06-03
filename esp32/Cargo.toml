@@ -19,5 +19,13 @@ esp-idf-sys = { version = "0.37", features = ["binstart"] }
 
 log = "0.4"
 
+# QR decoding (no_std-friendly, compiles for xtensa). Pi uses rxing instead.
+quircs = "0.10"
+
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/esp32-camera", version = "2.*" }
+bindings_header = "camera_bindings.h"
+bindings_module = "camera"
+
 [build-dependencies]
 embuild = { version = "0.32", features = ["espidf"] }

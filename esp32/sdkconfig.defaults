@@ -19,5 +19,14 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
 # intentionally runs long crypto operations, so suppress the IDLE0 check.
 CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
 
+# Camera (espressif/esp32-camera component): use I2C port 1 for SCCB so it
+# doesn't conflict with the touch sensor on I2C port 0 (SDA=GPIO48, SCL=GPIO47).
+# This key is defined by the camera component's Kconfig; it will warn as
+# "unknown symbol" until the component is present in the build.
+CONFIG_SCCB_HARDWARE_I2C_PORT=1
+
+# OV2640 and OV5640 are both default-y in the esp32-camera Kconfig, so no
+# explicit sensor-support entry is needed here.
+
 # Logging
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y

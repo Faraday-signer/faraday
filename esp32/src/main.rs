@@ -17,7 +17,9 @@ use faraday_core::ui::Theme;
 use faraday_core::ui::widgets::list::visible_start;
 use touch::TouchEvent;
 
+mod camera;
 mod display;
+mod qr_decode;
 mod touch;
 
 
@@ -105,6 +107,7 @@ fn main() {
     const FOOTER_Y: u16 = 288;
     const FOOTER_THIRD: u16 = 80;
 
+    let mut camera: Option<camera::EspCamera> = None;
     let mut last_draw = std::time::Instant::now();
     let mut pending_tap_confirm: Option<std::time::Instant> = None;
     loop {
@@ -192,12 +195,60 @@ fn main() {
 
         app.tick();
 
+        // Camera lifecycle: open/close based on whether the current screen
+        // needs a camera feed; pull frames and QR results into App fields.
+        let wants_camera = app.wants_camera();
+        if wants_camera && camera.is_none() && app.camera_error.is_none() {
+            match camera::EspCamera::open() {
+                Ok(cam) => {
+                    cam.set_decode_enabled(true);
+                    camera = Some(cam);
+                }
+                Err(e) => {
+                    log::warn!("camera open failed: {e}");
+                    app.camera_error = Some(e);
+                }
+            }
+        } else if !wants_camera && camera.is_some() {
+            camera = None;
+            app.latest_frame = None;
+            app.camera_error = None;
+            app.scan_diag = faraday_core::camera::ScanDiagnostics::default();
+        }
+        let mut camera_died = false;
+        if let Some(cam) = &camera {
+            if let Some(err) = cam.take_fatal_err() {
+                log::warn!("camera fatal: {err}");
+                app.camera_error = Some(err);
+                camera_died = true;
+            } else {
+                app.scan_diag = cam.diagnostics();
+                if let Some(frame) = cam.latest() {
+                    app.latest_frame = Some(frame);
+                }
+                if let Some(qr) = cam.take_qr() {
+                    app.scanned_qr = Some(qr);
+                }
+                cam.set_small_qr_mode(app.wants_small_qr_scan());
+            }
+        }
+        if camera_died {
+            camera = None;
+            app.scan_diag = faraday_core::camera::ScanDiagnostics::default();
+        }
+
         // Display refreshed at ~30 Hz independently of the touch poll rate.
         if last_draw.elapsed().as_millis() >= 33 {
             if app.is_blanked() {
                 let elapsed_ms = app.splash_anim_start.elapsed().as_millis() as u64;
                 let _ = screens::draw_splash(&mut display, &app.theme, elapsed_ms);
             } else {
+                // Blit the camera frame first so the GUI overlay renders on top.
+                if app.wants_camera() {
+                    if let Some(frame) = &app.latest_frame {
+                        display.blit_camera_frame(frame);
+                    }
+                }
                 let _ = app.draw(&mut display);
             }
             display.flush();

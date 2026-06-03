@@ -151,6 +151,37 @@ impl<'d> Display<'d> {
         self.flush();
     }
 
+    /// Blit a camera frame into the top WIDTH×WIDTH (240×240) region of the
+    /// display buffer. The remaining rows (240..320) keep whatever the GUI
+    /// drew last frame, so the scan overlay renders correctly on top.
+    ///
+    /// The camera captures 320×240 (landscape). We center-crop to a 240×240
+    /// square (dropping 40 px from each horizontal side) and nearest-neighbour
+    /// scale into the top 240 rows of the portrait display.
+    pub fn blit_camera_frame(&mut self, frame: &faraday_core::camera::Frame) {
+        let (fw, fh) = (frame.width, frame.height);
+        let sq = fw.min(fh); // 240 for a 320×240 frame
+        let ox = (fw - sq) / 2;
+        let oy = (fh - sq) / 2;
+        for dy in 0..WIDTH {
+            let sy = oy + dy * sq / WIDTH;
+            for dx in 0..WIDTH {
+                let sx = ox + dx * sq / WIDTH;
+                let si = ((sy * fw + sx) * 3) as usize;
+                if si + 2 >= frame.rgb.len() {
+                    continue;
+                }
+                let r = (frame.rgb[si]     >> 3) as u16;
+                let g = (frame.rgb[si + 1] >> 2) as u16;
+                let b = (frame.rgb[si + 2] >> 3) as u16;
+                let rgb565 = (r << 11) | (g << 5) | b;
+                let byte_idx = ((dy * WIDTH + dx) * 2) as usize;
+                self.buffer[byte_idx]     = (rgb565 >> 8) as u8;
+                self.buffer[byte_idx + 1] = (rgb565 & 0xFF) as u8;
+            }
+        }
+    }
+
     /// Set backlight brightness. `pct` is 0–100; 0 disables the channel.
     pub fn set_backlight(&mut self, pct: u8) {
         if pct == 0 {
