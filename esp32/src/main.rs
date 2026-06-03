@@ -97,7 +97,7 @@ fn main() {
 
     // Delay (ms) between tapping a list row and firing Confirm — long enough
     // for one display frame to render the highlight before the transition.
-    const TAP_CONFIRM_DELAY_MS: u64 = 100;
+    const TAP_CONFIRM_DELAY_MS: u64 = 40;
 
     // Footer zone: bottom strip of the 320px display, divided into three
     // equal thirds.  Applied only when the tap doesn't fall on a grid or
