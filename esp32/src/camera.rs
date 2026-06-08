@@ -28,9 +28,12 @@
 //! channel 0, so there is no conflict).
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
+
+use esp_idf_hal::cpu::Core;
+use esp_idf_hal::task::thread::ThreadSpawnConfiguration;
 
 use faraday_core::camera::{Frame, ScanDiagnostics, ScanMode};
 
@@ -72,38 +75,134 @@ const CAM_XCLK_FREQ: i32 = 20_000_000;
 const CAPTURE_W: u32 = 800;
 const CAPTURE_H: u32 = 600;
 
-// ---------- public struct ---------------------------------------------------
+// ---------- persistent QR-decode pipeline -----------------------------------
+//
+// The decoder thread needs a 96 KB stack (quircs puts large transient buffers
+// on the stack). On the ESP32-S3, pthread/FreeRTOS stacks must live in internal
+// SRAM, and a 96 KB *contiguous* block is right at the edge of what's available
+// once the heap has been through one camera open/teardown cycle: the largest
+// free internal block measured ~196 KB at boot, ~96 KB after the first cycle,
+// then fragmented below 96 KB — so re-spawning the decoder on a later open()
+// failed with ENOMEM ("spawn decoder: Not enough space").
+//
+// Fix: spawn the decoder exactly once (lazily, on the first camera open, when
+// the heap is least fragmented) and keep it alive for the rest of the process.
+// It only ever reads the shared `latest` luma buffer — it never touches the
+// esp_camera hardware — so its lifetime is fully decoupled from camera
+// init/deinit. When no camera is open we just gate it off via `decode_enabled`.
+// The 16 KB reader stack is small enough to re-allocate reliably, so it stays
+// tied to the camera-hardware lifetime (spawned in open, joined in drop).
 
-pub struct EspCamera {
+struct QrPipeline {
     latest: Arc<Mutex<Option<Frame>>>,
     pending_qr: Arc<Mutex<Option<Vec<u8>>>>,
     diag: Arc<Mutex<ScanDiagnostics>>,
     small_qr_mode: Arc<AtomicBool>,
-    fatal_err: Arc<Mutex<Option<String>>>,
-    stop: Arc<AtomicBool>,
     decode_enabled: Arc<AtomicBool>,
-    _reader: Option<JoinHandle<()>>,
-    _decoder: Option<JoinHandle<()>>,
+    _decoder: JoinHandle<()>,
 }
 
-impl EspCamera {
-    pub fn open() -> Result<Self, String> {
-        unsafe { init_camera()? };
-        log::info!("esp_camera: init OK ({}x{} GRAYSCALE)", CAPTURE_W, CAPTURE_H);
+static PIPELINE: OnceLock<QrPipeline> = OnceLock::new();
 
+/// The process-wide QR-decode pipeline. Spawns the decoder thread on first use.
+fn pipeline() -> &'static QrPipeline {
+    PIPELINE.get_or_init(QrPipeline::start)
+}
+
+impl QrPipeline {
+    fn start() -> QrPipeline {
         let latest: Arc<Mutex<Option<Frame>>> = Arc::new(Mutex::new(None));
         let pending_qr: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
         let diag: Arc<Mutex<ScanDiagnostics>> =
             Arc::new(Mutex::new(ScanDiagnostics::default()));
-        let fatal_err: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-        let stop = Arc::new(AtomicBool::new(false));
         let decode_enabled = Arc::new(AtomicBool::new(false));
         let small_qr_mode = Arc::new(AtomicBool::new(false));
 
+        // Decoder thread — runs the quircs QR pipeline on the latest frame.
+        // 96 KB stack: QR decoders can put large transient buffers on the stack
+        // (a worst-case data matrix is tens of KB); 32 KB previously overflowed
+        // into adjacent internal RAM and corrupted FreeRTOS task lists
+        // (LoadProhibited in vListInsert). 96 KB leaves comfortable headroom.
+        // Spawned once for the life of the process (see module note above), so
+        // this allocation never has to compete with a fragmented heap.
+        let latest_d = Arc::clone(&latest);
+        let qr_d = Arc::clone(&pending_qr);
+        let diag_d = Arc::clone(&diag);
+        let mode_d = Arc::clone(&small_qr_mode);
+        let decode_d = Arc::clone(&decode_enabled);
+
+        // Pin the decoder to CPU1 (APP core). A single decode is CPU-bound for
+        // ~1 s and runs at the default pthread priority (5), which is higher
+        // than the main/GUI task (priority 1, pinned to CPU0). Without an
+        // explicit affinity the scheduler can place it on CPU0, where it
+        // preempts the GUI and freezes the camera preview for a full second per
+        // attempt. CPU1 is the core the watchdog config already expects it on
+        // (CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n in sdkconfig.defaults).
+        // Affinity comes only from the esp_pthread cfg (Thread::Builder can't
+        // set it), so set it just for this spawn and restore the default after
+        // so the reader (spawned later, on the main task) keeps default
+        // placement; Builder::stack_size still sets the stack authoritatively.
+        ThreadSpawnConfiguration {
+            pin_to_core: Some(Core::Core1),
+            ..Default::default()
+        }
+        .set()
+        .expect("pin decoder thread to CPU1");
+        let decoder = thread::Builder::new()
+            .stack_size(96 * 1024)
+            .spawn(move || decoder_loop(latest_d, qr_d, diag_d, mode_d, decode_d))
+            .expect("spawn decoder (once, at first camera open)");
+        ThreadSpawnConfiguration::default()
+            .set()
+            .expect("restore default thread spawn config");
+
+        QrPipeline {
+            latest,
+            pending_qr,
+            diag,
+            small_qr_mode,
+            decode_enabled,
+            _decoder: decoder,
+        }
+    }
+}
+
+// ---------- public struct ---------------------------------------------------
+
+pub struct EspCamera {
+    fatal_err: Arc<Mutex<Option<String>>>,
+    stop: Arc<AtomicBool>,
+    _reader: Option<JoinHandle<()>>,
+}
+
+impl EspCamera {
+    pub fn open() -> Result<Self, String> {
+        // Ensure the persistent decoder exists (spawns once, on this first call).
+        let pl = pipeline();
+
+        // Start each scan session from a clean slate: drop any stale frame and
+        // result from the previous session so the persistent decoder can't
+        // surface an old QR before the new reader has published a fresh frame.
+        // (The UR accumulator and diagnostics are reset by the decoder itself
+        // when decode_enabled went false on the previous teardown.)
+        if let Ok(mut g) = pl.latest.lock() {
+            *g = None;
+        }
+        if let Ok(mut g) = pl.pending_qr.lock() {
+            *g = None;
+        }
+
+        unsafe { init_camera()? };
+        log::info!("esp_camera: init OK ({}x{} GRAYSCALE)", CAPTURE_W, CAPTURE_H);
+
+        let fatal_err: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let stop = Arc::new(AtomicBool::new(false));
+
         // Reader thread — grabs frames from the camera DMA, converts YUV422
         // to RGB+luma, publishes to `latest`. Stack: 16 KB for the conversion
-        // buffers (320×240×5 bytes touched per frame).
-        let latest_w = Arc::clone(&latest);
+        // buffers (320×240×5 bytes touched per frame). Re-spawned each open;
+        // 16 KB allocates reliably even from a fragmented heap.
+        let latest_w = Arc::clone(&pl.latest);
         let fatal_w = Arc::clone(&fatal_err);
         let stop_r = Arc::clone(&stop);
         let reader = thread::Builder::new()
@@ -111,53 +210,31 @@ impl EspCamera {
             .spawn(move || reader_loop(latest_w, fatal_w, stop_r))
             .map_err(|e| format!("spawn reader: {e}"))?;
 
-        // Decoder thread — runs the quircs QR pipeline on the latest frame.
-        // 96 KB stack: QR decoders can put large transient buffers on the stack
-        // (a worst-case data matrix is tens of KB); 32 KB previously overflowed
-        // into adjacent internal RAM and corrupted FreeRTOS task lists
-        // (LoadProhibited in vListInsert). 96 KB leaves comfortable headroom.
-        let latest_d = Arc::clone(&latest);
-        let qr_d = Arc::clone(&pending_qr);
-        let diag_d = Arc::clone(&diag);
-        let mode_d = Arc::clone(&small_qr_mode);
-        let stop_d = Arc::clone(&stop);
-        let decode_d = Arc::clone(&decode_enabled);
-        let decoder = thread::Builder::new()
-            .stack_size(96 * 1024)
-            .spawn(move || decoder_loop(latest_d, qr_d, diag_d, mode_d, stop_d, decode_d))
-            .map_err(|e| format!("spawn decoder: {e}"))?;
-
         // No separate no-first-frame watchdog: the reader already declares the
         // camera dead (sets fatal_err, stops) after MAX_CONSECUTIVE_NULLS frame
         // timeouts, which covers the "camera never delivers" case.
 
         Ok(EspCamera {
-            latest,
-            pending_qr,
-            diag,
-            small_qr_mode,
             fatal_err,
             stop,
-            decode_enabled,
             _reader: Some(reader),
-            _decoder: Some(decoder),
         })
     }
 
     pub fn latest(&self) -> Option<Frame> {
-        self.latest.lock().ok().and_then(|g| g.clone())
+        pipeline().latest.lock().ok().and_then(|g| g.clone())
     }
 
     pub fn take_qr(&self) -> Option<Vec<u8>> {
-        self.pending_qr.lock().ok().and_then(|mut g| g.take())
+        pipeline().pending_qr.lock().ok().and_then(|mut g| g.take())
     }
 
     pub fn set_decode_enabled(&self, on: bool) {
-        self.decode_enabled.store(on, Ordering::Relaxed);
+        pipeline().decode_enabled.store(on, Ordering::Relaxed);
     }
 
     pub fn set_small_qr_mode(&self, on: bool) {
-        self.small_qr_mode.store(on, Ordering::Relaxed);
+        pipeline().small_qr_mode.store(on, Ordering::Relaxed);
     }
 
     pub fn take_fatal_err(&self) -> Option<String> {
@@ -165,27 +242,27 @@ impl EspCamera {
     }
 
     pub fn diagnostics(&self) -> ScanDiagnostics {
-        self.diag.lock().ok().map(|g| *g).unwrap_or_default()
+        pipeline().diag.lock().ok().map(|g| *g).unwrap_or_default()
     }
 }
 
 impl Drop for EspCamera {
     fn drop(&mut self) {
-        // Order matters: join the worker threads BEFORE deinit. The reader
-        // checks `stop` only between frames and releases each frame buffer
-        // (esp_camera_fb_return) before looping, so once it has exited no thread
-        // is touching camera memory. Calling esp_camera_deinit() while the
-        // reader is still mid-frame (copying fb.buf) would free the DMA buffers
-        // under it → use-after-free → crash.
+        // Stop decoding first so the persistent decoder parks (and resets its
+        // UR accumulator + diagnostics) instead of chewing on the soon-to-be
+        // stale frame while we tear the hardware down.
+        pipeline().decode_enabled.store(false, Ordering::SeqCst);
+
+        // Order matters: join the reader BEFORE deinit. The reader checks `stop`
+        // only between frames and releases each frame buffer (esp_camera_fb_return)
+        // before looping, so once it has exited no thread is touching camera
+        // memory. Calling esp_camera_deinit() while the reader is still mid-frame
+        // (copying fb.buf) would free the DMA buffers under it → use-after-free.
         //
         // esp_camera_fb_get() has an internal timeout, so the reader returns and
-        // sees `stop` within ~1 s even without deinit; the decoder returns after
-        // at most one in-flight decode.
+        // sees `stop` within ~1 s even without deinit.
         self.stop.store(true, Ordering::SeqCst);
         if let Some(h) = self._reader.take() {
-            let _ = h.join();
-        }
-        if let Some(h) = self._decoder.take() {
             let _ = h.join();
         }
         unsafe {
@@ -346,14 +423,12 @@ fn decoder_loop(
     pending_qr: Arc<Mutex<Option<Vec<u8>>>>,
     diag: Arc<Mutex<ScanDiagnostics>>,
     small_qr_mode: Arc<AtomicBool>,
-    stop: Arc<AtomicBool>,
     decode_enabled: Arc<AtomicBool>,
 ) {
+    // Runs for the life of the process; gated by `decode_enabled` (set false
+    // whenever no camera is open), so it never needs a stop signal.
     let mut ur_acc = faraday_core::qr::ur_decoder::UrAccumulator::new();
     loop {
-        if stop.load(Ordering::Relaxed) {
-            return;
-        }
         if !decode_enabled.load(Ordering::Relaxed) {
             ur_acc.reset();
             if let Ok(mut g) = diag.lock() {
