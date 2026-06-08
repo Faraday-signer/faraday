@@ -27,12 +27,23 @@ use esp_idf_hal::spi::{SpiDeviceDriver, SpiDriver};
 pub const WIDTH: u32 = 240;
 pub const HEIGHT: u32 = 320;
 
+/// Per-SPI-transaction chunk size. Matches the bus DMA limit (just under the
+/// 32 767-byte ESP32-S3 cap, 4-byte aligned).
+const FLUSH_CHUNK: usize = 32764;
+
 pub struct Display<'d> {
     spi: SpiDeviceDriver<'d, SpiDriver<'d>>,
     cs: PinDriver<'d, Output>,
     dc: PinDriver<'d, Output>,
     bl: LedcDriver<'d>,
     buffer: Vec<u8>,
+    // Internal, DMA-capable staging buffer for flush. The frame buffer lives in
+    // PSRAM (it's far larger than the SPIRAM-internal malloc threshold), and
+    // SPI-DMA-ing straight from PSRAM underruns the SPI FIFO whenever the camera
+    // is saturating the PSRAM bus — which paints random black blocks and stalls
+    // the flush. Copying each chunk into internal RAM first means the SPI engine
+    // only ever DMAs from fast, uncontended memory.
+    staging: *mut u8,
 }
 
 impl<'d> Display<'d> {
@@ -44,7 +55,16 @@ impl<'d> Display<'d> {
     ) -> Self {
         let buffer = vec![0u8; (WIDTH * HEIGHT * 2) as usize];
 
-        let mut display = Self { spi, cs, dc, bl, buffer };
+        // Allocate the flush staging buffer in internal, DMA-capable RAM.
+        let staging = unsafe {
+            esp_idf_sys::heap_caps_malloc(
+                FLUSH_CHUNK,
+                (esp_idf_sys::MALLOC_CAP_DMA | esp_idf_sys::MALLOC_CAP_INTERNAL) as u32,
+            ) as *mut u8
+        };
+        assert!(!staging.is_null(), "failed to allocate internal DMA staging buffer");
+
+        let mut display = Self { spi, cs, dc, bl, buffer, staging };
         display.init();
         display.set_backlight(30);
 
@@ -127,15 +147,20 @@ impl<'d> Display<'d> {
         // RAMWR + pixel data within a single CS assertion.
         // ESP32-S3 SPI hardware limits each transaction to 32 767 bytes
         // (18-bit bit-length register), so the frame buffer (153 600 bytes)
-        // must be chunked.  With DMA enabled, each write yields to FreeRTOS
-        // via a semaphore — the watchdog idle task gets to run between chunks.
-        // 32 764 bytes = just under the limit, 4-byte aligned, 5 chunks total.
+        // must be chunked. Each chunk is copied from the PSRAM frame buffer
+        // into the internal DMA staging buffer first, so the SPI engine never
+        // DMAs from PSRAM (see `staging`). With DMA enabled, each write yields
+        // to FreeRTOS via a semaphore — the watchdog idle task gets to run
+        // between chunks. 32 764 bytes = just under the limit, 5 chunks total.
         let _ = self.dc.set_low();
         let _ = self.cs.set_low();
         let _ = self.spi.write(&[0x2C]);
         let _ = self.dc.set_high();
-        for chunk in self.buffer.chunks(32764) {
-            let _ = self.spi.write(chunk);
+        let staging = unsafe { core::slice::from_raw_parts_mut(self.staging, FLUSH_CHUNK) };
+        for chunk in self.buffer.chunks(FLUSH_CHUNK) {
+            let dst = &mut staging[..chunk.len()];
+            dst.copy_from_slice(chunk);
+            let _ = self.spi.write(dst);
         }
         let _ = self.cs.set_high();
     }
@@ -152,13 +177,19 @@ impl<'d> Display<'d> {
     }
 
     /// Blit a camera frame into the top WIDTH×WIDTH (240×240) region of the
-    /// display buffer. The remaining rows (240..320) keep whatever the GUI
-    /// drew last frame, so the scan overlay renders correctly on top.
+    /// display buffer, then clear the rows below it (240..320) to `bg`.
+    ///
+    /// The camera only fills the top square; the band below it is *not* part of
+    /// the live feed and nothing else writes it on the scan screens, so it must
+    /// be cleared here every frame — otherwise the previous screen (e.g. the
+    /// settings/About menu) bleeds through under the camera. Doing it at the
+    /// blit, with direct buffer writes, also guarantees the clear regardless of
+    /// which GUI draw path runs on top.
     ///
     /// Rendered as grayscale from the frame's luma plane (the camera path does
     /// no YUV→RGB conversion). The camera captures landscape; we center-crop to
     /// a square and nearest-neighbour scale into the top 240 rows.
-    pub fn blit_camera_frame(&mut self, frame: &faraday_core::camera::Frame) {
+    pub fn blit_camera_frame(&mut self, frame: &faraday_core::camera::Frame, bg: Rgb565) {
         let (fw, fh) = (frame.width, frame.height);
         let sq = fw.min(fh);
         let ox = (fw - sq) / 2;
@@ -178,6 +209,16 @@ impl<'d> Display<'d> {
                 self.buffer[byte_idx]     = (rgb565 >> 8) as u8;
                 self.buffer[byte_idx + 1] = (rgb565 & 0xFF) as u8;
             }
+        }
+
+        // Clear the band below the camera square to `bg`.
+        let raw = embedded_graphics_core::pixelcolor::raw::RawU16::from(bg).into_inner();
+        let hi = (raw >> 8) as u8;
+        let lo = (raw & 0xFF) as u8;
+        let start = (WIDTH * WIDTH * 2) as usize;
+        for i in (start..self.buffer.len()).step_by(2) {
+            self.buffer[i] = hi;
+            self.buffer[i + 1] = lo;
         }
     }
 

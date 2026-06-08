@@ -195,6 +195,10 @@ fn main() {
 
         app.tick();
 
+        // Only refresh the display (and pull the heavy preview frame) at ~30 Hz,
+        // independently of the much faster touch-poll loop.
+        let will_draw = last_draw.elapsed().as_millis() >= 33;
+
         // Camera lifecycle: open/close based on whether the current screen
         // needs a camera feed; pull frames and QR results into App fields.
         let wants_camera = app.wants_camera();
@@ -223,8 +227,15 @@ fn main() {
                 camera_died = true;
             } else {
                 app.scan_diag = cam.diagnostics();
-                if let Some(frame) = cam.latest() {
-                    app.latest_frame = Some(frame);
+                // Clone the ~480 KB SVGA preview frame only on the iterations we
+                // actually draw. Pulling it every loop iteration saturates PSRAM
+                // bandwidth, which tears the camera DMA (black blocks) and starves
+                // the display flush (flicker). The decoder thread keeps its own
+                // copy, so QR detection is unaffected.
+                if will_draw {
+                    if let Some(frame) = cam.latest() {
+                        app.latest_frame = Some(frame);
+                    }
                 }
                 if let Some(qr) = cam.take_qr() {
                     app.scanned_qr = Some(qr);
@@ -238,7 +249,7 @@ fn main() {
         }
 
         // Display refreshed at ~30 Hz independently of the touch poll rate.
-        if last_draw.elapsed().as_millis() >= 33 {
+        if will_draw {
             if app.is_blanked() {
                 let elapsed_ms = app.splash_anim_start.elapsed().as_millis() as u64;
                 let _ = screens::draw_splash(&mut display, &app.theme, elapsed_ms);
@@ -246,7 +257,7 @@ fn main() {
                 // Blit the camera frame first so the GUI overlay renders on top.
                 if app.wants_camera() {
                     if let Some(frame) = &app.latest_frame {
-                        display.blit_camera_frame(frame);
+                        display.blit_camera_frame(frame, app.theme.bg);
                     }
                 }
                 let _ = app.draw(&mut display);

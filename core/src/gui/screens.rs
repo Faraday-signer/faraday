@@ -3799,22 +3799,6 @@ fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
         return Ok(());
     }
 
-    // Content zone is the body minus the right gutter. No bottom banner —
-    // the camera feed fills everything below the header, making the live
-    // area roughly square (~212×211).
-    let content_w = (rest.size.width - GUTTER_W) as i32;
-
-    // Live reticle centered in the content zone.
-    let ret_side: i32 = 160;
-    let ret_x = rest.top_left.x + (content_w - ret_side) / 2;
-    let ret_y = rest.top_left.y + (rest.size.height as i32 - ret_side) / 2;
-    Rectangle::new(
-        Point::new(ret_x, ret_y),
-        Size::new(ret_side as u32, ret_side as u32),
-    )
-    .into_styled(PrimitiveStyle::with_stroke(theme.accent, 2))
-    .draw(display)?;
-
     // Scan-pipeline heartbeat (pulsing dot + UR seq/total when assembling).
     draw_scan_diag(display, theme, diag)?;
 
@@ -3828,6 +3812,21 @@ fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
     EdgeHints::new()
         .k3(EdgeIcon::ArrowLeft)
         .draw(display, &theme, gutter)?;
+
+    // Reticle outlines the entire camera frame edge-to-edge so the whole feed
+    // reads as the scan target — users shouldn't think they must fit the QR
+    // inside a small box. The camera is a `width`×`width` square blitted at the
+    // top of the display, so it ends at row `theme.width` (below that, on the
+    // taller ESP32 panel, is GUI chrome, not live feed). Drawn last so the right
+    // border sits on top of the gutter rather than being clipped behind it.
+    let ret_y = rest.top_left.y;
+    let cam_bottom = theme.width as i32;
+    Rectangle::new(
+        Point::new(rest.top_left.x, ret_y),
+        Size::new(rest.size.width, (cam_bottom - ret_y) as u32),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(theme.accent, 2))
+    .draw(display)?;
 
     Ok(())
 }
