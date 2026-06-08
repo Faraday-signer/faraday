@@ -988,7 +988,11 @@ impl App {
             // Custom layout: top third is instruction text, bottom two-thirds
             // is the 2-item list.
             Screen::CreateBackupWarning { selected, .. } => {
-                let body_h = self.theme.height as u16 - header_h;
+                // Mirror draw_create_backup_warning: the body is shrunk by the
+                // chrome (FOOTER_H on touch builds) before the third split, so
+                // the tappable list begins at the same y the rows are drawn.
+                let footer_h = crate::ui::widgets::FOOTER_H as u16;
+                let body_h = self.theme.height as u16 - header_h - footer_h;
                 Some(TapLayout {
                     max_visible: 2,
                     total_items: 2,
@@ -1044,11 +1048,13 @@ impl App {
 
         const PREVIEW_H: u16 = 28;
         let gutter_w = crate::ui::widgets::GUTTER_W as u16;
+        let footer_h = crate::ui::widgets::FOOTER_H as u16;
         let grid_top = self.theme.header_h as u16 + PREVIEW_H;
         let body_w = self.theme.width as u16 - gutter_w;
-        if y < grid_top || x >= body_w { return false; }
+        let body_bottom = self.theme.height as u16 - footer_h;
+        if y < grid_top || y >= body_bottom || x >= body_w { return false; }
         let cell_w = body_w / GRID_COLS as u16;
-        let row_h = (self.theme.height as u16 - grid_top) / GRID_ROWS as u16;
+        let row_h = (body_bottom - grid_top) / GRID_ROWS as u16;
         if cell_w == 0 || row_h == 0 { return false; }
 
         let col = ((x / cell_w) as usize).min(GRID_COLS - 1);
@@ -1076,11 +1082,13 @@ impl App {
     pub fn tap_word_grid(&mut self, x: u16, y: u16) -> bool {
         const PREFIX_H: u16 = 36;
         let gutter_w = crate::ui::widgets::GUTTER_W as u16;
+        let footer_h = crate::ui::widgets::FOOTER_H as u16;
         let grid_top = self.theme.header_h as u16 + PREFIX_H;
         let body_w = self.theme.width as u16 - gutter_w;
-        if y < grid_top || x >= body_w { return false; }
+        let body_bottom = self.theme.height as u16 - footer_h;
+        if y < grid_top || y >= body_bottom || x >= body_w { return false; }
         let cell_w = body_w / WORD_GRID_COLS as u16;
-        let cell_h = (self.theme.height as u16 - grid_top) / WORD_GRID_ROWS as u16;
+        let cell_h = (body_bottom - grid_top) / WORD_GRID_ROWS as u16;
         if cell_w == 0 || cell_h == 0 { return false; }
 
         let col = ((x / cell_w) as u8).min(WORD_GRID_COLS - 1);

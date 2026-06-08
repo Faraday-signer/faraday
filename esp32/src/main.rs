@@ -15,6 +15,7 @@ use faraday_core::gui::app::{App, InputEvent};
 use faraday_core::gui::screens;
 use faraday_core::ui::Theme;
 use faraday_core::ui::widgets::list::visible_start;
+use faraday_core::ui::widgets::FOOTER_H;
 use touch::TouchEvent;
 
 mod camera;
@@ -101,11 +102,13 @@ fn main() {
     // for one display frame to render the highlight before the transition.
     const TAP_CONFIRM_DELAY_MS: u64 = 40;
 
-    // Footer zone: bottom strip of the 320px display, divided into three
-    // equal thirds.  Applied only when the tap doesn't fall on a grid or
-    // list area, so char-grid action rows are never shadowed.
-    const FOOTER_Y: u16 = 288;
-    const FOOTER_THIRD: u16 = 80;
+    // Footer action bar: bottom FOOTER_H strip, divided into three equal
+    // thirds — Back (left) / Secondary (middle) / Confirm (right), matching
+    // the glyphs drawn by EdgeHints. Applied only when the tap doesn't fall
+    // on a grid or list area, which now sit above the bar.
+    let footer_h = FOOTER_H as u16;
+    let footer_y = app.theme.height as u16 - footer_h;
+    let footer_third = app.theme.width as u16 / 3;
 
     let mut camera: Option<camera::EspCamera> = None;
     let mut last_draw = std::time::Instant::now();
@@ -135,13 +138,13 @@ fn main() {
                     // Word-entry alphabet grid: same reasoning as char grid.
                     pending_tap_confirm = None;
                     app.handle_input(InputEvent::Confirm);
-                } else if y >= FOOTER_Y {
-                    // Footer zone (Back / Secondary / Confirm thirds).
+                } else if y >= footer_y {
+                    // Footer action bar (Back / Secondary / Confirm thirds).
                     // Only reached when neither grid type claimed the tap.
                     pending_tap_confirm = None;
-                    let event = if x < FOOTER_THIRD {
+                    let event = if x < footer_third {
                         InputEvent::Back
-                    } else if x < FOOTER_THIRD * 2 {
+                    } else if x < footer_third * 2 {
                         InputEvent::Secondary
                     } else {
                         InputEvent::Confirm
@@ -156,7 +159,8 @@ fn main() {
                     // short delay so the highlight is visible for one frame.
                     if y >= layout.list_top {
                         let body_y = (y - layout.list_top) as usize;
-                        let list_h = (app.theme.height as u16 - layout.list_top) as usize;
+                        let list_h =
+                            (app.theme.height as u16 - footer_h - layout.list_top) as usize;
                         let slot = if list_h > 0 {
                             (body_y * layout.max_visible / list_h).min(layout.max_visible - 1)
                         } else {

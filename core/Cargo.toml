@@ -9,6 +9,9 @@ build = "build.rs"
 default = []
 _desktop_sim = []
 hardware-sha512 = ["dep:esp-idf-sys"]
+# Touch-screen chrome: drop the right-edge key gutter and render a horizontal
+# action bar along the bottom instead. Enabled by the ESP32 (no physical keys).
+touch-ui = []
 
 [dependencies]
 # Hardware SHA512 via ESP-IDF mbedtls (ESP32 only)

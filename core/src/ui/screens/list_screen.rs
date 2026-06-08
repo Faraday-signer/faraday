@@ -16,7 +16,7 @@ use embedded_graphics::{
     Drawable,
 };
 
-use crate::ui::widgets::{EdgeHints, Header, HeaderKind, List, ListRow, GUTTER_W};
+use crate::ui::widgets::{EdgeHints, Header, HeaderKind, List, ListRow, FOOTER_H, GUTTER_W};
 use crate::ui::Theme;
 
 pub struct ListScreen<'a> {
@@ -53,13 +53,15 @@ impl<'a> ListScreen<'a> {
         // between screens.
         let (header_rect, rest) = split_top(screen, theme.header_h as i32);
 
-        // Reserve the right gutter for edge hints when present.
+        // Reserve chrome for edge hints when present: the right gutter on
+        // key builds (GUTTER_W), or the bottom action bar on touch builds
+        // (FOOTER_H). Exactly one const is non-zero, so subtract both.
         let body_rect = if self.edge_hints.is_empty() {
             rest
         } else {
             Rectangle::new(
                 rest.top_left,
-                Size::new(rest.size.width - GUTTER_W, rest.size.height),
+                Size::new(rest.size.width - GUTTER_W, rest.size.height - FOOTER_H),
             )
         };
 

@@ -481,7 +481,7 @@ fn draw_help<D: DrawTarget<Color = Rgb565>>(
     topic: crate::gui::app::HelpTopic,
 ) -> Result<(), D::Error> {
     use crate::ui::layout::split_top;
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, FOOTER_H, GUTTER_W};
 
 
 
@@ -496,10 +496,11 @@ fn draw_help<D: DrawTarget<Color = Rgb565>>(
     }
     .draw(display, &theme, header_rect)?;
 
-    // Body sits left of the right-edge gutter where the K1/K3 hints render.
+    // Body sits inside the chrome: left of the right-edge gutter (key builds)
+    // or above the bottom action bar (touch builds). One const is zero.
     let body_inner = Rectangle::new(
         body_rect.top_left,
-        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),
+        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height - FOOTER_H),
     );
     let left_x = body_inner.top_left.x + theme.space_md;
     let usable_w = body_inner.size.width as i32 - 2 * theme.space_md;
@@ -706,7 +707,7 @@ fn draw_passphrase_grid<D: DrawTarget<Color = Rgb565>>(
 ) -> Result<(), D::Error> {
     use crate::gui::app::{GridAction, GRID_COLS};
     use crate::ui::layout::split_top;
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, FOOTER_H, GUTTER_W};
 
     use embedded_graphics::{
         geometry::{Point, Size},
@@ -718,11 +719,11 @@ fn draw_passphrase_grid<D: DrawTarget<Color = Rgb565>>(
     display.fill_solid(&screen, theme.bg)?;
 
     let (header_rect, rest) = split_top(screen, theme.header_h as i32);
-    // Body shrinks by the gutter width — keyboard cells don't overlap the
-    // K1/K2/K3 icon column on the right.
+    // Body shrinks to clear the chrome — the right gutter (key builds) or the
+    // bottom action bar (touch builds) — so keyboard cells never overlap it.
     let body_rect = Rectangle::new(
         rest.top_left,
-        Size::new(rest.size.width - GUTTER_W, rest.size.height),
+        Size::new(rest.size.width - GUTTER_W, rest.size.height - FOOTER_H),
     );
 
     Header {
@@ -1251,7 +1252,7 @@ fn draw_qr_block<D: DrawTarget<Color = Rgb565>>(
     block_index: usize,
     _seed_loaded: bool,
 ) -> Result<(), D::Error> {
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, FOOTER_H, GUTTER_W};
 
 
 
@@ -1260,10 +1261,11 @@ fn draw_qr_block<D: DrawTarget<Color = Rgb565>>(
         theme.bg,
     )?;
 
-    // Header spans full width; the body (zoom + minimap) shrinks by the
-    // gutter so content doesn't overlap the K1/K2/K3 column.
+    // Header spans full width; the body (zoom + minimap) shrinks to clear the
+    // chrome — the right gutter (key builds) or the bottom bar (touch builds).
     let header_rect = Rectangle::new(Point::zero(), Size::new(theme.width, theme.header_h));
     let body_w = (theme.width - GUTTER_W) as i32;
+    let body_bottom = (theme.height - FOOTER_H) as i32;
 
     // Must match the ECL used for the full seed QR so the block view shows
     // the same matrix the user is transcribing.
@@ -1341,7 +1343,7 @@ fn draw_qr_block<D: DrawTarget<Color = Rgb565>>(
     let mini_scale = 2i32;
     let mini_size = qr_size as i32 * mini_scale;
     let mini_x = (body_w - mini_size) / 2;
-    let mini_y = theme.height as i32 - mini_size - 4;
+    let mini_y = body_bottom - mini_size - 4;
 
     Rectangle::new(
         Point::new(mini_x - 2, mini_y - 2),
@@ -1466,7 +1468,7 @@ fn draw_tx_review_zoned<D: DrawTarget<Color = Rgb565>>(
     page_counter: Option<(usize, usize)>,
 ) -> Result<(), D::Error> {
     use crate::ui::layout::split_top;
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, FOOTER_H, GUTTER_W};
 
     use embedded_graphics::primitives::{Line, PrimitiveStyle};
 
@@ -1483,9 +1485,10 @@ fn draw_tx_review_zoned<D: DrawTarget<Color = Rgb565>>(
     }
     .draw(display, &theme, header_rect)?;
 
-    // Three equal body zones. The remainder pixel from `body_h % 3` goes
-    // to the bottom zone so the K-cell dividers land on integer y values.
-    let body_h = body_rect.size.height as i32;
+    // Three equal body zones, fitted above the chrome (gutter or bottom bar).
+    // The remainder pixel from `body_h % 3` goes to the bottom zone so the
+    // K-cell dividers land on integer y values.
+    let body_h = (body_rect.size.height - FOOTER_H) as i32;
     let zone_h = body_h / 3;
     let bottom_h = body_h - 2 * zone_h;
     let zone1_top = body_rect.top_left.y;
@@ -1868,7 +1871,7 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
     page_counter: Option<(usize, usize)>,
 ) -> Result<(), D::Error> {
     use crate::ui::layout::{split_bottom, split_top};
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, FOOTER_H, GUTTER_W};
 
     use embedded_graphics::primitives::{Line, PrimitiveStyle};
 
@@ -1877,7 +1880,9 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
     display.fill_solid(&screen, theme.bg)?;
 
     let (header_rect, rest) = split_top(screen, theme.header_h as i32);
-    let (body_rect, _footer_rect) = split_bottom(rest, theme.footer_h as i32);
+    // Reserve the bottom strip: existing breathing margin on key builds, or
+    // the action bar on touch builds — whichever is larger.
+    let (body_rect, _footer_rect) = split_bottom(rest, theme.footer_h.max(FOOTER_H) as i32);
 
     let line_h: i32 = 14;
     let content_w = body_rect.size.width as i32 - GUTTER_W as i32 - theme.space_md - theme.space_sm;
@@ -2199,7 +2204,7 @@ fn draw_detail_shell<D: DrawTarget<Color = Rgb565>>(
     rows: &[DetailRow<'_>],
 ) -> Result<(), D::Error> {
     use crate::ui::layout::split_top;
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, FOOTER_H, GUTTER_W};
 
 
 
@@ -2215,10 +2220,11 @@ fn draw_detail_shell<D: DrawTarget<Color = Rgb565>>(
     }
     .draw(display, &theme, header_rect)?;
 
-    // Body sits left of the right-edge gutter where the K1/K2/K3 hints render.
+    // Body sits inside the chrome: left of the gutter (key builds) or above the
+    // bottom action bar (touch builds).
     let body_inner = Rectangle::new(
         body_rect.top_left,
-        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),
+        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height - FOOTER_H),
     );
     let label_x = body_inner.top_left.x + theme.space_md;
     // Label column width — "FEE PAYER" (9), "INSTRUCTIONS" (12), "PROGRAM" (7)
@@ -2698,7 +2704,7 @@ fn draw_show_address_text<D: DrawTarget<Color = Rgb565>>(
     address: Option<&str>,
 ) -> Result<(), D::Error> {
     use crate::ui::layout::split_top;
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, FOOTER_H, GUTTER_W};
 
 
 
@@ -2715,7 +2721,7 @@ fn draw_show_address_text<D: DrawTarget<Color = Rgb565>>(
 
     let body_inner = Rectangle::new(
         body_rect.top_left,
-        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),
+        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height - FOOTER_H),
     );
     let center_x = body_inner.top_left.x + body_inner.size.width as i32 / 2;
 
@@ -2814,7 +2820,7 @@ fn draw_about<D: DrawTarget<Color = Rgb565>>(
 ) -> Result<(), D::Error> {
     use crate::gui::logo;
     use crate::ui::layout::split_top;
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, FOOTER_H, GUTTER_W};
 
 
 
@@ -2832,7 +2838,7 @@ fn draw_about<D: DrawTarget<Color = Rgb565>>(
 
     let body_inner = Rectangle::new(
         body_rect.top_left,
-        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),
+        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height - FOOTER_H),
     );
     let left_x = body_inner.top_left.x + theme.space_md;
     let right_x = body_inner.top_left.x + body_inner.size.width as i32 - theme.space_md;
@@ -2916,7 +2922,9 @@ fn draw_create_backup_warning<D: DrawTarget<Color = Rgb565>>(
     selected: usize,
 ) -> Result<(), D::Error> {
     use crate::ui::layout::split_top;
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, List, ListRow, GUTTER_W};
+    use crate::ui::widgets::{
+        EdgeHints, EdgeIcon, Header, HeaderKind, List, ListRow, FOOTER_H, GUTTER_W,
+    };
 
 
 
@@ -2932,11 +2940,11 @@ fn draw_create_backup_warning<D: DrawTarget<Color = Rgb565>>(
     }
     .draw(display, &theme, header_rect)?;
 
-    // Reserve right gutter for the K1/K3 hints; rows + text live in the
-    // remaining width.
+    // Reserve chrome (gutter or bottom bar); rows + text live in what remains.
+    // `tap_layout` for this screen mirrors the same third split.
     let body_inner = Rectangle::new(
         body_rect.top_left,
-        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),
+        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height - FOOTER_H),
     );
 
     // Top third: instruction. Lines fit in ~20 chars at style_sm (mono
@@ -3056,7 +3064,7 @@ fn draw_word_picker_new<D: DrawTarget<Color = Rgb565>>(
 ) -> Result<(), D::Error> {
     use crate::gui::app::{WordPicker, WORD_GRID_COLS, WORD_GRID_ROWS};
     use crate::ui::layout::split_top;
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, FOOTER_H, GUTTER_W};
 
 
 
@@ -3072,10 +3080,11 @@ fn draw_word_picker_new<D: DrawTarget<Color = Rgb565>>(
     }
     .draw(display, &theme, header_rect)?;
 
-    // Reserve right gutter for K1/K2/K3 hints.
+    // Reserve chrome (gutter or bottom bar); the grid fills what remains.
+    // `tap_word_grid` mirrors this height so taps map to the drawn cells.
     let body_inner = Rectangle::new(
         body_rect.top_left,
-        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),
+        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height - FOOTER_H),
     );
 
     // Top band: the prefix being assembled. `_` cursor follows it so the
@@ -3612,7 +3621,7 @@ fn draw_entropy_picker<D: DrawTarget<Color = Rgb565>>(
     layout: PickerLayout,
 ) -> Result<(), D::Error> {
     use crate::ui::layout::{split_bottom, split_top};
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, FOOTER_H, GUTTER_W};
 
     use embedded_graphics::{
         geometry::{Point, Size},
@@ -3624,7 +3633,9 @@ fn draw_entropy_picker<D: DrawTarget<Color = Rgb565>>(
     display.fill_solid(&screen, theme.bg)?;
 
     let (header_rect, rest) = split_top(screen, theme.header_h as i32);
-    let (body_rect, _footer_rect) = split_bottom(rest, theme.footer_h as i32);
+    // Reserve the bottom strip: breathing margin on key builds, action bar on
+    // touch builds — whichever is larger.
+    let (body_rect, _footer_rect) = split_bottom(rest, theme.footer_h.max(FOOTER_H) as i32);
     let body_rect = Rectangle::new(
         body_rect.top_left,
         Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),

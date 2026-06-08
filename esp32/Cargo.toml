@@ -9,7 +9,7 @@ name = "faraday-esp32"
 path = "src/main.rs"
 
 [dependencies]
-faraday-core = { path = "../core", features = ["hardware-sha512"] }
+faraday-core = { path = "../core", features = ["hardware-sha512", "touch-ui"] }
 
 embedded-graphics-core = "0.4"
 

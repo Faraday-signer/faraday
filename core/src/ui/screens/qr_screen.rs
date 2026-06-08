@@ -15,7 +15,7 @@ use embedded_graphics::{
 };
 
 use crate::ui::layout::{split_bottom, split_top};
-use crate::ui::widgets::{EdgeHints, Header, HeaderKind, Qr, GUTTER_W};
+use crate::ui::widgets::{EdgeHints, Header, HeaderKind, Qr, FOOTER_H, GUTTER_W};
 use crate::ui::Theme;
 
 pub struct QrScreen<'a> {
@@ -43,7 +43,7 @@ impl<'a> QrScreen<'a> {
         } else {
             Rectangle::new(
                 rest.top_left,
-                Size::new(rest.size.width - GUTTER_W, rest.size.height),
+                Size::new(rest.size.width - GUTTER_W, rest.size.height - FOOTER_H),
             )
         };
         let (body_rect, _footer_rect) = split_bottom(body_area, 0);

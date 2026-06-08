@@ -26,7 +26,21 @@ use crate::ui::Theme;
 /// Width reserved on the right side for the edge-hint column. Screens
 /// that use `EdgeHints` should shrink their body rect by this amount so
 /// content doesn't bleed under the icon column.
+///
+/// On touch builds the gutter is gone (replaced by a bottom action bar), so
+/// no width is reserved and `FOOTER_H` reserves height instead.
+#[cfg(not(feature = "touch-ui"))]
 pub const GUTTER_W: u32 = 28;
+#[cfg(feature = "touch-ui")]
+pub const GUTTER_W: u32 = 0;
+
+/// Height reserved at the bottom for the horizontal touch action bar. Zero on
+/// builds with physical keys — they reserve width via `GUTTER_W` instead. The
+/// two are mutually exclusive so body reservation can always subtract both.
+#[cfg(not(feature = "touch-ui"))]
+pub const FOOTER_H: u32 = 0;
+#[cfg(feature = "touch-ui")]
+pub const FOOTER_H: u32 = 44;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EdgeIcon {
@@ -83,6 +97,7 @@ impl EdgeHints {
     /// Draw the three-cell column. `rect` is the gutter area below the
     /// header — the caller is responsible for positioning it so content
     /// doesn't overlap.
+    #[cfg(not(feature = "touch-ui"))]
     pub fn draw<D: DrawTarget<Color = Rgb565>>(
         &self,
         display: &mut D,
@@ -156,6 +171,61 @@ impl EdgeHints {
             theme.muted,
             theme.dim,
         )?;
+
+        Ok(())
+    }
+
+    /// Touch build: render the hints as a horizontal action bar pinned to the
+    /// bottom of the screen instead of a right-edge gutter. The bar is divided
+    /// into three equal cells — left = `k3` (Back), middle = `k2` (Secondary),
+    /// right = `k1` (Accept) — matching the platform's footer tap-zone thirds.
+    /// `rect` is ignored: the bar always spans the full screen width at the
+    /// bottom. Cells whose icon is `None` are left blank (no placeholder dot),
+    /// so most screens show just Back + Accept.
+    #[cfg(feature = "touch-ui")]
+    pub fn draw<D: DrawTarget<Color = Rgb565>>(
+        &self,
+        display: &mut D,
+        theme: &Theme,
+        _rect: Rectangle,
+    ) -> Result<(), D::Error> {
+        let w = theme.width as i32;
+        let h = FOOTER_H as i32;
+        let y_top = theme.height as i32 - h;
+        let bar = Rectangle::new(Point::new(0, y_top), Size::new(theme.width, FOOTER_H));
+
+        // Opaque chrome fill so the bar reads on top of live camera frames.
+        display.fill_solid(&bar, theme.bg)?;
+        // Outer border — top edge doubles as the body/chrome separator.
+        bar.into_styled(PrimitiveStyle::with_stroke(theme.border, 1))
+            .draw(display)?;
+
+        // Two vertical dividers split the bar into three equal cells.
+        let x_div1 = w / 3;
+        let x_div2 = (2 * w) / 3;
+        Line::new(Point::new(x_div1, y_top), Point::new(x_div1, y_top + h - 1))
+            .into_styled(PrimitiveStyle::with_stroke(theme.border, 1))
+            .draw(display)?;
+        Line::new(Point::new(x_div2, y_top), Point::new(x_div2, y_top + h - 1))
+            .into_styled(PrimitiveStyle::with_stroke(theme.border, 1))
+            .draw(display)?;
+
+        let cy = y_top + h / 2;
+        let cx_left = w / 6; // k3 — Back
+        let cx_mid = w / 2; // k2 — Secondary
+        let cx_right = (5 * w) / 6; // k1 — Accept
+
+        // Only the Accept cell (primary action) uses the accent color; the
+        // others stay muted — same emphasis as the vertical gutter.
+        if !matches!(self.k3, EdgeIcon::None) {
+            draw_cell(display, self.k3, Point::new(cx_left, cy), theme.muted, theme.dim)?;
+        }
+        if !matches!(self.k2, EdgeIcon::None) {
+            draw_cell(display, self.k2, Point::new(cx_mid, cy), theme.muted, theme.dim)?;
+        }
+        if !matches!(self.k1, EdgeIcon::None) {
+            draw_cell(display, self.k1, Point::new(cx_right, cy), theme.accent, theme.dim)?;
+        }
 
         Ok(())
     }

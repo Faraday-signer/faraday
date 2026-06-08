@@ -11,7 +11,7 @@ use embedded_graphics::{
 };
 
 use crate::ui::layout::split_top;
-use crate::ui::widgets::{Card, CardRow, EdgeHints, Header, HeaderKind, GUTTER_W};
+use crate::ui::widgets::{Card, CardRow, EdgeHints, Header, HeaderKind, FOOTER_H, GUTTER_W};
 use crate::ui::Theme;
 
 pub struct CardScreen<'a> {
@@ -44,7 +44,7 @@ impl<'a> CardScreen<'a> {
         } else {
             Rectangle::new(
                 rest.top_left,
-                Size::new(rest.size.width - GUTTER_W, rest.size.height),
+                Size::new(rest.size.width - GUTTER_W, rest.size.height - FOOTER_H),
             )
         };
 
