@@ -19,8 +19,16 @@ esp-idf-sys = { version = "0.37", features = ["binstart"] }
 
 log = "0.4"
 
-# QR decoding (no_std-friendly, compiles for xtensa). Pi uses rxing instead.
-quircs = "0.10"
+# QR decoding. quircs (integer-heavy, fast). rxing (zxing, most tolerant) does
+# NOT build for xtensa — it hard-depends on the `image` crate, which breaks the
+# esp-idf-sys build. rqrr builds but uses software f64 (slow). So quircs it is,
+# which needs ~9 px/module (SVGA-native crop) to read the dense ~61-module
+# fragments. Pi uses rxing.
+# QR decoding — rxing (zxing port), the most tolerant decoder, same as the Pi.
+# It DOES build for xtensa (the `image` crate it pulls in is pure-Rust and
+# esp-idf has std). TryHarder reads the dense ~61-module fragments at lower,
+# faster resolution where quircs/rqrr could not.
+rxing = { version = "0.7", default-features = false }
 
 [[package.metadata.esp-idf-sys.extra_components]]
 remote_component = { name = "espressif/esp32-camera", version = "2.*" }

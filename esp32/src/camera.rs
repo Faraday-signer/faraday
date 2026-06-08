@@ -64,10 +64,13 @@ const CAM_PIN_PCLK: i32  = 9;
 // 20 MHz XCLK — standard for OV2640 and OV5640.
 const CAM_XCLK_FREQ: i32 = 20_000_000;
 
-const CAPTURE_W: u32 = 320;
-const CAPTURE_H: u32 = 240;
-
-const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(5);
+// SVGA grayscale capture. The OV5640's VGA mode subsamples (aliased modules →
+// quirc fits the grid but ECC always fails); its QVGA and SVGA modes bin pixels
+// (clean, anti-aliased). SVGA decoded reliably in testing where VGA never did.
+// We then box-average the crop ÷2 in software (see qr_decode) for speed, which
+// also further cleans the modules. 480 KB/frame ran tear-free as grayscale.
+const CAPTURE_W: u32 = 800;
+const CAPTURE_H: u32 = 600;
 
 // ---------- public struct ---------------------------------------------------
 
@@ -86,7 +89,7 @@ pub struct EspCamera {
 impl EspCamera {
     pub fn open() -> Result<Self, String> {
         unsafe { init_camera()? };
-        log::info!("esp_camera: init OK ({}x{} YUV422)", CAPTURE_W, CAPTURE_H);
+        log::info!("esp_camera: init OK ({}x{} GRAYSCALE)", CAPTURE_W, CAPTURE_H);
 
         let latest: Arc<Mutex<Option<Frame>>> = Arc::new(Mutex::new(None));
         let pending_qr: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
@@ -109,8 +112,10 @@ impl EspCamera {
             .map_err(|e| format!("spawn reader: {e}"))?;
 
         // Decoder thread — runs the quircs QR pipeline on the latest frame.
-        // 32 KB stack: quircs does meaningful image processing (grid extraction
-        // + Reed-Solomon decode) and needs the headroom.
+        // 96 KB stack: QR decoders can put large transient buffers on the stack
+        // (a worst-case data matrix is tens of KB); 32 KB previously overflowed
+        // into adjacent internal RAM and corrupted FreeRTOS task lists
+        // (LoadProhibited in vListInsert). 96 KB leaves comfortable headroom.
         let latest_d = Arc::clone(&latest);
         let qr_d = Arc::clone(&pending_qr);
         let diag_d = Arc::clone(&diag);
@@ -118,34 +123,13 @@ impl EspCamera {
         let stop_d = Arc::clone(&stop);
         let decode_d = Arc::clone(&decode_enabled);
         let decoder = thread::Builder::new()
-            .stack_size(32 * 1024)
+            .stack_size(96 * 1024)
             .spawn(move || decoder_loop(latest_d, qr_d, diag_d, mode_d, stop_d, decode_d))
             .map_err(|e| format!("spawn decoder: {e}"))?;
 
-        // Watchdog: report a fatal error if no frame arrives within 5 s.
-        let latest_wd = Arc::clone(&latest);
-        let fatal_wd = Arc::clone(&fatal_err);
-        let stop_wd = Arc::clone(&stop);
-        thread::Builder::new()
-            .stack_size(4 * 1024)
-            .spawn(move || {
-                thread::sleep(FIRST_FRAME_TIMEOUT);
-                if stop_wd.load(Ordering::Relaxed) {
-                    return;
-                }
-                let got_frame =
-                    latest_wd.lock().ok().map(|g| g.is_some()).unwrap_or(false);
-                if got_frame {
-                    return;
-                }
-                if let Ok(mut g) = fatal_wd.lock() {
-                    if g.is_none() {
-                        *g = Some("no frame in 5 s — check camera wiring".to_string());
-                    }
-                }
-                stop_wd.store(true, Ordering::Relaxed);
-            })
-            .ok(); // watchdog failure is non-fatal
+        // No separate no-first-frame watchdog: the reader already declares the
+        // camera dead (sets fatal_err, stops) after MAX_CONSECUTIVE_NULLS frame
+        // timeouts, which covers the "camera never delivers" case.
 
         Ok(EspCamera {
             latest,
@@ -187,17 +171,25 @@ impl EspCamera {
 
 impl Drop for EspCamera {
     fn drop(&mut self) {
+        // Order matters: join the worker threads BEFORE deinit. The reader
+        // checks `stop` only between frames and releases each frame buffer
+        // (esp_camera_fb_return) before looping, so once it has exited no thread
+        // is touching camera memory. Calling esp_camera_deinit() while the
+        // reader is still mid-frame (copying fb.buf) would free the DMA buffers
+        // under it → use-after-free → crash.
+        //
+        // esp_camera_fb_get() has an internal timeout, so the reader returns and
+        // sees `stop` within ~1 s even without deinit; the decoder returns after
+        // at most one in-flight decode.
         self.stop.store(true, Ordering::SeqCst);
-        // Deinit causes esp_camera_fb_get() to return NULL, which unblocks the
-        // reader thread so it sees the stop flag and exits cleanly.
-        unsafe {
-            esp_idf_sys::camera::esp_camera_deinit();
-        }
         if let Some(h) = self._reader.take() {
             let _ = h.join();
         }
         if let Some(h) = self._decoder.take() {
             let _ = h.join();
+        }
+        unsafe {
+            esp_idf_sys::camera::esp_camera_deinit();
         }
     }
 }
@@ -238,8 +230,8 @@ unsafe fn init_camera() -> Result<(), String> {
     // I2C port 1 for SCCB (CONFIG_SCCB_HARDWARE_I2C_PORT=1); touch is on I2C0.
     cfg.sccb_i2c_port = 1;
 
-    cfg.pixel_format = cam::pixformat_t_PIXFORMAT_YUV422;
-    cfg.frame_size   = cam::framesize_t_FRAMESIZE_QVGA;
+    cfg.pixel_format = cam::pixformat_t_PIXFORMAT_GRAYSCALE;
+    cfg.frame_size   = cam::framesize_t_FRAMESIZE_SVGA;
     cfg.jpeg_quality = 12;
     cfg.fb_count     = 2;
     cfg.grab_mode    = cam::camera_grab_mode_t_CAMERA_GRAB_LATEST;
@@ -253,12 +245,20 @@ unsafe fn init_camera() -> Result<(), String> {
     // The sensor's default scan direction is mirrored relative to how the
     // camera faces the user on this board, so the preview (and the luma the
     // QR decoder sees) comes out flipped in X. Correct it at the sensor.
+    // (hmirror, not vflip: this board's OV5640 is mounted such that hmirror
+    // yields the correct, decodable handedness — confirmed by successful
+    // decodes; a mirrored image would never decode with quirc.)
     let sensor = cam::esp_camera_sensor_get();
     if !sensor.is_null() {
         if let Some(set_hmirror) = (*sensor).set_hmirror {
             set_hmirror(sensor, 1);
         }
     }
+
+    // Let the sensor's auto exposure / gain / white-balance settle before the
+    // reader starts grabbing frames (mirrors Jade's post-init delay). The first
+    // frames after init are otherwise mis-exposed and waste decode attempts.
+    thread::sleep(Duration::from_millis(500));
 
     Ok(())
 }
@@ -270,6 +270,14 @@ fn reader_loop(
     fatal: Arc<Mutex<Option<String>>>,
     stop: Arc<AtomicBool>,
 ) {
+    // The camera driver occasionally returns NULL on a transient frame timeout
+    // (the YUV422 DVP path is bandwidth-tight). Tolerate those and keep going —
+    // only declare the camera dead after many consecutive failures. Previously a
+    // single timeout tore down and reopened the camera, causing multi-second
+    // dead periods mid-scan.
+    let mut consecutive_nulls = 0u32;
+    const MAX_CONSECUTIVE_NULLS: u32 = 30;
+
     loop {
         if stop.load(Ordering::Relaxed) {
             return;
@@ -279,33 +287,49 @@ fn reader_loop(
         let fb = unsafe { esp_idf_sys::camera::esp_camera_fb_get() };
 
         if fb.is_null() {
-            // NULL after deinit (Drop path) or hardware error.
-            if !stop.load(Ordering::Relaxed) {
+            if stop.load(Ordering::Relaxed) {
+                return; // NULL from esp_camera_deinit() on the Drop path.
+            }
+            consecutive_nulls += 1;
+            if consecutive_nulls >= MAX_CONSECUTIVE_NULLS {
                 if let Ok(mut g) = fatal.lock() {
                     if g.is_none() {
-                        *g = Some("esp_camera_fb_get returned NULL".to_string());
+                        *g = Some("camera stopped delivering frames".to_string());
                     }
                 }
                 stop.store(true, Ordering::Relaxed);
+                return;
             }
-            return;
+            thread::sleep(Duration::from_millis(50));
+            continue;
         }
+        consecutive_nulls = 0;
 
         let fb_ref = unsafe { &*fb };
-        let data = unsafe {
-            core::slice::from_raw_parts(fb_ref.buf, fb_ref.len)
-        };
+        let npx = (fb_ref.width * fb_ref.height) as usize;
 
-        let (rgb, luma) =
-            yuv422_to_rgb_luma(data, fb_ref.width as u32, fb_ref.height as u32);
+        // Skip torn / short frames. The DVP→PSRAM path can under-run and deliver
+        // a frame shorter than expected (the driver logs "FB-SIZE: ... != ...").
+        // Processing it as if full-size yields an undersized luma buffer →
+        // out-of-bounds indexing in the decoder → heap corruption. In GRAYSCALE
+        // the buffer is 1 byte/pixel, so a full frame is exactly `npx` bytes.
+        if fb_ref.len < npx {
+            unsafe { esp_idf_sys::camera::esp_camera_fb_return(fb) };
+            thread::sleep(Duration::from_millis(10));
+            continue;
+        }
 
-        // Return the DMA buffer before publishing — conversion is done.
+        // GRAYSCALE: the frame buffer *is* the luma plane. Copy it out so we can
+        // hand the DMA buffer back to the camera before publishing.
+        let luma = unsafe { core::slice::from_raw_parts(fb_ref.buf, npx) }.to_vec();
+
+        // Return the DMA buffer before publishing — we're done reading it.
         unsafe { esp_idf_sys::camera::esp_camera_fb_return(fb) };
 
         let frame = Frame {
             width: fb_ref.width as u32,
             height: fb_ref.height as u32,
-            rgb,
+            rgb: Vec::new(),
             luma,
         };
 
@@ -343,9 +367,26 @@ fn decoder_loop(
             thread::sleep(Duration::from_millis(50));
             continue;
         }
-        let frame = match latest.lock().ok().and_then(|g| g.clone()) {
-            Some(f) => f,
-            None => {
+        // Clone only the luma plane, not the whole frame: the decode pipeline
+        // never touches `rgb` (that's only for the preview blit on the main
+        // thread), so copying the ~230 KB RGB buffer out of PSRAM every attempt
+        // is pure waste. An empty `rgb` keeps the `Frame` shape the core helper
+        // expects.
+        let frame = match latest.lock() {
+            Ok(g) => match g.as_ref() {
+                Some(f) => Frame {
+                    width: f.width,
+                    height: f.height,
+                    rgb: Vec::new(),
+                    luma: f.luma.clone(),
+                },
+                None => {
+                    drop(g);
+                    thread::sleep(Duration::from_millis(50));
+                    continue;
+                }
+            },
+            Err(_) => {
                 thread::sleep(Duration::from_millis(50));
                 continue;
             }
@@ -372,53 +413,3 @@ fn decoder_loop(
     }
 }
 
-// ---------- YUV422 (YUYV) → interleaved RGB + luma -------------------------
-//
-// YUYV packing: Y0 U0 Y1 V0 per 4-byte block covering pixels 0 and 1.
-// Luma: bytes at even positions (0, 2, 4, …).
-// Chroma: Cb = U byte (offset 1), Cr = V byte (offset 3), shared by 2 pixels.
-
-fn yuv422_to_rgb_luma(data: &[u8], w: u32, h: u32) -> (Vec<u8>, Vec<u8>) {
-    let npx = (w * h) as usize;
-    let mut rgb = vec![0u8; npx * 3];
-    let mut luma = vec![0u8; npx];
-
-    let mut i = 0usize; // byte index into data (advances by 4)
-    let mut px = 0usize; // pixel index (advances by 2)
-
-    while i + 3 < data.len() && px + 1 < npx {
-        let y0 = data[i] as i32;
-        let u  = data[i + 1] as i32;
-        let y1 = data[i + 2] as i32;
-        let v  = data[i + 3] as i32;
-
-        luma[px]     = y0 as u8;
-        luma[px + 1] = y1 as u8;
-
-        let (r0, g0, b0) = yuv_to_rgb(y0, u, v);
-        let (r1, g1, b1) = yuv_to_rgb(y1, u, v);
-
-        rgb[px * 3]             = r0;
-        rgb[px * 3 + 1]         = g0;
-        rgb[px * 3 + 2]         = b0;
-        rgb[(px + 1) * 3]       = r1;
-        rgb[(px + 1) * 3 + 1]   = g1;
-        rgb[(px + 1) * 3 + 2]   = b1;
-
-        i  += 4;
-        px += 2;
-    }
-
-    (rgb, luma)
-}
-
-#[inline(always)]
-fn yuv_to_rgb(y: i32, u: i32, v: i32) -> (u8, u8, u8) {
-    let c = y - 16;
-    let d = u - 128;
-    let e = v - 128;
-    let r = ((298 * c + 409 * e + 128) >> 8).clamp(0, 255) as u8;
-    let g = ((298 * c - 100 * d - 208 * e + 128) >> 8).clamp(0, 255) as u8;
-    let b = ((298 * c + 516 * d + 128) >> 8).clamp(0, 255) as u8;
-    (r, g, b)
-}

@@ -6,3 +6,12 @@ resolver = "2"
 opt-level = "s"
 lto = true
 strip = true
+
+# QR decoding is compute-bound; size-optimized code (opt-level "s") makes it
+# 2-4x slower. Override to speed-optimized for the ESP32-only QR path. Both
+# crates are ESP32-only (the Pi uses rxing), so the Pi build is unaffected.
+[profile.release.package.rxing]
+opt-level = 3
+
+[profile.release.package.faraday-esp32]
+opt-level = 3
