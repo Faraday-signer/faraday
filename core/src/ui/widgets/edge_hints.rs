@@ -47,6 +47,10 @@ pub enum EdgeIcon {
     None,
     Check,
     Cross,
+    /// Same X glyph as `Cross`, but rendered in the danger color. Used for an
+    /// explicit "reject" action (e.g. the TX sign-approval screen) so it reads
+    /// as a refusal rather than a neutral back/dismiss.
+    CrossDanger,
     ArrowRight,
     /// Curved "return / go-back" glyph — a left-pointing arrow at the top
     /// with a short vertical hook on the right. Used for K3 = "back to
@@ -154,21 +158,21 @@ impl EdgeHints {
             display,
             self.k1,
             Point::new(cx, cy_k1),
-            theme.accent,
+            icon_color(self.k1, theme.accent, theme),
             theme.dim,
         )?;
         draw_cell(
             display,
             self.k2,
             Point::new(cx, cy_k2),
-            theme.muted,
+            icon_color(self.k2, theme.muted, theme),
             theme.dim,
         )?;
         draw_cell(
             display,
             self.k3,
             Point::new(cx, cy_k3),
-            theme.muted,
+            icon_color(self.k3, theme.muted, theme),
             theme.dim,
         )?;
 
@@ -218,16 +222,43 @@ impl EdgeHints {
         // Only the Accept cell (primary action) uses the accent color; the
         // others stay muted — same emphasis as the vertical gutter.
         if !matches!(self.k3, EdgeIcon::None) {
-            draw_cell(display, self.k3, Point::new(cx_left, cy), theme.muted, theme.dim)?;
+            draw_cell(
+                display,
+                self.k3,
+                Point::new(cx_left, cy),
+                icon_color(self.k3, theme.muted, theme),
+                theme.dim,
+            )?;
         }
         if !matches!(self.k2, EdgeIcon::None) {
-            draw_cell(display, self.k2, Point::new(cx_mid, cy), theme.muted, theme.dim)?;
+            draw_cell(
+                display,
+                self.k2,
+                Point::new(cx_mid, cy),
+                icon_color(self.k2, theme.muted, theme),
+                theme.dim,
+            )?;
         }
         if !matches!(self.k1, EdgeIcon::None) {
-            draw_cell(display, self.k1, Point::new(cx_right, cy), theme.accent, theme.dim)?;
+            draw_cell(
+                display,
+                self.k1,
+                Point::new(cx_right, cy),
+                icon_color(self.k1, theme.accent, theme),
+                theme.dim,
+            )?;
         }
 
         Ok(())
+    }
+}
+
+/// Stroke color for a cell: the danger color for an explicit reject glyph,
+/// otherwise the cell's default emphasis color.
+fn icon_color(icon: EdgeIcon, default: Rgb565, theme: &Theme) -> Rgb565 {
+    match icon {
+        EdgeIcon::CrossDanger => theme.danger,
+        _ => default,
     }
 }
 
@@ -264,7 +295,7 @@ fn draw_cell<D: DrawTarget<Color = Rgb565>>(
             .into_styled(style)
             .draw(display)?;
         }
-        EdgeIcon::Cross => {
+        EdgeIcon::Cross | EdgeIcon::CrossDanger => {
             Line::new(
                 Point::new(center.x - 6, center.y - 6),
                 Point::new(center.x + 6, center.y + 6),

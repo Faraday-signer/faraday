@@ -1626,9 +1626,16 @@ fn draw_tx_review_zoned<D: DrawTarget<Color = Rgb565>>(
         Point::new(v_x, body_rect.top_left.y),
         Size::new(GUTTER_W, theme.height - theme.header_h),
     );
+    // Touch builds page on a body tap, so the middle action-bar cell is
+    // dropped; key builds keep the "→ next" stand-in.
+    let next_hint = if cfg!(feature = "touch-ui") {
+        EdgeIcon::None
+    } else {
+        EdgeIcon::ArrowRight
+    };
     let mut hints = EdgeHints::new()
-        .k2(EdgeIcon::ArrowRight)
-        .k3(EdgeIcon::Cross);
+        .k2(next_hint)
+        .k3(EdgeIcon::CrossDanger);
     if can_sign {
         hints = hints.k1(EdgeIcon::Check);
     }
@@ -2153,16 +2160,21 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
     }
 
     // K2 advances to the next review page (TX METADATA, instructions,
-    // raw bytes). The hint matches the new SignReview pagination model
-    // — same "→ next" affordance the detail pages render.
+    // raw bytes) on key builds. Touch builds page on a body tap, so the
+    // middle action-bar cell is dropped — it had no handler there.
+    let next_hint = if cfg!(feature = "touch-ui") {
+        EdgeIcon::None
+    } else {
+        EdgeIcon::ArrowRight
+    };
     EdgeHints::new()
         .k1(if can_sign {
             EdgeIcon::Check
         } else {
             EdgeIcon::None
         })
-        .k2(EdgeIcon::ArrowRight)
-        .k3(EdgeIcon::Cross)
+        .k2(next_hint)
+        .k3(EdgeIcon::CrossDanger)
         .draw(
             display,
             &theme,
@@ -2279,13 +2291,18 @@ fn draw_detail_shell<D: DrawTarget<Color = Rgb565>>(
         Point::new(theme.width as i32 - GUTTER_W as i32, theme.header_h as i32),
         Size::new(GUTTER_W, theme.height - theme.header_h),
     );
-    // K2 is the "next page" button. EdgeIcon doesn't have a downward
-    // arrow yet, so we use ArrowRight as a "→ next" stand-in. Worth
-    // adding a dedicated ArrowDown later for tighter visual semantics.
+    // K2 advanced pages on key builds (shown as a "→ next" stand-in until a
+    // dedicated down-arrow exists). Touch builds page on a body tap instead,
+    // so the middle action-bar cell is dropped (it had no handler there).
+    let next_hint = if cfg!(feature = "touch-ui") {
+        EdgeIcon::None
+    } else {
+        EdgeIcon::ArrowRight
+    };
     EdgeHints::new()
         .k1(EdgeIcon::Check)
-        .k2(EdgeIcon::ArrowRight)
-        .k3(EdgeIcon::Cross)
+        .k2(next_hint)
+        .k3(EdgeIcon::CrossDanger)
         .draw(display, &theme, gutter)?;
 
     Ok(())

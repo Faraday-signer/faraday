@@ -997,6 +997,14 @@ impl App {
         }
     }
 
+    /// True when a body tap on the current screen should page forward through
+    /// structured content rather than fire `Confirm`. The TX review screen
+    /// uses this on touch builds: tapping advances to the next review page,
+    /// leaving `Confirm` (the SIGN footer cell) to actually sign.
+    pub fn tap_pages_review(&self) -> bool {
+        matches!(self.screen, Screen::SignReview { .. })
+    }
+
     /// Move the cursor to `row` on the current screen without triggering a
     /// screen transition. Used by touch-screen platforms to highlight the
     /// tapped row before firing a `Confirm` event.

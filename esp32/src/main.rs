@@ -184,6 +184,13 @@ fn main() {
                         app.set_selected(row);
                     }
                     pending_tap_confirm = Some(std::time::Instant::now());
+                } else if app.tap_pages_review() {
+                    // TX review: a body tap pages forward through the
+                    // structured review (same as a down/right swipe). The SIGN
+                    // footer cell (Confirm) signs. Routing taps to Secondary
+                    // keeps Confirm reserved for signing.
+                    pending_tap_confirm = None;
+                    app.handle_input(InputEvent::Secondary);
                 } else {
                     // Read-only / advance-only screen (word display, card
                     // confirm, QR view, about, errors…): tap anywhere fires

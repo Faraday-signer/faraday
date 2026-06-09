@@ -74,6 +74,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             Screen::SignScanTx
         }
 
+        // Touch build only pages (it mutates `page`); `scroll` and `selected`
+        // are carried through unchanged, so the shared `mut` pattern bindings
+        // are unused-mut there only.
+        #[cfg_attr(feature = "touch-ui", allow(unused_mut))]
         Screen::SignReview {
             tx_bytes,
             tx_base64,
@@ -90,16 +94,30 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             let total_pages = 3 + interesting_count + 1;
 
             match event {
-                // K2 (Down) advances to the next page, wrapping back to the
-                // summary after the last page. Replaces the old detail-row
-                // chunk-scroll: long content moves to dedicated pages instead
-                // of scrolling within a single screen. Up/Left/Right are
-                // no-ops on detail pages so the navigation model stays
-                // "K1 = sign, K2 = next, K3 = cancel" everywhere.
+                // Touch build: swipe up/left steps to the previous page (stops
+                // at the first); swipe down/right and a body tap (Secondary)
+                // advance to the next page, wrapping back to the first after
+                // the last. The SIGN footer cell (Confirm) signs directly —
+                // there is no Sign/Reject selection toggle.
+                #[cfg(feature = "touch-ui")]
+                InputEvent::Up | InputEvent::Left => {
+                    page = page.saturating_sub(1);
+                }
+                #[cfg(feature = "touch-ui")]
+                InputEvent::Down | InputEvent::Right | InputEvent::Secondary => {
+                    page = (page + 1) % total_pages;
+                }
+
+                // Key build: K2 (Down) advances to the next page, wrapping back
+                // to the summary after the last page. Up steps backward.
+                // Left/Right toggle the Sign/Reject selection. The navigation
+                // model stays "K1 = sign, K2 = next, K3 = cancel".
+                #[cfg(not(feature = "touch-ui"))]
                 InputEvent::Down => {
                     page = (page + 1) % total_pages;
                     scroll = 0;
                 }
+                #[cfg(not(feature = "touch-ui"))]
                 InputEvent::Up => {
                     // Step backward through pages — symmetric with Down so
                     // the user can correct a misclick without cycling all
@@ -107,6 +125,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     page = if page == 0 { total_pages - 1 } else { page - 1 };
                     scroll = 0;
                 }
+                #[cfg(not(feature = "touch-ui"))]
                 InputEvent::Left | InputEvent::Right => {
                     if can_sign {
                         selected = 1 - selected;
@@ -115,7 +134,13 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     }
                 }
                 InputEvent::Confirm => {
-                    if selected == 0 && can_sign {
+                    // Touch: the SIGN cell signs whenever the wallet can sign.
+                    // Key: only when the Sign option (selected == 0) is active.
+                    #[cfg(feature = "touch-ui")]
+                    let want_sign = can_sign;
+                    #[cfg(not(feature = "touch-ui"))]
+                    let want_sign = selected == 0 && can_sign;
+                    if want_sign {
                         if let Some(wallet) = &app.wallet {
                             if let Ok(signed) = crate::signer::sign_transaction_base64(
                                 &tx_base64,
@@ -143,19 +168,29 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                                 };
                             }
                         }
-                    } else if selected == 0 && !can_sign {
-                        return Screen::SignReview {
-                            tx_bytes,
-                            tx_base64,
-                            info_lines,
-                            parsed,
-                            page,
-                            scroll,
-                            selected: 1,
-                            can_sign,
-                        };
                     }
-                    return Screen::MainMenu { selected: app.menu_index_of(2) };
+                    // Key build: a Confirm on Sign when signing isn't possible
+                    // bumps the selection to Reject so the next Confirm cancels
+                    // cleanly; any other Confirm cancels. Touch build never
+                    // cancels via Confirm — the SIGN cell only signs and is
+                    // hidden when the wallet can't sign, so a tap on its blank
+                    // zone falls through to redraw the same screen below.
+                    #[cfg(not(feature = "touch-ui"))]
+                    {
+                        if selected == 0 && !can_sign {
+                            return Screen::SignReview {
+                                tx_bytes,
+                                tx_base64,
+                                info_lines,
+                                parsed,
+                                page,
+                                scroll,
+                                selected: 1,
+                                can_sign,
+                            };
+                        }
+                        return Screen::MainMenu { selected: app.menu_index_of(2) };
+                    }
                 }
                 InputEvent::Back => return Screen::MainMenu { selected: app.menu_index_of(2) },
                 _ => {}
