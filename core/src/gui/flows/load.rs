@@ -2,6 +2,7 @@
 
 use crate::gui::app::{App, CharGrid, HelpTopic, InputEvent, Screen, WordPicker};
 use crate::qr::decode_qr;
+use zeroize::Zeroizing;
 
 pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
     match screen {
@@ -45,6 +46,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     );
 
                     if let Some(mnemonic) = decoded.mnemonic {
+                        let mnemonic = Zeroizing::new(mnemonic);
                         let (keypair, preview_address) = match app.derive_keypair_and_address(&mnemonic, "") {
                             Some(pair) => pair,
                             None => return Screen::DerivationError,
@@ -180,7 +182,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 InputEvent::Confirm => {
                     if selected == 0 {
                         // DONE — load wallet with no passphrase and go home.
-                        app.set_wallet(mnemonic, String::new(), keypair);
+                        app.set_wallet(mnemonic, Zeroizing::new(String::new()), keypair);
                         return Screen::MainMenu { selected: app.menu_index_of(2) };
                     }
                     // ADD PASSPHRASE — jump straight into the char grid.
@@ -210,7 +212,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 }
                 InputEvent::Confirm => {
                     if selected == 0 {
-                        let passphrase = String::new();
+                        let passphrase = Zeroizing::new(String::new());
                         let (keypair, address) = match app.derive_keypair_and_address(&mnemonic, &passphrase) {
                             Some(pair) => pair,
                             None => return Screen::DerivationError,
@@ -238,7 +240,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         selected: 1,
                     };
                 }
-                let passphrase = grid.text;
+                let passphrase = Zeroizing::new(grid.text);
                 return Screen::LoadPassphraseConfirm {
                     mnemonic,
                     passphrase,
@@ -257,13 +259,13 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             if done {
                 if grid.text.is_empty() && event == InputEvent::Back {
                     let mut first_grid = CharGrid::new();
-                    first_grid.text = passphrase;
+                    first_grid.text = passphrase.to_string();
                     return Screen::LoadPassphraseInput {
                         mnemonic,
                         grid: first_grid,
                     };
                 }
-                if grid.text == passphrase {
+                if grid.text.as_str() == passphrase.as_str() {
                     let (keypair, address) = match app.derive_keypair_and_address(&mnemonic, &passphrase) {
                         Some(pair) => pair,
                         None => return Screen::DerivationError,

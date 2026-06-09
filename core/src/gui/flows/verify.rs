@@ -31,7 +31,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         None => return Screen::MainMenu { selected: app.menu_index_of(2) },
                     };
 
-                    if scanned_mn != wallet.mnemonic {
+                    if scanned_mn.as_str() != wallet.mnemonic.as_str() {
                         return Screen::VerifyBackupSeedMismatch;
                     }
 

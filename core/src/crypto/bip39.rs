@@ -229,9 +229,35 @@ pub fn mnemonic_to_seed(mnemonic: &str, passphrase: &str) -> Zeroizing<Vec<u8>> 
     seed
 }
 
+/// Known-answer self-test for the seed-derivation path.
+///
+/// Runs the canonical BIP39 (Trezor) test vector through `mnemonic_to_seed`
+/// and checks the resulting 64-byte seed. The `hardware-sha512` (mbedtls)
+/// variant is `cfg`-excluded from the host test suite and so never runs in
+/// CI; a divergence from the BIP39 standard there would silently derive a
+/// different seed (wrong addresses, funds unrecoverable on any other wallet).
+///
+/// Call this once at boot on targets using the hardware path and fail closed
+/// if it returns `false`. The host test below exercises the same vector on
+/// the pure-Rust path, locking the expected value as a regression anchor.
+pub fn seed_derivation_self_test() -> bool {
+    const MNEMONIC: &str =
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+    const PASSPHRASE: &str = "TREZOR";
+    const EXPECTED_HEX: &str = "c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e53495531f09a6987599d18264c1e1c92f2cf141630c7a3c4ab7c81b2f001698e7463b04";
+
+    let seed = mnemonic_to_seed(MNEMONIC, PASSPHRASE);
+    hex::encode(&*seed) == EXPECTED_HEX
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn seed_derivation_matches_bip39_vector() {
+        assert!(seed_derivation_self_test());
+    }
 
     #[test]
     fn test_wordlist_length() {

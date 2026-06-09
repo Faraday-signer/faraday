@@ -2,7 +2,7 @@
 
 use crate::crypto::bip39;
 use crate::gui::app::{App, CharGrid, HelpTopic, InputEvent, Screen};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
     match screen {
@@ -84,23 +84,32 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             let total_frames = 2;
             match event {
                 InputEvent::Confirm => {
+                    // Mix every available source so no single weak one can
+                    // determine the seed on its own: OS RNG (the floor on all
+                    // targets — on ESP32 this is the hardware RNG, which is only
+                    // fully conditioned once an entropy source is enabled), XOR
+                    // the camera-frame hash (physical entropy independent of the
+                    // RNG), XOR a nanosecond counter. The camera frame was
+                    // silently dropped on ESP32 before, leaving the seed wholly
+                    // dependent on the hardware RNG.
                     let mut frame_entropy = [0u8; 16];
-                    #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
-                    {
-                        if let Some(frame) = &app.latest_frame {
-                            use sha2::{Digest, Sha256};
-                            let digest = Sha256::digest(&frame.rgb);
-                            frame_entropy.copy_from_slice(&digest[..16]);
-                        } else {
-                            getrandom::getrandom(&mut frame_entropy)
-                                .expect("OS RNG unavailable — refusing to collect weak entropy");
+                    getrandom::getrandom(&mut frame_entropy)
+                        .expect("OS RNG unavailable — refusing to collect weak entropy");
+
+                    if let Some(frame) = &app.latest_frame {
+                        use sha2::{Digest, Sha256};
+                        // Hash whichever plane the platform fills: RGB on the
+                        // Pi/sim, the luma plane on ESP32 (its preview frames
+                        // carry no RGB). Hashing both covers either case.
+                        let mut hasher = Sha256::new();
+                        hasher.update(&frame.rgb);
+                        hasher.update(&frame.luma);
+                        let digest = hasher.finalize();
+                        for (e, d) in frame_entropy.iter_mut().zip(digest.iter()) {
+                            *e ^= d;
                         }
                     }
-                    #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
-                    {
-                        getrandom::getrandom(&mut frame_entropy)
-                            .expect("OS RNG unavailable — refusing to collect weak entropy");
-                    }
+
                     let now = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default();
@@ -112,8 +121,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     frames_collected += 1;
 
                     if frames_collected >= total_frames {
-                        let mnemonic = bip39::mnemonic_from_entropy(&entropy, word_count)
-                            .expect("Valid word count");
+                        let mnemonic = Zeroizing::new(
+                            bip39::mnemonic_from_entropy(&entropy, word_count)
+                                .expect("Valid word count"),
+                        );
                         return Screen::CreateBackupWarning {
                             mnemonic,
                             word_count,
@@ -155,8 +166,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                                 entropy[i / 8] |= 1 << (7 - (i % 8));
                             }
                         }
-                        let mnemonic = bip39::mnemonic_from_raw_entropy(&entropy)
-                            .expect("Valid entropy length");
+                        let mnemonic = Zeroizing::new(
+                            bip39::mnemonic_from_raw_entropy(&entropy)
+                                .expect("Valid entropy length"),
+                        );
                         return Screen::CreateBackupWarning {
                             mnemonic,
                             word_count,
@@ -213,9 +226,10 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     rolls.push(selected as u8 + 1);
                     if rolls.len() >= total_rolls {
                         let rolls_str: String = rolls.iter().map(|r| r.to_string()).collect();
-                        let mnemonic =
+                        let mnemonic = Zeroizing::new(
                             bip39::mnemonic_from_entropy(rolls_str.as_bytes(), word_count)
-                                .expect("Valid word count");
+                                .expect("Valid word count"),
+                        );
                         return Screen::CreateBackupWarning {
                             mnemonic,
                             word_count,
@@ -410,7 +424,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 }
                 InputEvent::Confirm => {
                     if selected == 0 {
-                        let passphrase = String::new();
+                        let passphrase = Zeroizing::new(String::new());
                         let (keypair, address) = match app.derive_keypair_and_address(&mnemonic, &passphrase) {
                             Some(pair) => pair,
                             None => return Screen::DerivationError,
@@ -441,7 +455,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         selected: 1,
                     };
                 }
-                let passphrase = grid.text;
+                let passphrase = Zeroizing::new(grid.text);
                 return Screen::CreatePassphraseConfirm {
                     mnemonic,
                     passphrase,
@@ -460,13 +474,13 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             if done {
                 if grid.text.is_empty() && event == InputEvent::Back {
                     let mut first_grid = CharGrid::new();
-                    first_grid.text = passphrase;
+                    first_grid.text = passphrase.to_string();
                     return Screen::CreatePassphraseInput {
                         mnemonic,
                         grid: first_grid,
                     };
                 }
-                if grid.text == passphrase {
+                if grid.text.as_str() == passphrase.as_str() {
                     let (keypair, address) = match app.derive_keypair_and_address(&mnemonic, &passphrase) {
                         Some(pair) => pair,
                         None => return Screen::DerivationError,
@@ -572,7 +586,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             .wallet
                             .as_ref()
                             .map(|w| w.mnemonic.clone())
-                            .unwrap_or_default();
+                            .unwrap_or_else(|| Zeroizing::new(String::new()));
                         let word_count = mnemonic.split_whitespace().count();
                         return Screen::ShowWordsWarning {
                             compact_data,
@@ -755,7 +769,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             .wallet
                             .as_ref()
                             .map(|w| w.mnemonic.clone())
-                            .unwrap_or_default();
+                            .unwrap_or_else(|| Zeroizing::new(String::new()));
                         let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(&mnemonic)
                             .unwrap_or_default();
                         return Screen::ExportSeedQrMenu {
@@ -846,8 +860,9 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
 fn generate_wallet(word_count: usize) -> Screen {
     let mut entropy = [0u8; 32];
     getrandom::getrandom(&mut entropy).expect("Failed to get random entropy");
-    let mnemonic =
-        bip39::mnemonic_from_entropy(&entropy, word_count).expect("Failed to generate mnemonic");
+    let mnemonic = Zeroizing::new(
+        bip39::mnemonic_from_entropy(&entropy, word_count).expect("Failed to generate mnemonic"),
+    );
     entropy.zeroize();
     Screen::CreateBackupWarning {
         mnemonic,
@@ -856,7 +871,7 @@ fn generate_wallet(word_count: usize) -> Screen {
     }
 }
 
-fn start_verification(mnemonic: String, word_count: usize) -> Screen {
+fn start_verification(mnemonic: Zeroizing<String>, word_count: usize) -> Screen {
     let num_checks = if word_count == 12 { 3 } else { 5 };
     let words: Vec<&str> = mnemonic.split_whitespace().collect();
 
@@ -876,7 +891,7 @@ fn start_verification(mnemonic: String, word_count: usize) -> Screen {
     build_verify_screen(mnemonic, checks, 0)
 }
 
-fn build_verify_screen(mnemonic: String, checks: Vec<usize>, current: usize) -> Screen {
+fn build_verify_screen(mnemonic: Zeroizing<String>, checks: Vec<usize>, current: usize) -> Screen {
     let words: Vec<&str> = mnemonic.split_whitespace().collect();
     let correct_word = words[checks[current]];
 

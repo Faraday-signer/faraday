@@ -1,6 +1,7 @@
 //! Settings / wallet data flow.
 
 use crate::gui::app::{App, HelpTopic, InputEvent, Screen};
+use zeroize::Zeroizing;
 
 const WALLET_DATA_ITEMS: usize = 4;
 
@@ -26,7 +27,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             if app.guided {
                                 let mnemonic = app.wallet.as_ref()
                                     .map(|w| w.mnemonic.clone())
-                                    .unwrap_or_default();
+                                    .unwrap_or_else(|| Zeroizing::new(String::new()));
                                 let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(&mnemonic)
                                     .unwrap_or_default();
                                 let next = Screen::ExportSeedQrMenu {

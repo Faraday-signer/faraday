@@ -4,7 +4,7 @@ use crate::crypto::derivation;
 use crate::crypto::slip0010::SolanaKeypair;
 use crate::gui::flows;
 use crate::ui::Theme;
-use zeroize::Zeroize;
+use zeroize::Zeroizing;
 
 /// Platform-independent input event.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -114,17 +114,17 @@ pub enum Screen {
     /// "pen and paper" instruction and explicitly choose I UNDERSTAND
     /// (advance to show words) or CANCEL (back to method picker).
     CreateBackupWarning {
-        mnemonic: String,
+        mnemonic: Zeroizing<String>,
         word_count: usize,
         selected: usize,
     },
     CreateShowWords {
-        mnemonic: String,
+        mnemonic: Zeroizing<String>,
         page: usize,
         word_count: usize,
     },
     CreateVerify {
-        mnemonic: String,
+        mnemonic: Zeroizing<String>,
         checks: Vec<usize>,
         current: usize,
         options: Vec<String>,
@@ -132,24 +132,24 @@ pub enum Screen {
         selected: usize,
     },
     CreatePassphrasePrompt {
-        mnemonic: String,
+        mnemonic: Zeroizing<String>,
         selected: usize,
     },
     CreatePassphraseInput {
-        mnemonic: String,
+        mnemonic: Zeroizing<String>,
         grid: CharGrid,
     },
     CreatePassphraseConfirm {
-        mnemonic: String,
-        passphrase: String,
+        mnemonic: Zeroizing<String>,
+        passphrase: Zeroizing<String>,
         grid: CharGrid,
     },
     CreatePassphraseMismatch {
-        mnemonic: String,
+        mnemonic: Zeroizing<String>,
     },
     CreateConfirm {
-        mnemonic: String,
-        passphrase: String,
+        mnemonic: Zeroizing<String>,
+        passphrase: Zeroizing<String>,
         keypair: SolanaKeypair,
         address: String,
         selected: usize,
@@ -165,7 +165,7 @@ pub enum Screen {
     /// path (where the entry-level warning is skipped).
     ShowWordsWarning {
         compact_data: Vec<u8>,
-        mnemonic: String,
+        mnemonic: Zeroizing<String>,
         word_count: usize,
         selected: usize,
         from_settings: bool,
@@ -179,7 +179,7 @@ pub enum Screen {
     /// Paged view of the 12/24-word mnemonic for write-it-down backup.
     ExportShowWords {
         compact_data: Vec<u8>,
-        mnemonic: String,
+        mnemonic: Zeroizing<String>,
         page: usize,
         word_count: usize,
         from_settings: bool,
@@ -241,30 +241,30 @@ pub enum Screen {
     /// address shown in the header chip so users keep visual continuity
     /// with the preceding confirmation.
     LoadFinalize {
-        mnemonic: String,
+        mnemonic: Zeroizing<String>,
         preview_address: String,
         keypair: SolanaKeypair,
         selected: usize,
     },
     LoadPassphrasePrompt {
-        mnemonic: String,
+        mnemonic: Zeroizing<String>,
         selected: usize,
     },
     LoadPassphraseInput {
-        mnemonic: String,
+        mnemonic: Zeroizing<String>,
         grid: CharGrid,
     },
     LoadPassphraseConfirm {
-        mnemonic: String,
-        passphrase: String,
+        mnemonic: Zeroizing<String>,
+        passphrase: Zeroizing<String>,
         grid: CharGrid,
     },
     LoadPassphraseMismatch {
-        mnemonic: String,
+        mnemonic: Zeroizing<String>,
     },
     LoadConfirm {
-        mnemonic: String,
-        passphrase: String,
+        mnemonic: Zeroizing<String>,
+        passphrase: Zeroizing<String>,
         keypair: SolanaKeypair,
         address: String,
         selected: usize,
@@ -728,17 +728,10 @@ impl WordPicker {
 
 /// Wallet loaded in memory.
 pub struct LoadedWallet {
-    pub mnemonic: String,
-    pub passphrase: String,
+    pub mnemonic: Zeroizing<String>,
+    pub passphrase: Zeroizing<String>,
     pub keypair: SolanaKeypair,
     pub address: String,
-}
-
-impl Drop for LoadedWallet {
-    fn drop(&mut self) {
-        self.mnemonic.zeroize();
-        self.passphrase.zeroize();
-    }
 }
 
 /// Layout information for the selectable list on the current screen.
@@ -908,7 +901,7 @@ impl App {
                 } = taken
                 {
                     if picker.words.len() == word_count {
-                        let mnemonic = picker.words.join(" ");
+                        let mnemonic = Zeroizing::new(picker.words.join(" "));
                         if crate::crypto::bip39::validate_mnemonic(&mnemonic) {
                             match self.derive_keypair_and_address(&mnemonic, "") {
                                 Some((keypair, preview_address)) => {
@@ -1125,7 +1118,7 @@ impl App {
             | Screen::CreatePassphrasePrompt { selected: 0, .. } => true,
             Screen::LoadPassphraseConfirm { passphrase, grid, .. }
             | Screen::CreatePassphraseConfirm { passphrase, grid, .. } => {
-                grid.action_region() == Some(GridAction::Done) && grid.text == *passphrase
+                grid.action_region() == Some(GridAction::Done) && grid.text.as_str() == passphrase.as_str()
             }
             Screen::VerifyBackupPassphrase { grid } => {
                 grid.action_region() == Some(GridAction::Done)
@@ -1331,7 +1324,7 @@ impl App {
         self.derive_keypair_and_address(mnemonic, passphrase).map(|(_, addr)| addr)
     }
 
-    pub(crate) fn set_wallet(&mut self, mnemonic: String, passphrase: String, keypair: SolanaKeypair) {
+    pub(crate) fn set_wallet(&mut self, mnemonic: Zeroizing<String>, passphrase: Zeroizing<String>, keypair: SolanaKeypair) {
         let address = derivation::address(&keypair);
         self.wallet = Some(LoadedWallet { mnemonic, passphrase, keypair, address });
     }

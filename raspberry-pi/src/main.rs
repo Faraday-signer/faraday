@@ -8,6 +8,21 @@ pub use faraday_core::signer;
 pub use faraday_core::qr;
 pub use faraday_core::ui;
 
+// Guard against Cargo feature unification. The ESP32 crate enables
+// `touch-ui` / `hardware-sha512` on faraday-core; if a build ever compiles
+// core with those on for the Pi (e.g. `cargo build --workspace` pulling the
+// ESP32 crate into the dependency graph), the Pi would silently get the touch
+// action bar and the mbedtls seed path. Fail the build loudly instead — the Pi
+// must not change appearance or behaviour.
+const _: () = assert!(
+    !faraday_core::TOUCH_UI,
+    "faraday-core built with `touch-ui`; the Pi build must not enable it"
+);
+const _: () = assert!(
+    !faraday_core::HARDWARE_SHA512,
+    "faraday-core built with `hardware-sha512`; the Pi build must not enable it"
+);
+
 #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
 mod camera;
 #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
@@ -76,6 +91,7 @@ fn run_simulator() {
         }
     }
     app.enter_main_menu();
+    // Reset idle timer so the splash duration doesn't count toward blanking.
     app.last_activity = std::time::Instant::now();
 
     // Long-press Back (Escape) detection. Tap = normal Back; hold ≥ threshold
@@ -85,18 +101,23 @@ fn run_simulator() {
     let mut esc_long_press_fired = false;
 
     while window.is_open() {
+        // Long-press handling for Back first. Runs every frame so we can
+        // emit the shortcut mid-hold (the user shouldn't have to release).
         let esc_held = window.is_key_down(Key::Escape);
         let long_press_event = match (esc_down_at, esc_held) {
             (None, true) => {
+                // Rising edge — start the timer, don't emit anything yet.
                 esc_down_at = Some(std::time::Instant::now());
                 esc_long_press_fired = false;
                 None
             }
             (Some(t), true) if !esc_long_press_fired && t.elapsed() >= hold_threshold => {
+                // Held past the threshold — fire the shortcut once.
                 esc_long_press_fired = true;
                 Some(InputEvent::PowerOffShortcut)
             }
             (Some(t), false) => {
+                // Released. Emit normal Back only if the shortcut didn't fire.
                 let fire_back = !esc_long_press_fired && t.elapsed() < hold_threshold;
                 esc_down_at = None;
                 esc_long_press_fired = false;
@@ -105,6 +126,7 @@ fn run_simulator() {
             _ => None,
         };
 
+        // Other key-event detection.
         let event = if let Some(ev) = long_press_event {
             Some(ev)
         } else if window.is_key_pressed(Key::Up, minifb::KeyRepeat::Yes) {
@@ -173,9 +195,17 @@ fn run_simulator() {
 
         use embedded_graphics_core::draw_target::DrawTarget;
         if app.is_blanked() {
+            // Idle timeout reached — show the Faraday logo (splash) instead
+            // of a black screen, so the device is visibly "on + idle" rather
+            // than indistinguishable from powered-off.
             let elapsed_ms = app.splash_anim_start.elapsed().as_millis() as u64;
             let _ = gui::screens::draw_splash(&mut fb, &app.theme, elapsed_ms);
         } else {
+            // On camera screens, blit the latest webcam frame as background so
+            // overlay drawing in app.draw() paints on top of live preview. When
+            // no frame is available yet (camera warming up or unavailable), fill
+            // with a dark background so stale pixels from the previous screen
+            // don't leak through.
             if app.wants_camera() {
                 match app.latest_frame.clone() {
                     Some(frame) => fb.blit_camera_frame(&frame),
@@ -232,6 +262,7 @@ fn run_pi() {
         }
     }
     app.enter_main_menu();
+    // Reset idle timer so splash doesn't count toward blanking.
     app.last_activity = std::time::Instant::now();
 
     loop {
@@ -239,6 +270,8 @@ fn run_pi() {
 
         if let Some(event) = buttons.wait_for_press(Duration::from_millis(33)) {
             let input = if event.long_press && event.button == Button::Key3 {
+                // Long-press Back → Power Off shortcut. Driver's 500ms long-
+                // press threshold is enough to distinguish from a regular tap.
                 InputEvent::PowerOffShortcut
             } else {
                 match event.button {
@@ -254,7 +287,7 @@ fn run_pi() {
             app.handle_input(input);
         }
 
-        // Camera lifecycle
+        // Drive camera lifecycle + pull latest frame + auto-advance on QR.
         let wants = app.wants_camera();
         if wants && camera.is_none() && app.camera_error.is_none() {
             match PiCamera::open() {
@@ -299,6 +332,8 @@ fn run_pi() {
             let elapsed_ms = app.splash_anim_start.elapsed().as_millis() as u64;
             let _ = crate::gui::screens::draw_splash(&mut display, &app.theme, elapsed_ms);
         } else {
+            // On camera screens, blit preview first, then let the screen
+            // overlay draw on top. Fill dark when no frame is ready yet.
             if app.wants_camera() {
                 match app.latest_frame.clone() {
                     Some(frame) => display.blit_camera_frame(&frame),

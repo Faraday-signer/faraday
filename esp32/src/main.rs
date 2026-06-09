@@ -29,6 +29,15 @@ fn main() {
     EspLogger::initialize_default();
     log::info!("Faraday ESP32-S3 v0.1.0");
 
+    // Validate the hardware (mbedtls) BIP39 seed path against a known-answer
+    // vector before any wallet can be created or loaded. The host test suite
+    // can't exercise this path, so a divergence from the BIP39 standard would
+    // otherwise surface only as silently wrong addresses. Fail closed.
+    assert!(
+        faraday_core::crypto::bip39::seed_derivation_self_test(),
+        "BIP39 seed self-test failed — hardware SHA512 path diverges from spec"
+    );
+
     let peripherals = Peripherals::take().expect("failed to take peripherals");
 
     // SPI bus: SCLK=39, MOSI=38, MISO=40 (shared with SD; unused for the
