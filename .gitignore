@@ -23,6 +23,9 @@ credentials.*
 # Rust
 target/
 
+# ESP-IDF build artifacts
+.embuild/
+
 # Pi build artifacts
 *.img
 *.iso

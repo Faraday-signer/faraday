@@ -1,7 +1,6 @@
 //! Settings / wallet data flow.
 
 use crate::gui::app::{App, HelpTopic, InputEvent, Screen};
-use zeroize::Zeroizing;
 
 const WALLET_DATA_ITEMS: usize = 4;
 
@@ -25,10 +24,8 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         1 => Screen::SettingsShowAddress,
                         2 => {
                             if app.guided {
-                                let mnemonic = app.wallet.as_ref()
-                                    .map(|w| w.mnemonic.clone())
-                                    .unwrap_or_else(|| Zeroizing::new(String::new()));
-                                let compact_data = crate::qr::encode_qr::encode_compact_seed_qr(&mnemonic)
+                                let compact_data = app.wallet.as_ref()
+                                    .and_then(|w| crate::qr::encode_qr::encode_compact_seed_qr(&w.mnemonic).ok())
                                     .unwrap_or_default();
                                 let next = Screen::ExportSeedQrMenu {
                                     compact_data,
@@ -113,6 +110,6 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             Screen::SettingsPowerOff { selected }
         }
 
-        _ => unreachable!("settings::handle called with non-settings screen"),
+        _ => screen,
     }
 }

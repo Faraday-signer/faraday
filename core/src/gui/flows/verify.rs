@@ -124,6 +124,6 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             _ => Screen::VerifyBackupSuccess,
         },
 
-        _ => unreachable!("verify::handle called with non-verify screen"),
+        _ => screen,
     }
 }

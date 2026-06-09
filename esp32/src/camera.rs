@@ -124,12 +124,22 @@ static PIPELINE: OnceLock<QrPipeline> = OnceLock::new();
 static CAM_INITED: AtomicBool = AtomicBool::new(false);
 
 /// The process-wide QR-decode pipeline. Spawns the decoder thread on first use.
-fn pipeline() -> &'static QrPipeline {
-    PIPELINE.get_or_init(QrPipeline::start)
+fn pipeline() -> Result<&'static QrPipeline, String> {
+    if let Some(pl) = PIPELINE.get() {
+        return Ok(pl);
+    }
+    let pl = QrPipeline::start()?;
+    match PIPELINE.set(pl) {
+        Ok(()) => Ok(PIPELINE.get().unwrap()),
+        Err(_) => {
+            // Another thread initialised between our get() and set().
+            Ok(PIPELINE.get().unwrap())
+        }
+    }
 }
 
 impl QrPipeline {
-    fn start() -> QrPipeline {
+    fn start() -> Result<QrPipeline, String> {
         let latest: Arc<Mutex<Option<Frame>>> = Arc::new(Mutex::new(None));
         let pending_qr: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
         let diag: Arc<Mutex<ScanDiagnostics>> =
@@ -172,7 +182,7 @@ impl QrPipeline {
         let decoder = thread::Builder::new()
             .stack_size(96 * 1024)
             .spawn(move || decoder_loop(latest_d, qr_d, diag_d, mode_d, decode_d))
-            .expect("spawn decoder (once, at first camera open)");
+            .map_err(|e| format!("spawn decoder: {e}"))?;
         ThreadSpawnConfiguration::default()
             .set()
             .expect("restore default thread spawn config");
@@ -190,9 +200,9 @@ impl QrPipeline {
         let reader = thread::Builder::new()
             .stack_size(16 * 1024)
             .spawn(move || reader_loop(latest_r, fatal_r, streaming_r))
-            .expect("spawn reader (once, at first camera open)");
+            .map_err(|e| format!("spawn reader: {e}"))?;
 
-        QrPipeline {
+        Ok(QrPipeline {
             latest,
             pending_qr,
             diag,
@@ -202,7 +212,7 @@ impl QrPipeline {
             fatal,
             _decoder: decoder,
             _reader: reader,
-        }
+        })
     }
 }
 
@@ -219,7 +229,7 @@ pub struct EspCamera {
 impl EspCamera {
     pub fn open() -> Result<Self, String> {
         // Ensure the persistent decoder + reader exist (spawn once, here).
-        let pl = pipeline();
+        let pl = pipeline().map_err(|e| format!("camera pipeline: {e}"))?;
 
         // Bring the camera hardware up exactly once; on every later open just
         // wake the sensor from standby. (See CAM_INITED.) If the very first init
@@ -259,33 +269,33 @@ impl EspCamera {
     }
 
     pub fn latest(&self) -> Option<Frame> {
-        pipeline().latest.lock().ok().and_then(|g| g.clone())
+        pipeline().expect("pipeline not initialised").latest.lock().ok().and_then(|g| g.clone())
     }
 
     pub fn take_qr(&self) -> Option<Vec<u8>> {
-        pipeline().pending_qr.lock().ok().and_then(|mut g| g.take())
+        pipeline().expect("pipeline not initialised").pending_qr.lock().ok().and_then(|mut g| g.take())
     }
 
     pub fn set_decode_enabled(&self, on: bool) {
-        pipeline().decode_enabled.store(on, Ordering::Relaxed);
+        pipeline().expect("pipeline not initialised").decode_enabled.store(on, Ordering::Relaxed);
     }
 
     pub fn set_small_qr_mode(&self, on: bool) {
-        pipeline().small_qr_mode.store(on, Ordering::Relaxed);
+        pipeline().expect("pipeline not initialised").small_qr_mode.store(on, Ordering::Relaxed);
     }
 
     pub fn take_fatal_err(&self) -> Option<String> {
-        pipeline().fatal.lock().ok().and_then(|mut g| g.take())
+        pipeline().expect("pipeline not initialised").fatal.lock().ok().and_then(|mut g| g.take())
     }
 
     pub fn diagnostics(&self) -> ScanDiagnostics {
-        pipeline().diag.lock().ok().map(|g| *g).unwrap_or_default()
+        pipeline().expect("pipeline not initialised").diag.lock().ok().map(|g| *g).unwrap_or_default()
     }
 }
 
 impl Drop for EspCamera {
     fn drop(&mut self) {
-        let pl = pipeline();
+        let pl = pipeline().expect("pipeline not initialised");
         // Park the decoder (it resets its UR accumulator + diagnostics) and stop
         // the reader from grabbing frames.
         pl.decode_enabled.store(false, Ordering::SeqCst);

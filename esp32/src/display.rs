@@ -72,24 +72,24 @@ impl<'d> Display<'d> {
     }
 
     fn command(&mut self, cmd: u8) {
-        let _ = self.dc.set_low();
-        let _ = self.cs.set_low();
-        let _ = self.spi.write(&[cmd]);
-        let _ = self.cs.set_high();
+        self.dc.set_low().unwrap_or_else(|e| log::error!("dc low: {e:?}"));
+        self.cs.set_low().unwrap_or_else(|e| log::error!("cs low: {e:?}"));
+        self.spi.write(&[cmd]).unwrap_or_else(|e| log::error!("spi cmd 0x{cmd:02X}: {e:?}"));
+        self.cs.set_high().unwrap_or_else(|e| log::error!("cs high: {e:?}"));
     }
 
     fn data_byte(&mut self, val: u8) {
-        let _ = self.dc.set_high();
-        let _ = self.cs.set_low();
-        let _ = self.spi.write(&[val]);
-        let _ = self.cs.set_high();
+        self.dc.set_high().unwrap_or_else(|e| log::error!("dc high: {e:?}"));
+        self.cs.set_low().unwrap_or_else(|e| log::error!("cs low: {e:?}"));
+        self.spi.write(&[val]).unwrap_or_else(|e| log::error!("spi data 0x{val:02X}: {e:?}"));
+        self.cs.set_high().unwrap_or_else(|e| log::error!("cs high: {e:?}"));
     }
 
     fn data(&mut self, vals: &[u8]) {
-        let _ = self.dc.set_high();
-        let _ = self.cs.set_low();
-        let _ = self.spi.write(vals);
-        let _ = self.cs.set_high();
+        self.dc.set_high().unwrap_or_else(|e| log::error!("dc high: {e:?}"));
+        self.cs.set_low().unwrap_or_else(|e| log::error!("cs low: {e:?}"));
+        self.spi.write(vals).unwrap_or_else(|e| log::error!("spi data[{}]: {e:?}", vals.len()));
+        self.cs.set_high().unwrap_or_else(|e| log::error!("cs high: {e:?}"));
     }
 
     fn init(&mut self) {

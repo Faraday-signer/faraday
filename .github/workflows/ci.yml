@@ -76,6 +76,19 @@ jobs:
         working-directory: raspberry-pi
         run: cargo zigbuild --release --target arm-unknown-linux-gnueabihf
 
+  rust-core-touch:
+    name: Rust core (touch-ui feature)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - name: cargo check core with touch-ui
+        working-directory: core
+        run: cargo check --features touch-ui
+
   extension:
     name: Extension typecheck
     runs-on: ubuntu-latest

@@ -28,6 +28,7 @@ pub enum ScanMode {
 }
 
 /// Convert interleaved RGB to 8-bit grayscale (BT.601 luma).
+#[cfg(feature = "_desktop_sim")]
 pub fn rgb_to_gray(rgb: &[u8], width: u32, height: u32) -> Vec<u8> {
     let mut out = Vec::with_capacity((width * height) as usize);
     for px in rgb.chunks_exact(3) {
