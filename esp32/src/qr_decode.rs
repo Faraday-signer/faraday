@@ -31,8 +31,17 @@ pub fn try_decode_qr(frame: &Frame, mode: ScanMode) -> Option<Vec<u8>> {
         ScanMode::Full => crop_center_square(frame, 20),
     };
 
-    let t = faraday_core::qr::threshold::otsu_threshold(&luma);
-    faraday_core::qr::threshold::binarize_in_place(&mut luma, t);
+    // Otsu is a *global* threshold. It's needed for SmallQr (hand-drawn
+    // CompactSeedQR sheets, whose 1 mm paper grid lines survive rxing's adaptive
+    // binarizer and confuse finder detection — see core::qr::threshold). But on
+    // the dense Full (TX / UR) path it actively hurts off-perpendicular scans:
+    // tilt introduces an illumination gradient that one global cutoff can't
+    // track, smearing the foreshortened far side of the code. Passing raw luma
+    // lets rxing's HybridBinarizer threshold *locally* and adapt to the gradient.
+    if matches!(mode, ScanMode::SmallQr) {
+        let t = faraday_core::qr::threshold::otsu_threshold(&luma);
+        faraday_core::qr::threshold::binarize_in_place(&mut luma, t);
+    }
 
     // NOTE: TryHarder is intentionally NOT enabled. It makes rxing try many
     // binarizations/rotations and on some noisy camera frames it spins for a

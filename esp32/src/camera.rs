@@ -99,10 +99,29 @@ struct QrPipeline {
     diag: Arc<Mutex<ScanDiagnostics>>,
     small_qr_mode: Arc<AtomicBool>,
     decode_enabled: Arc<AtomicBool>,
+    // Gates the persistent reader thread: true while a scan session wants live
+    // frames, false while idle (the sensor is in standby and no frame buffer is
+    // being consumed). Decoupled from `decode_enabled` so the reader and decoder
+    // can be parked independently.
+    streaming: Arc<AtomicBool>,
+    // Fatal camera error surfaced by the reader (e.g. the sensor stopped
+    // delivering frames). Lives on the pipeline because the reader is now
+    // persistent and outlives any single `EspCamera` handle.
+    fatal: Arc<Mutex<Option<String>>>,
     _decoder: JoinHandle<()>,
+    _reader: JoinHandle<()>,
 }
 
 static PIPELINE: OnceLock<QrPipeline> = OnceLock::new();
+
+// The camera hardware (esp_camera_init) is brought up exactly once for the life
+// of the process and never deinitialised. Repeated esp_camera_init/deinit cycles
+// fragment internal DMA-capable RAM until the camera driver's 32 KB DMA buffer
+// can no longer be allocated as a contiguous block ("cam_dma_config: DMA buffer
+// 32000 Byte malloc failed") — which surfaced as a "camera not available" error
+// after a few scan sessions. Instead we init once (when the heap is least
+// fragmented) and idle the sensor with soft standby between scans.
+static CAM_INITED: AtomicBool = AtomicBool::new(false);
 
 /// The process-wide QR-decode pipeline. Spawns the decoder thread on first use.
 fn pipeline() -> &'static QrPipeline {
@@ -117,6 +136,8 @@ impl QrPipeline {
             Arc::new(Mutex::new(ScanDiagnostics::default()));
         let decode_enabled = Arc::new(AtomicBool::new(false));
         let small_qr_mode = Arc::new(AtomicBool::new(false));
+        let streaming = Arc::new(AtomicBool::new(false));
+        let fatal: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
         // Decoder thread — runs the quircs QR pipeline on the latest frame.
         // 96 KB stack: QR decoders can put large transient buffers on the stack
@@ -156,13 +177,31 @@ impl QrPipeline {
             .set()
             .expect("restore default thread spawn config");
 
+        // Reader thread — grabs frames from the camera DMA, copies the luma
+        // plane out, publishes to `latest`. Now spawned once (default placement,
+        // on the task that first opens the camera) and kept alive: re-spawning
+        // its 16 KB internal stack each session was another source of internal-RAM
+        // fragmentation. It idles (no esp_camera_fb_get) whenever `streaming` is
+        // false, so it costs nothing between scans. 16 KB stack: the YUV→luma
+        // conversion buffers (320×240×5 bytes touched per frame).
+        let latest_r = Arc::clone(&latest);
+        let fatal_r = Arc::clone(&fatal);
+        let streaming_r = Arc::clone(&streaming);
+        let reader = thread::Builder::new()
+            .stack_size(16 * 1024)
+            .spawn(move || reader_loop(latest_r, fatal_r, streaming_r))
+            .expect("spawn reader (once, at first camera open)");
+
         QrPipeline {
             latest,
             pending_qr,
             diag,
             small_qr_mode,
             decode_enabled,
+            streaming,
+            fatal,
             _decoder: decoder,
+            _reader: reader,
         }
     }
 }
@@ -170,55 +209,53 @@ impl QrPipeline {
 // ---------- public struct ---------------------------------------------------
 
 pub struct EspCamera {
-    fatal_err: Arc<Mutex<Option<String>>>,
-    stop: Arc<AtomicBool>,
-    _reader: Option<JoinHandle<()>>,
+    // Zero-sized handle. All state lives on the process-wide `PIPELINE`; the
+    // handle's only job is to flip `streaming`/`decode_enabled` on at open and
+    // off (plus sensor standby) on drop. The camera hardware itself is never
+    // torn down — see CAM_INITED.
+    _private: (),
 }
 
 impl EspCamera {
     pub fn open() -> Result<Self, String> {
-        // Ensure the persistent decoder exists (spawns once, on this first call).
+        // Ensure the persistent decoder + reader exist (spawn once, here).
         let pl = pipeline();
 
-        // Start each scan session from a clean slate: drop any stale frame and
-        // result from the previous session so the persistent decoder can't
-        // surface an old QR before the new reader has published a fresh frame.
-        // (The UR accumulator and diagnostics are reset by the decoder itself
-        // when decode_enabled went false on the previous teardown.)
+        // Bring the camera hardware up exactly once; on every later open just
+        // wake the sensor from standby. (See CAM_INITED.) If the very first init
+        // fails we leave CAM_INITED false so a later open retries.
+        if !CAM_INITED.load(Ordering::Acquire) {
+            unsafe { init_camera()? };
+            CAM_INITED.store(true, Ordering::Release);
+            log::info!("esp_camera: init OK ({}x{} GRAYSCALE)", CAPTURE_W, CAPTURE_H);
+        } else {
+            unsafe { sensor_standby(false) };
+            // Let AGC/AWB settle after wake before the reader starts grabbing
+            // (shorter than the cold-init settle — registers are retained).
+            thread::sleep(Duration::from_millis(300));
+        }
+
+        // Start each scan session from a clean slate: drop any stale frame,
+        // result and fatal error from the previous session so the persistent
+        // decoder can't surface an old QR before the reader publishes a fresh
+        // frame. (The UR accumulator and diagnostics are reset by the decoder
+        // when decode_enabled went false on the previous drop.)
         if let Ok(mut g) = pl.latest.lock() {
             *g = None;
         }
         if let Ok(mut g) = pl.pending_qr.lock() {
             *g = None;
         }
+        if let Ok(mut g) = pl.fatal.lock() {
+            *g = None;
+        }
 
-        unsafe { init_camera()? };
-        log::info!("esp_camera: init OK ({}x{} GRAYSCALE)", CAPTURE_W, CAPTURE_H);
+        // Let the reader start grabbing frames. The reader declares the camera
+        // dead (sets `fatal`, parks) after MAX_CONSECUTIVE_NULLS timeouts, which
+        // also covers the "camera never delivers" case — no separate watchdog.
+        pl.streaming.store(true, Ordering::SeqCst);
 
-        let fatal_err: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-        let stop = Arc::new(AtomicBool::new(false));
-
-        // Reader thread — grabs frames from the camera DMA, converts YUV422
-        // to RGB+luma, publishes to `latest`. Stack: 16 KB for the conversion
-        // buffers (320×240×5 bytes touched per frame). Re-spawned each open;
-        // 16 KB allocates reliably even from a fragmented heap.
-        let latest_w = Arc::clone(&pl.latest);
-        let fatal_w = Arc::clone(&fatal_err);
-        let stop_r = Arc::clone(&stop);
-        let reader = thread::Builder::new()
-            .stack_size(16 * 1024)
-            .spawn(move || reader_loop(latest_w, fatal_w, stop_r))
-            .map_err(|e| format!("spawn reader: {e}"))?;
-
-        // No separate no-first-frame watchdog: the reader already declares the
-        // camera dead (sets fatal_err, stops) after MAX_CONSECUTIVE_NULLS frame
-        // timeouts, which covers the "camera never delivers" case.
-
-        Ok(EspCamera {
-            fatal_err,
-            stop,
-            _reader: Some(reader),
-        })
+        Ok(EspCamera { _private: () })
     }
 
     pub fn latest(&self) -> Option<Frame> {
@@ -238,7 +275,7 @@ impl EspCamera {
     }
 
     pub fn take_fatal_err(&self) -> Option<String> {
-        self.fatal_err.lock().ok().and_then(|mut g| g.take())
+        pipeline().fatal.lock().ok().and_then(|mut g| g.take())
     }
 
     pub fn diagnostics(&self) -> ScanDiagnostics {
@@ -248,25 +285,21 @@ impl EspCamera {
 
 impl Drop for EspCamera {
     fn drop(&mut self) {
-        // Stop decoding first so the persistent decoder parks (and resets its
-        // UR accumulator + diagnostics) instead of chewing on the soon-to-be
-        // stale frame while we tear the hardware down.
-        pipeline().decode_enabled.store(false, Ordering::SeqCst);
+        let pl = pipeline();
+        // Park the decoder (it resets its UR accumulator + diagnostics) and stop
+        // the reader from grabbing frames.
+        pl.decode_enabled.store(false, Ordering::SeqCst);
+        pl.streaming.store(false, Ordering::SeqCst);
 
-        // Order matters: join the reader BEFORE deinit. The reader checks `stop`
-        // only between frames and releases each frame buffer (esp_camera_fb_return)
-        // before looping, so once it has exited no thread is touching camera
-        // memory. Calling esp_camera_deinit() while the reader is still mid-frame
-        // (copying fb.buf) would free the DMA buffers under it → use-after-free.
-        //
-        // esp_camera_fb_get() has an internal timeout, so the reader returns and
-        // sees `stop` within ~1 s even without deinit.
-        self.stop.store(true, Ordering::SeqCst);
-        if let Some(h) = self._reader.take() {
-            let _ = h.join();
-        }
-        unsafe {
-            esp_idf_sys::camera::esp_camera_deinit();
+        // Idle the sensor with soft standby instead of esp_camera_deinit(). We
+        // never deinit (repeated init/deinit fragments internal DMA RAM — see
+        // CAM_INITED), so the DMA buffers stay allocated and there is no
+        // use-after-free to order against: standby is just an SCCB register write
+        // that stops the sensor streaming and cuts its power draw. The reader
+        // checks `streaming` between frames and stops calling esp_camera_fb_get
+        // on its own; a frame already in flight is harmless (no buffer is freed).
+        if CAM_INITED.load(Ordering::Acquire) {
+            unsafe { sensor_standby(true) };
         }
     }
 }
@@ -340,33 +373,55 @@ unsafe fn init_camera() -> Result<(), String> {
     Ok(())
 }
 
+/// Put the OV5640 into soft standby (`on = true`) or wake it (`on = false`)
+/// without deinitialising the camera driver. Uses system control register
+/// 0x3008 bit 6 (software power-down): set → standby, clear → normal. This is
+/// the SCCB-level idle we use between scans instead of esp_camera_deinit(), so
+/// the DMA buffers stay allocated (no internal-RAM refragmentation) while the
+/// sensor stops streaming and drops its power draw. All other registers — the
+/// hmirror set in init_camera() included — are retained across standby.
+unsafe fn sensor_standby(on: bool) {
+    use esp_idf_sys::camera as cam;
+    let sensor = cam::esp_camera_sensor_get();
+    if sensor.is_null() {
+        return;
+    }
+    if let Some(set_reg) = (*sensor).set_reg {
+        // mask 0x40 = bit 6 only; value 0x40 sets it (power-down), 0x00 clears.
+        let value = if on { 0x40 } else { 0x00 };
+        set_reg(sensor, 0x3008, 0x40, value);
+    }
+}
+
 // ---------- reader thread ---------------------------------------------------
 
 fn reader_loop(
     latest: Arc<Mutex<Option<Frame>>>,
     fatal: Arc<Mutex<Option<String>>>,
-    stop: Arc<AtomicBool>,
+    streaming: Arc<AtomicBool>,
 ) {
     // The camera driver occasionally returns NULL on a transient frame timeout
-    // (the YUV422 DVP path is bandwidth-tight). Tolerate those and keep going —
-    // only declare the camera dead after many consecutive failures. Previously a
+    // (the DVP path is bandwidth-tight). Tolerate those and keep going — only
+    // declare the camera dead after many consecutive failures. Previously a
     // single timeout tore down and reopened the camera, causing multi-second
     // dead periods mid-scan.
     let mut consecutive_nulls = 0u32;
     const MAX_CONSECUTIVE_NULLS: u32 = 30;
 
+    // Persistent thread (spawned once for the life of the process). It idles
+    // whenever `streaming` is false — the sensor is in standby then, so calling
+    // esp_camera_fb_get would just time out and (worse) trip the null watchdog.
     loop {
-        if stop.load(Ordering::Relaxed) {
-            return;
+        if !streaming.load(Ordering::Relaxed) {
+            consecutive_nulls = 0;
+            thread::sleep(Duration::from_millis(50));
+            continue;
         }
 
         // Blocking call — returns when the camera DMA has a frame ready.
         let fb = unsafe { esp_idf_sys::camera::esp_camera_fb_get() };
 
         if fb.is_null() {
-            if stop.load(Ordering::Relaxed) {
-                return; // NULL from esp_camera_deinit() on the Drop path.
-            }
             consecutive_nulls += 1;
             if consecutive_nulls >= MAX_CONSECUTIVE_NULLS {
                 if let Ok(mut g) = fatal.lock() {
@@ -374,8 +429,12 @@ fn reader_loop(
                         *g = Some("camera stopped delivering frames".to_string());
                     }
                 }
-                stop.store(true, Ordering::Relaxed);
-                return;
+                // Park the reader; the GUI sees `fatal` and drops the handle,
+                // which puts the sensor into standby. The reader stays alive for
+                // the next session (it is never re-spawned).
+                streaming.store(false, Ordering::Relaxed);
+                consecutive_nulls = 0;
+                continue;
             }
             thread::sleep(Duration::from_millis(50));
             continue;
