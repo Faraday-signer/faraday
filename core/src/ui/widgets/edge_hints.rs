@@ -29,18 +29,12 @@ use crate::ui::Theme;
 ///
 /// On touch builds the gutter is gone (replaced by a bottom action bar), so
 /// no width is reserved and `FOOTER_H` reserves height instead.
-#[cfg(not(feature = "touch-ui"))]
-pub const GUTTER_W: u32 = 28;
-#[cfg(feature = "touch-ui")]
-pub const GUTTER_W: u32 = 0;
+pub const GUTTER_W: u32 = if cfg!(feature = "touch-ui") { 0 } else { 28 };
 
 /// Height reserved at the bottom for the horizontal touch action bar. Zero on
 /// builds with physical keys — they reserve width via `GUTTER_W` instead. The
 /// two are mutually exclusive so body reservation can always subtract both.
-#[cfg(not(feature = "touch-ui"))]
-pub const FOOTER_H: u32 = 0;
-#[cfg(feature = "touch-ui")]
-pub const FOOTER_H: u32 = 44;
+pub const FOOTER_H: u32 = if cfg!(feature = "touch-ui") { 44 } else { 0 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EdgeIcon {
@@ -56,9 +50,9 @@ pub enum EdgeIcon {
     /// with a short vertical hook on the right. Used for K3 = "back to
     /// previous screen" on every navigation screen.
     ArrowLeft,
-    /// Backspace — left-pointing arrow with a vertical stub at its tip.
-    /// Used for K2 = "delete last character" on keyboard / char-grid
-    /// screens.
+    /// Backspace — a keyboard delete-key glyph (⌫): a left-pointing
+    /// pentagon "key" with an × inside. Used for K2 = "delete last
+    /// character" on keyboard / char-grid screens.
     Delete,
 }
 
@@ -220,13 +214,14 @@ impl EdgeHints {
         let cx_right = (5 * w) / 6; // k1 — Accept
 
         // Only the Accept cell (primary action) uses the accent color; the
-        // others stay muted — same emphasis as the vertical gutter.
+        // others render in the full-strength text color so they read as
+        // active controls rather than disabled grey.
         if !matches!(self.k3, EdgeIcon::None) {
             draw_cell(
                 display,
                 self.k3,
                 Point::new(cx_left, cy),
-                icon_color(self.k3, theme.muted, theme),
+                icon_color(self.k3, theme.text, theme),
                 theme.dim,
             )?;
         }
@@ -235,7 +230,7 @@ impl EdgeHints {
                 display,
                 self.k2,
                 Point::new(cx_mid, cy),
-                icon_color(self.k2, theme.muted, theme),
+                icon_color(self.k2, theme.text, theme),
                 theme.dim,
             )?;
         }
@@ -361,31 +356,41 @@ fn draw_cell<D: DrawTarget<Color = Rgb565>>(
             .draw(display)?;
         }
         EdgeIcon::Delete => {
-            // Backspace: ← with a short vertical stub at the right end.
+            // Backspace key glyph (⌫): a pentagon "key" pointing left — a
+            // rectangle body whose left edge tapers to a point — with a small
+            // × inside it. Reads as a keyboard delete key, not a bare arrow.
+            //
+            // Pentagon outline, traced as connected edges:
+            //   tip → upper bend → top-right → bottom-right → lower bend → tip
+            let tip = Point::new(center.x - 9, center.y);
+            let up_bend = Point::new(center.x - 3, center.y - 7);
+            let top_right = Point::new(center.x + 8, center.y - 7);
+            let bot_right = Point::new(center.x + 8, center.y + 7);
+            let low_bend = Point::new(center.x - 3, center.y + 7);
+            for (a, b) in [
+                (tip, up_bend),
+                (up_bend, top_right),
+                (top_right, bot_right),
+                (bot_right, low_bend),
+                (low_bend, tip),
+            ] {
+                Line::new(a, b).into_styled(style).draw(display)?;
+            }
+
+            // × inside the body, on the right half of the key. Thinner stroke
+            // so the cross stays legible against the heavier outline.
+            let cross = PrimitiveStyle::with_stroke(active, 2);
             Line::new(
-                Point::new(center.x - 7, center.y),
-                Point::new(center.x + 5, center.y),
+                Point::new(center.x, center.y - 3),
+                Point::new(center.x + 6, center.y + 3),
             )
-            .into_styled(style)
+            .into_styled(cross)
             .draw(display)?;
             Line::new(
-                Point::new(center.x - 3, center.y - 4),
-                Point::new(center.x - 7, center.y),
+                Point::new(center.x, center.y + 3),
+                Point::new(center.x + 6, center.y - 3),
             )
-            .into_styled(style)
-            .draw(display)?;
-            Line::new(
-                Point::new(center.x - 3, center.y + 4),
-                Point::new(center.x - 7, center.y),
-            )
-            .into_styled(style)
-            .draw(display)?;
-            // Right-end vertical stub (the "wall" the arrow bumps into).
-            Line::new(
-                Point::new(center.x + 5, center.y - 5),
-                Point::new(center.x + 5, center.y + 5),
-            )
-            .into_styled(style)
+            .into_styled(cross)
             .draw(display)?;
         }
     }
