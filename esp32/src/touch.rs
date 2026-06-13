@@ -23,11 +23,19 @@
 //!   • The chip briefly reports finger_num=0 mid-hold before returning to 1.
 //!     The confirmation timer absorbs these short 0-pulses.
 //!   • The chip reports GESTURE_SINGLE_TAP on lift (or mid-hold on some
-//!     revisions). Single-tap is gated by finger_down like a plain tap.
+//!     revisions). We ignore it and derive taps from finger travel instead.
 //!
-//! Gestures:
-//!     Swipe up    = Up
-//!     Swipe down  = Down
+//! Tap vs. swipe: a body tap is emitted on *lift*, not on press-down, and only
+//! when the finger never travelled beyond TAP_SLOP from its press-down point
+//! and no swipe gesture fired during the contact. A swipe (or any drag past the
+//! slop) marks the touch as moved, so swiping a scrollable list never selects a
+//! row. Emitting on lift is what makes the distinction possible — at press-down
+//! we cannot yet tell a tap from the start of a swipe.
+//!
+//! Gestures (vertical inverted — content tracks the finger, like touch-native
+//! scrolling: dragging up moves the selection down; horizontal unchanged):
+//!     Swipe up    = Down
+//!     Swipe down  = Up
 //!     Swipe left  = Left
 //!     Swipe right = Right
 //!   Long press (>1.5 s) = PowerOffShortcut
@@ -44,7 +52,6 @@ const GESTURE_SWIPE_UP: u8 = 0x01;
 const GESTURE_SWIPE_DOWN: u8 = 0x02;
 const GESTURE_SWIPE_LEFT: u8 = 0x03;
 const GESTURE_SWIPE_RIGHT: u8 = 0x04;
-const GESTURE_SINGLE_TAP: u8 = 0x05;
 const GESTURE_LONG_PRESS: u8 = 0x0C;
 
 static INT_FIRED: AtomicBool = AtomicBool::new(false);
@@ -58,6 +65,11 @@ const DEBOUNCE: Duration = Duration::from_millis(120);
 // while still being far below any deliberate lift-and-retap timing.
 const LIFT_CONFIRM: Duration = Duration::from_millis(150);
 
+// Finger travel (px) from the press-down point beyond which a touch counts as a
+// swipe/drag rather than a tap. Below it we emit a tap on lift; at or above it
+// the tap is suppressed so dragging a scrollable list never selects a row.
+const TAP_SLOP: u16 = 24;
+
 /// What the touch driver delivers to the main loop.
 pub enum TouchEvent {
     Input(InputEvent),
@@ -70,6 +82,12 @@ pub struct Touch<'d> {
     last_event: Instant,
     finger_down: bool,
     lifting_since: Option<Instant>,
+    // Press-down point of the current touch (recorded on first contact, cleared
+    // on confirmed lift). Some(..) while a finger is down.
+    press_origin: Option<(u16, u16)>,
+    // Set once the finger travels past TAP_SLOP or a swipe gesture fires; gates
+    // the tap that would otherwise be emitted on lift.
+    moved: bool,
 }
 
 impl<'d> Touch<'d> {
@@ -98,6 +116,8 @@ impl<'d> Touch<'d> {
             last_event: Instant::now() - DEBOUNCE,
             finger_down: false,
             lifting_since: None,
+            press_origin: None,
+            moved: false,
         }
     }
 
@@ -109,6 +129,15 @@ impl<'d> Touch<'d> {
             if t.elapsed() >= LIFT_CONFIRM {
                 self.finger_down = false;
                 self.lifting_since = None;
+                // Lift confirmed: a finger that pressed and lifted without
+                // travelling past TAP_SLOP and without a swipe gesture is a tap.
+                // Emit it at the press-down point (lift coords are often stale).
+                let origin = self.press_origin.take();
+                if !self.moved {
+                    if let Some((x, y)) = origin {
+                        return self.emit(TouchEvent::BodyTap { x, y });
+                    }
+                }
             }
         }
 
@@ -132,35 +161,40 @@ impl<'d> Touch<'d> {
             if self.finger_down && self.lifting_since.is_none() {
                 self.lifting_since = Some(Instant::now());
             }
-            // Fall through: gestures reported on lift (swipes, single tap)
-            // are processed below.
+            // Fall through: swipe gestures are reported on lift and processed below.
         } else {
             // Finger is still present — cancel any in-progress lift timer.
             self.lifting_since = None;
+            match self.press_origin {
+                Some((ox, oy)) => {
+                    // Track drag distance from the press-down point so a swipe
+                    // the chip never classifies still suppresses the tap.
+                    if x.abs_diff(ox) > TAP_SLOP || y.abs_diff(oy) > TAP_SLOP {
+                        self.moved = true;
+                    }
+                }
+                None => {
+                    // First contact of a new touch: record the origin.
+                    self.press_origin = Some((x, y));
+                    self.moved = false;
+                    self.finger_down = true;
+                }
+            }
         }
 
-        // Named gestures. Swipes and long press are directional/timed gestures
-        // and bypass finger_down. GESTURE_SINGLE_TAP is a plain tap reported
-        // by the chip on lift; gate it the same way as a body tap so it cannot
-        // repeat while a finger is held.
+        // Named gestures. Swipes and long press are directional/timed gestures;
+        // each marks the touch as moved so the trailing lift emits no tap. Taps
+        // are derived from finger travel on lift, not from GESTURE_SINGLE_TAP.
         let named: Option<TouchEvent> = match gesture {
-            GESTURE_SWIPE_UP    => Some(TouchEvent::Input(InputEvent::Up)),
-            GESTURE_SWIPE_DOWN  => Some(TouchEvent::Input(InputEvent::Down)),
-            GESTURE_SWIPE_LEFT  => Some(TouchEvent::Input(InputEvent::Left)),
-            GESTURE_SWIPE_RIGHT => Some(TouchEvent::Input(InputEvent::Right)),
-            GESTURE_LONG_PRESS  => Some(TouchEvent::Input(InputEvent::PowerOffShortcut)),
-            GESTURE_SINGLE_TAP if !self.finger_down => Some(Self::map_tap(x, y)),
-            GESTURE_SINGLE_TAP  => return None,
+            GESTURE_SWIPE_UP    => { self.moved = true; Some(TouchEvent::Input(InputEvent::Down)) }
+            GESTURE_SWIPE_DOWN  => { self.moved = true; Some(TouchEvent::Input(InputEvent::Up)) }
+            GESTURE_SWIPE_LEFT  => { self.moved = true; Some(TouchEvent::Input(InputEvent::Left)) }
+            GESTURE_SWIPE_RIGHT => { self.moved = true; Some(TouchEvent::Input(InputEvent::Right)) }
+            GESTURE_LONG_PRESS  => { self.moved = true; Some(TouchEvent::Input(InputEvent::PowerOffShortcut)) }
             _                   => None,
         };
         if let Some(ev) = named {
             return self.emit(ev);
-        }
-
-        // Plain tap: emit only on the first contact while finger_down is clear.
-        if finger_num > 0 && !self.finger_down {
-            self.finger_down = true;
-            return self.emit(Self::map_tap(x, y));
         }
 
         None
@@ -181,9 +215,5 @@ impl<'d> Touch<'d> {
         }
         self.last_event = Instant::now();
         Some(event)
-    }
-
-    fn map_tap(x: u16, y: u16) -> TouchEvent {
-        TouchEvent::BodyTap { x, y }
     }
 }
