@@ -1,5 +1,8 @@
 //! Faraday ESP32-S3 — air-gapped Solana signer.
 
+use esp_idf_hal::adc::attenuation::DB_12;
+use esp_idf_hal::adc::oneshot::config::{AdcChannelConfig, Calibration};
+use esp_idf_hal::adc::oneshot::{AdcChannelDriver, AdcDriver};
 use esp_idf_hal::delay::FreeRtos;
 use esp_idf_hal::gpio::{PinDriver, Pull};
 use esp_idf_hal::ledc::{config::TimerConfig, LedcDriver, LedcTimerDriver};
@@ -18,8 +21,10 @@ use faraday_core::ui::widgets::list::visible_start;
 use faraday_core::ui::widgets::FOOTER_H;
 use touch::TouchEvent;
 
+mod battery;
 mod camera;
 mod display;
+mod power;
 mod qr_decode;
 mod touch;
 
@@ -92,6 +97,30 @@ fn main() {
     let touch_int = PinDriver::input(peripherals.pins.gpio46, Pull::Up).expect("INT pin init failed");
     let mut touch = touch::Touch::new(i2c, touch_int);
 
+    // BOOT button (GPIO0) as a soft power button — long-press → deep sleep.
+    let mut power_btn = power::PowerButton::new(peripherals.pins.gpio0);
+
+    // External battery monitor. Pack voltage is sampled on GPIO5 (net BAT_ADC),
+    // tapped off the board's R19/R20 = 200k/100k divider (V_pack = 3 × V_adc),
+    // and turned into a charge-level icon (no charging/presence detection is
+    // possible on this board — see battery::BatteryMonitor). If the ADC can't
+    // init we run without a battery icon.
+    let bat_cfg = AdcChannelConfig {
+        attenuation: DB_12,
+        calibration: Calibration::Curve,
+        ..Default::default()
+    };
+    let mut bat_chan = AdcDriver::new(peripherals.adc1)
+        .ok()
+        .and_then(|adc| AdcChannelDriver::new(adc, peripherals.pins.gpio5, &bat_cfg).ok());
+    let mut bat_monitor = battery::BatteryMonitor::new();
+    // Back-date so the first loop iteration samples immediately. `checked_sub`
+    // guards against underflow early in boot (the monotonic clock is still near
+    // zero), in which case the first sample just lands one interval later.
+    let mut last_bat_sample = std::time::Instant::now()
+        .checked_sub(std::time::Duration::from_secs(BATTERY_SAMPLE_SECS))
+        .unwrap_or_else(std::time::Instant::now);
+
     let mut app = App::new(Theme::faraday_320());
 
     // Splash screen
@@ -111,6 +140,10 @@ fn main() {
     // for one display frame to render the highlight before the transition.
     const TAP_CONFIRM_DELAY_MS: u64 = 40;
 
+    // How often to re-sample the battery. The pack voltage moves slowly, so a
+    // couple of seconds keeps the gauge fresh without spinning the ADC.
+    const BATTERY_SAMPLE_SECS: u64 = 2;
+
     // Footer action bar: bottom FOOTER_H strip, divided into three equal
     // thirds — Back (left) / Secondary (middle) / Confirm (right), matching
     // the glyphs drawn by EdgeHints. Applied only when the tap doesn't fall
@@ -123,6 +156,30 @@ fn main() {
     let mut last_draw = std::time::Instant::now();
     let mut pending_tap_confirm: Option<std::time::Instant> = None;
     loop {
+        // BOOT long-press → power off. Wipe the wallet (zeroizing the seed/keys),
+        // show a brief "powering off" frame, then deep-sleep until BOOT is pressed
+        // again. Deep-sleep wake is a full power-cycle reset, so `main()` reruns
+        // from scratch (first screen, RAM cleared) and the USB-Serial/JTAG comes
+        // back flashable. wait_release() keeps GPIO0 high before arming so the
+        // held press doesn't immediately re-wake.
+        if power_btn.long_pressed() {
+            app.wipe_wallet();
+            let _ = screens::draw_powering_off(&mut display, &app.theme);
+            display.flush();
+            FreeRtos::delay_ms(800);
+            power_btn.wait_release();
+            // Drop the board's standby current before sleeping: backlight off,
+            // panel into sleep-in, and the OV2640 powered down + held (it's the
+            // ~30 mA hog — left powered, it would keep draining the battery while
+            // the chip sleeps).
+            display.set_backlight(0);
+            display.sleep();
+            touch.sleep(); // CST816D into deep sleep (see Touch::sleep)
+            drop(camera.take()); // drop the camera handle (sensor soft-standby)
+            power::camera_power_down_hold();
+            power::enter_deep_sleep();
+        }
+
         // Touch checked at 5 ms resolution to catch short INT pulses reliably.
         match touch.poll() {
             Some(TouchEvent::Input(event)) => {
@@ -214,6 +271,27 @@ fn main() {
         }
 
         app.tick();
+
+        // Sample the battery every couple of seconds and surface it to the GUI,
+        // which draws the footer icon. A failed read leaves the last value.
+        if let Some(chan) = bat_chan.as_mut() {
+            if last_bat_sample.elapsed().as_secs() >= BATTERY_SAMPLE_SECS {
+                last_bat_sample = std::time::Instant::now();
+                // Average a handful of quick reads to knock down ADC noise
+                // before the slope detector sees the sample.
+                let mut acc = 0u32;
+                let mut n = 0u32;
+                for _ in 0..8 {
+                    if let Ok(mv) = chan.read() {
+                        acc += mv as u32;
+                        n += 1;
+                    }
+                }
+                if n > 0 {
+                    app.battery = bat_monitor.update((acc / n) as u16);
+                }
+            }
+        }
 
         // Only refresh the display (and pull the heavy preview frame) at ~30 Hz,
         // independently of the much faster touch-poll loop.

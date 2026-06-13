@@ -763,6 +763,15 @@ pub fn should_blank(idle_ms: u64, timeout_ms: u64, on_camera_screen: bool) -> bo
     !on_camera_screen && timeout_ms > 0 && idle_ms >= timeout_ms
 }
 
+/// External-battery state, surfaced as a footer icon on touch builds.
+///
+/// Populated by the platform layer (ESP32 only — the Pi has no battery and
+/// never sets it). `percent` is clamped 0..=100.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BatteryStatus {
+    pub percent: u8,
+}
+
 /// Top-level application.
 pub struct App {
     pub theme: Theme,
@@ -783,6 +792,9 @@ pub struct App {
     pub camera_error: Option<String>,
     pub scanned_qr: Option<Vec<u8>>,
     pub scan_diag: crate::camera::ScanDiagnostics,
+    /// External battery state, or `None` when no battery is connected (or on
+    /// platforms without one). Drawn as a footer icon on touch builds.
+    pub battery: Option<BatteryStatus>,
 }
 
 impl App {
@@ -802,7 +814,27 @@ impl App {
             camera_error: None,
             scanned_qr: None,
             scan_diag: crate::camera::ScanDiagnostics::default(),
+            battery: None,
         }
+    }
+
+    /// True when the current screen uses the middle footer cell (`k2`) for a
+    /// Secondary action — keyboard/word-entry delete, or TX-review paging. The
+    /// battery icon lives in that same cell, so it must yield when a control is
+    /// already there.
+    #[cfg(feature = "touch-ui")]
+    pub(crate) fn footer_has_secondary(&self) -> bool {
+        matches!(
+            self.screen,
+            Screen::CreatePassphraseInput { .. }
+                | Screen::CreatePassphraseConfirm { .. }
+                | Screen::LoadPassphraseInput { .. }
+                | Screen::LoadPassphraseConfirm { .. }
+                | Screen::VerifyBackupPassphrase { .. }
+                | Screen::SignMessageInput { .. }
+                | Screen::LoadEnterWords { .. }
+                | Screen::SignReview { .. }
+        )
     }
 
     pub fn seed_loaded(&self) -> bool {
@@ -829,6 +861,15 @@ impl App {
             selected: 0,
             shown_at: std::time::Instant::now(),
         };
+    }
+
+    /// Drop the in-memory wallet — the same wipe the reset-wallet confirm
+    /// performs — zeroizing the seed/passphrase/keys on drop, and return to the
+    /// main menu. Used by the hardware power-off path so no key material is left
+    /// in RAM while the device sleeps.
+    pub fn wipe_wallet(&mut self) {
+        self.wallet = None;
+        self.screen = Screen::MainMenu { selected: 0 };
     }
 
     pub fn handle_input(&mut self, event: InputEvent) {

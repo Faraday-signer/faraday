@@ -73,7 +73,13 @@ pub struct Touch<'d> {
 }
 
 impl<'d> Touch<'d> {
-    pub fn new(i2c: I2cDriver<'d>, mut int: PinDriver<'d, Input>) -> Self {
+    pub fn new(mut i2c: I2cDriver<'d>, mut int: PinDriver<'d, Input>) -> Self {
+        // Best-effort wake from a prior deep sleep (power-mode register 0xA5 back
+        // to 0x00 = normal). We have no touch-RST line, so if the chip was put in
+        // deep sleep before the device slept and its I2C is still alive, this
+        // brings it back; harmless on a freshly powered chip.
+        let _ = i2c.write(CST816D_ADDR, &[0xA5, 0x00], 30);
+
         int.set_interrupt_type(InterruptType::NegEdge)
             .expect("touch: set interrupt type");
         // SAFETY: closure only writes to a global AtomicBool — no captures,
@@ -158,6 +164,15 @@ impl<'d> Touch<'d> {
         }
 
         None
+    }
+
+    /// Put the CST816D into deep sleep (power-mode register 0xA5 = 0x03) so it
+    /// stops scanning while the device is powered off (~1 mA saved). NOTE: many
+    /// CST816 variants only leave deep sleep on a hardware RST pulse, and this
+    /// board has no touch-RST line we drive — on wake we rely on the best-effort
+    /// I2C wake in `new()`. If the panel is dead after a sleep cycle, that's why.
+    pub fn sleep(&mut self) {
+        let _ = self.i2c.write(CST816D_ADDR, &[0xA5, 0x03], 30);
     }
 
     fn emit(&mut self, event: TouchEvent) -> Option<TouchEvent> {

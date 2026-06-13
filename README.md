@@ -93,6 +93,7 @@ Total cost: **~$35**. Any Pi works — including ones with WiFi, if you already 
 | Display | 2.0" IPS LCD | 240×320, ST7789T3 via SPI |
 | Input | CST816D capacitive touch | Tap zones + swipe gestures |
 | Camera | OV2640 | QR code scanning + entropy capture |
+| Power | Single-cell Li-ion (JST) | Charge-level gauge via ADC; BOOT button for on/off |
 
 Total cost: **~$30**. A single self-contained board with display, touch, and camera. WiFi/BT radios exist on the chip but are never initialized in Faraday firmware — the binary simply doesn't call the WiFi driver. For maximum paranoia, the Pi Zero 1.3 remains the gold standard (no radio hardware at all).
 
@@ -262,7 +263,22 @@ espflash flash --monitor C:\temp\faraday-esp32.bin
 | Tap bottom bar — left third | Back |
 | Tap bottom bar — center | Secondary action |
 | Tap bottom bar — right third | Confirm |
-| Long press (>1.5s) | Power off |
+| Long press (>1.5s) | Wipe wallet (kill switch) |
+
+### Battery & power
+
+The ESP32-S3 board runs off a single-cell Li-ion pack on its JST connector (the Pi build has no battery). Two power features are specific to this target.
+
+**Charge gauge.** Pack voltage is sampled on GPIO5 (net `BAT_ADC`) through the board's 200k/100k divider (`V_pack = 3 × V_adc`) and mapped to a 0–100% charge icon in the footer. The gauge is **level-only**: this board exposes no charge-status line and no fuel-gauge IC, so charging and battery presence can't be told from voltage alone — on USB a full pack and an empty connector read the same. A fuel gauge such as the MAX17048 would be needed for a truthful charging/percentage readout. See [`esp32/src/battery.rs`](esp32/src/battery.rs).
+
+**Power button (on/off).** The BOOT button (GPIO0) doubles as a soft power button:
+
+| Action | Result |
+|--------|--------|
+| Long-press BOOT (≥1.5s) while on | Wipes the in-memory wallet, then deep-sleeps — "off" |
+| Press BOOT while asleep | Wakes via a full reset, boots fresh to the first screen — "on" |
+
+Power-off wipes the seed/keys from RAM *before* sleeping, so nothing sensitive is retained while the device is off. Wake is a deep-sleep power-cycle reset, so the firmware reboots cleanly (RAM cleared) and the USB-Serial/JTAG re-initializes — the board stays flashable over USB after an off→on cycle without needing the physical RESET button. See [`esp32/src/power.rs`](esp32/src/power.rs).
 
 ## `just` commands
 

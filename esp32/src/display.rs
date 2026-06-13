@@ -222,6 +222,13 @@ impl<'d> Display<'d> {
         }
     }
 
+    /// Put the panel into its lowest-power state before the device sleeps:
+    /// display off (0x28) + sleep-in (0x10). The next boot re-runs `init()`.
+    pub fn sleep(&mut self) {
+        self.command(0x28); // display off
+        self.command(0x10); // sleep in
+    }
+
     /// Set backlight brightness. `pct` is 0–100; 0 disables the channel.
     pub fn set_backlight(&mut self, pct: u8) {
         if pct == 0 {

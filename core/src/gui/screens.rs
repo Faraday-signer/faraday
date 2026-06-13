@@ -44,8 +44,23 @@ const MENU_ITEMS: [MenuItem; 5] = [
 ];
 
 impl App {
-    /// Draw the current screen.
+    /// Draw the current screen, then overlay any platform chrome (e.g. the
+    /// battery icon) on top.
     pub fn draw<D: DrawTarget<Color = Rgb565>>(&self, display: &mut D) -> Result<(), D::Error> {
+        self.draw_screen(display)?;
+        #[cfg(feature = "touch-ui")]
+        if let Some(battery) = self.battery {
+            // The icon sits in the middle footer cell. Skip it where that cell
+            // is already a Secondary control, and on the boot splash (no footer).
+            if !matches!(self.screen, Screen::Splash) && !self.footer_has_secondary() {
+                draw_battery(display, &self.theme, battery)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Draw the current screen.
+    fn draw_screen<D: DrawTarget<Color = Rgb565>>(&self, display: &mut D) -> Result<(), D::Error> {
         match &self.screen {
             Screen::Splash => draw_boot_splash(display, &self.theme),
 
@@ -361,6 +376,62 @@ impl App {
 
 /// Boot splash: logo centered on the screen, no animation. Shown for the
 /// ~2 s power-on beat before the menu comes up.
+/// Draw the external-battery indicator in the middle footer cell: an outlined
+/// battery whose interior fills proportionally to charge (red at ≤20%, green
+/// otherwise).
+#[cfg(feature = "touch-ui")]
+fn draw_battery<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    theme: &Theme,
+    status: crate::gui::app::BatteryStatus,
+) -> Result<(), D::Error> {
+    let footer_h = crate::ui::widgets::FOOTER_H as i32;
+    // Centre of the middle footer third.
+    let cx = theme.width as i32 / 2;
+    let cy = theme.height as i32 - footer_h / 2;
+
+    const BODY_W: i32 = 30;
+    const BODY_H: i32 = 16;
+    const NUB_W: i32 = 3;
+    const NUB_H: i32 = 6;
+    const PAD: i32 = 2;
+
+    let x = cx - (BODY_W + NUB_W) / 2;
+    let y = cy - BODY_H / 2;
+
+    // Outlined body.
+    Rectangle::new(Point::new(x, y), Size::new(BODY_W as u32, BODY_H as u32))
+        .into_styled(PrimitiveStyle::with_stroke(theme.text, 1))
+        .draw(display)?;
+    // Positive terminal nub on the right.
+    Rectangle::new(
+        Point::new(x + BODY_W, cy - NUB_H / 2),
+        Size::new(NUB_W as u32, NUB_H as u32),
+    )
+    .into_styled(PrimitiveStyle::with_fill(theme.text))
+    .draw(display)?;
+
+    // Proportional charge fill: red when low (≤20%), green otherwise.
+    let pct = status.percent.min(100) as i32;
+    let max_fill = BODY_W - 2 * PAD;
+    let fill_w = max_fill * pct / 100;
+    let fill_color = if pct <= 20 {
+        theme.danger
+    } else {
+        Rgb565::new(4, 58, 8) // green
+    };
+    if fill_w > 0 {
+        Rectangle::new(
+            Point::new(x + PAD, y + PAD),
+            Size::new(fill_w as u32, (BODY_H - 2 * PAD) as u32),
+        )
+        .into_styled(PrimitiveStyle::with_fill(fill_color))
+        .draw(display)?;
+    }
+
+    Ok(())
+}
+
 pub fn draw_boot_splash<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     theme: &Theme,
@@ -654,6 +725,31 @@ pub fn draw_computing<D: DrawTarget<Color = Rgb565>>(
         counter: None,
         right_label: None,
         title: Some("KEY DERIVATION"),
+        subtitle: None,
+        body_lines: &body,
+        rows: &[],
+        title_danger: false,
+        edge_hints: EdgeHints::new(),
+    }
+    .draw(display, theme)
+}
+
+/// Shown briefly when the user long-presses BOOT to power the device off, just
+/// before it enters deep sleep.
+pub fn draw_powering_off<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    theme: &Theme,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{EdgeHints, HeaderKind};
+    use crate::ui::screens::CardScreen;
+
+    let body = ["Powering off.", "", "Please wait…"];
+
+    CardScreen {
+        header: HeaderKind::Title("POWER OFF"),
+        counter: None,
+        right_label: None,
+        title: Some("SHUTTING DOWN"),
         subtitle: None,
         body_lines: &body,
         rows: &[],
