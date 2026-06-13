@@ -3232,7 +3232,12 @@ fn draw_word_picker_new<D: DrawTarget<Color = Rgb565>>(
                 continue;
             };
             let is_valid = valid[(ch as u8 - b'a') as usize];
+            // Touch builds have no cursor: letters are selected by tapping
+            // them directly, so nothing is highlighted.
+            #[cfg(not(feature = "touch-ui"))]
             let is_selected = r == picker.cursor_row && c == picker.cursor_col;
+            #[cfg(feature = "touch-ui")]
+            let is_selected = false;
 
             if is_selected && is_valid {
                 Rectangle::new(
@@ -3269,6 +3274,14 @@ fn draw_word_picker_new<D: DrawTarget<Color = Rgb565>>(
         Point::new(theme.width as i32 - GUTTER_W as i32, theme.header_h as i32),
         Size::new(GUTTER_W, theme.height - theme.header_h),
     );
+    // Touch builds drop the Check (confirm-letter) cell: letters are committed
+    // by tapping them, so the footer carries only Delete and Back.
+    #[cfg(feature = "touch-ui")]
+    EdgeHints::new()
+        .k2(EdgeIcon::Delete)
+        .k3(EdgeIcon::ArrowLeft)
+        .draw(display, &theme, gutter)?;
+    #[cfg(not(feature = "touch-ui"))]
     EdgeHints::new()
         .k1(EdgeIcon::Check)
         .k2(EdgeIcon::Delete)

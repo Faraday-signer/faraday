@@ -183,10 +183,19 @@ fn main() {
         // Touch checked at 5 ms resolution to catch short INT pulses reliably.
         match touch.poll() {
             Some(TouchEvent::Input(event)) => {
-                // Any directional gesture or footer tap cancels a pending
-                // tap-confirm so the two don't stack.
-                pending_tap_confirm = None;
-                app.handle_input(event);
+                // The word-entry grid is tap-only: swipes (which arrive as
+                // directional inputs) must not move a cursor there. Drop them
+                // on that screen; every other screen keeps swipe navigation.
+                let is_swipe = matches!(
+                    event,
+                    InputEvent::Up | InputEvent::Down | InputEvent::Left | InputEvent::Right
+                );
+                if !(is_swipe && app.on_word_picker()) {
+                    // Any directional gesture or footer tap cancels a pending
+                    // tap-confirm so the two don't stack.
+                    pending_tap_confirm = None;
+                    app.handle_input(event);
+                }
             }
             Some(TouchEvent::BodyTap { x, y }) => {
                 if app.tap_char_grid(x, y) {
@@ -215,11 +224,15 @@ fn main() {
                     } else {
                         InputEvent::Confirm
                     };
-                    if event == InputEvent::Confirm && app.confirm_will_derive() {
-                        let _ = screens::draw_computing(&mut display, &app.theme);
-                        display.flush();
+                    // The word picker has no Check cell (letters are tap-only),
+                    // so a tap on the right third must not commit a letter.
+                    if !(event == InputEvent::Confirm && app.on_word_picker()) {
+                        if event == InputEvent::Confirm && app.confirm_will_derive() {
+                            let _ = screens::draw_computing(&mut display, &app.theme);
+                            display.flush();
+                        }
+                        app.handle_input(event);
                     }
-                    app.handle_input(event);
                 } else if let Some(layout) = app.tap_layout() {
                     // List screen: move selection then fire Confirm after a
                     // short delay so the highlight is visible for one frame.
@@ -248,10 +261,11 @@ fn main() {
                     // keeps Confirm reserved for signing.
                     pending_tap_confirm = None;
                     app.handle_input(InputEvent::Secondary);
-                } else {
+                } else if !app.on_word_picker() {
                     // Read-only / advance-only screen (word display, card
                     // confirm, QR view, about, errors…): tap anywhere fires
-                    // Confirm so the user can page forward.
+                    // Confirm so the user can page forward. Excludes the word
+                    // picker, where only a tap on a letter cell selects.
                     pending_tap_confirm = None;
                     app.handle_input(InputEvent::Confirm);
                 }

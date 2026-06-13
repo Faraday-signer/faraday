@@ -1046,6 +1046,13 @@ impl App {
         matches!(self.screen, Screen::SignReview { .. })
     }
 
+    /// True while the BIP39 word-entry alphabet grid is showing. Touch builds
+    /// use this to keep that screen tap-only: swipes don't move the cursor and
+    /// taps off the letter cells don't commit anything.
+    pub fn on_word_picker(&self) -> bool {
+        matches!(self.screen, Screen::LoadEnterWords { .. })
+    }
+
     /// Move the cursor to `row` on the current screen without triggering a
     /// screen transition. Used by touch-screen platforms to highlight the
     /// tapped row before firing a `Confirm` event.
