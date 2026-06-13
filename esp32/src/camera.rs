@@ -357,7 +357,28 @@ unsafe fn init_camera() -> Result<(), String> {
     cfg.grab_mode    = cam::camera_grab_mode_t_CAMERA_GRAB_LATEST;
     cfg.fb_location  = cam::camera_fb_location_t_CAMERA_FB_IN_PSRAM;
 
-    let ret = cam::esp_camera_init(&cfg);
+    // The SCCB probe occasionally fails on a cold boot with 0x106
+    // (ESP_ERR_NOT_SUPPORTED) — the sensor isn't ready to report its chip-ID the
+    // instant the driver powers it up, so the read returns garbage and no known
+    // sensor matches ("Detected camera not supported"). A power-cycle fixes it
+    // (which is why a hard reset recovers), so retry a couple of times here:
+    // deinit (which drives PWDN high again on the next init) and pause to let the
+    // sensor settle before re-probing. This only runs at cold init (the heap is
+    // fresh, so the deinit/init churn the module note warns about isn't a concern
+    // yet) and short-circuits on the first success.
+    const MAX_INIT_TRIES: u32 = 3;
+    let mut ret = esp_idf_sys::ESP_OK;
+    for attempt in 1..=MAX_INIT_TRIES {
+        ret = cam::esp_camera_init(&cfg);
+        if ret == esp_idf_sys::ESP_OK {
+            break;
+        }
+        log::warn!(
+            "esp_camera_init attempt {attempt}/{MAX_INIT_TRIES} failed: {ret:#010x}"
+        );
+        cam::esp_camera_deinit();
+        thread::sleep(Duration::from_millis(100));
+    }
     if ret != esp_idf_sys::ESP_OK {
         return Err(format!("esp_camera_init failed: {ret:#010x}"));
     }

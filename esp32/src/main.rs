@@ -311,11 +311,19 @@ fn main() {
                     app.camera_error = Some(e);
                 }
             }
-        } else if !wants_camera && camera.is_some() {
-            camera = None;
-            app.latest_frame = None;
+        } else if !wants_camera {
+            // Leaving any camera screen tears the handle down *and* clears a
+            // latched open error. Clearing must not be gated on `camera.is_some()`:
+            // a failed open() leaves `camera` None but `camera_error` Some, so
+            // gating here would strand the error forever (line 303's guard then
+            // blocks every retry) — the user would have to power-cycle. Always
+            // clearing lets re-entering the screen retry the open.
+            if camera.is_some() {
+                camera = None;
+                app.latest_frame = None;
+                app.scan_diag = faraday_core::camera::ScanDiagnostics::default();
+            }
             app.camera_error = None;
-            app.scan_diag = faraday_core::camera::ScanDiagnostics::default();
         }
         let mut camera_died = false;
         if let Some(cam) = &camera {

@@ -3893,6 +3893,19 @@ fn draw_scan_overlay<D: DrawTarget<Color = Rgb565>>(
             y += 16;
             remaining = &remaining[take..];
         }
+
+        // Back affordance — the same K3/ArrowLeft hint the live scan branch
+        // draws, so the user can leave a camera-error screen. On touch builds
+        // this renders as the bottom action bar (left third = Back, mapped to
+        // InputEvent::Back by the footer tap-zone); on key builds it's the
+        // right-gutter K3 hint. Without it the error card had no way out.
+        let gutter = Rectangle::new(
+            Point::new(theme.width as i32 - GUTTER_W as i32, theme.header_h as i32),
+            Size::new(GUTTER_W, theme.height - theme.header_h),
+        );
+        EdgeHints::new()
+            .k3(EdgeIcon::ArrowLeft)
+            .draw(display, &theme, gutter)?;
         return Ok(());
     }
 
