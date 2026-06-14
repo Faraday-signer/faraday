@@ -88,6 +88,14 @@ pub struct Touch<'d> {
     // Set once the finger travels past TAP_SLOP or a swipe gesture fires; gates
     // the tap that would otherwise be emitted on lift.
     moved: bool,
+    // Throttles the repeat gesture reports the CST816D emits while a swipe is
+    // held. `swipe_repeat` is the minimum spacing between successive steps
+    // within one contact (`None` = discrete: a single step per physical swipe).
+    // `last_gesture` is when the last step fired. Both reset on press-down so a
+    // fresh swipe always steps immediately. Set per-screen by the main loop via
+    // `set_swipe_repeat`.
+    swipe_repeat: Option<Duration>,
+    last_gesture: Option<Instant>,
 }
 
 impl<'d> Touch<'d> {
@@ -118,7 +126,17 @@ impl<'d> Touch<'d> {
             lifting_since: None,
             press_origin: None,
             moved: false,
+            swipe_repeat: None,
+            last_gesture: None,
         }
+    }
+
+    /// Set the held-swipe repeat spacing for the current screen. `Some(interval)`
+    /// lets a held swipe keep stepping at most once per `interval` (continuous
+    /// scrolling, e.g. menus); `None` latches it to one step per physical swipe
+    /// (the paper-backup walkthrough). Applied on the next `poll`.
+    pub fn set_swipe_repeat(&mut self, repeat: Option<Duration>) {
+        self.swipe_repeat = repeat;
     }
 
     pub fn poll(&mut self) -> Option<TouchEvent> {
@@ -177,6 +195,7 @@ impl<'d> Touch<'d> {
                     // First contact of a new touch: record the origin.
                     self.press_origin = Some((x, y));
                     self.moved = false;
+                    self.last_gesture = None;
                     self.finger_down = true;
                 }
             }
@@ -194,6 +213,19 @@ impl<'d> Touch<'d> {
             _                   => None,
         };
         if let Some(ev) = named {
+            // Throttle held-swipe repeats: the first gesture of a contact always
+            // fires; later reports fire only once `swipe_repeat` has elapsed
+            // (never, when discrete) so a held swipe scrolls at a steady pace
+            // instead of racing at the poll rate.
+            let allow = match (self.swipe_repeat, self.last_gesture) {
+                (_, None) => true,
+                (None, Some(_)) => false,
+                (Some(interval), Some(t)) => t.elapsed() >= interval,
+            };
+            if !allow {
+                return None;
+            }
+            self.last_gesture = Some(Instant::now());
             return self.emit(ev);
         }
 

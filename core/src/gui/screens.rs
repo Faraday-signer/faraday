@@ -172,7 +172,7 @@ impl App {
                 // Seed-QR compare screen. `quiet: 2` (instead of the
                 // standard 4) makes the matrix ~10% larger so side-by-side
                 // visual check vs. the hand-transcribed paper is easier.
-                draw_fullscreen_qr(display, &self.theme, compact_data, crate::qr::encode_qr::QrEcLevel::L, 2)
+                draw_export_full_qr(display, &self.theme, compact_data)
             }
             Screen::ExportSeedQrBlock {
                 compact_data,
@@ -333,7 +333,7 @@ impl App {
 
             // Verify backup flow
             Screen::VerifyBackupScan => {
-                #[cfg(any(feature = "_desktop_sim", target_os = "linux"))]
+                #[cfg(any(feature = "_desktop_sim", target_os = "linux", feature = "touch-ui"))]
                 {
                     draw_scan_overlay(
                         display,
@@ -348,7 +348,7 @@ impl App {
                 }
                 // Fallback for `simulator_no_cam` builds (window without nokhwa) on
                 // non-Linux hosts: no live camera, so prompt the user instead.
-                #[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
+                #[cfg(not(any(feature = "_desktop_sim", target_os = "linux", feature = "touch-ui")))]
                 {
                     draw_message(
                         display,
@@ -3541,6 +3541,43 @@ fn draw_fullscreen_qr<D: DrawTarget<Color = Rgb565>>(
     Qr { data, ec, quiet }.draw(display, &theme, screen)
 }
 
+/// Final SeedQR review (side-by-side compare against the hand-transcribed
+/// paper). On key builds this is just the full-screen QR. On touch builds it
+/// adds the bottom action bar — Back returns to the transcribe walkthrough,
+/// Accept advances to the verify-by-scan step — since there are no physical
+/// keys to leave the screen otherwise.
+fn draw_export_full_qr<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    theme: &Theme,
+    data: &[u8],
+) -> Result<(), D::Error> {
+    let ec = crate::qr::encode_qr::QrEcLevel::L;
+    let quiet = 2u32;
+
+    #[cfg(not(feature = "touch-ui"))]
+    {
+        draw_fullscreen_qr(display, theme, data, ec, quiet)
+    }
+
+    #[cfg(feature = "touch-ui")]
+    {
+        use crate::ui::layout::split_bottom;
+        use crate::ui::widgets::{EdgeHints, EdgeIcon, Qr, FOOTER_H};
+
+        let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
+        display.fill_solid(&screen, theme.bg)?;
+
+        // QR fills the body above the action bar; the bar carries Back / Accept.
+        let (body, _footer) = split_bottom(screen, FOOTER_H as i32);
+        Qr { data, ec, quiet }.draw(display, &theme, body)?;
+        EdgeHints::new()
+            .k1(EdgeIcon::Check)
+            .k3(EdgeIcon::ArrowLeft)
+            .draw(display, &theme, screen)?;
+        Ok(())
+    }
+}
+
 /// Passphrase mismatch error card. Any key retries the input.
 fn draw_passphrase_mismatch<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
@@ -3725,7 +3762,7 @@ fn draw_dice_rolls<D: DrawTarget<Color = Rgb565>>(
     let start = rolls.len().saturating_sub(20);
     let recent: String = rolls[start..]
         .iter()
-        .map(|r| alloc::format!("{}", r + 1))
+        .map(|r| alloc::format!("{}", r))
         .collect();
     draw_entropy_picker(
         display,

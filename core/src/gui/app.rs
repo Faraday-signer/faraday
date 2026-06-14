@@ -1112,6 +1112,68 @@ impl App {
         matches!(self.screen, Screen::LoadEnterWords { .. })
     }
 
+    /// True on screens where a held swipe must not run on — each step is a
+    /// deliberate action. Today only the paper-backup transcribe walkthrough,
+    /// where every QR piece has to be copied before advancing. Everywhere else
+    /// (menus, coin/dice, word screens) a held swipe scrolls continuously, paced
+    /// by the touch driver. Touch builds feed this to the driver each frame.
+    pub fn swipe_discrete(&self) -> bool {
+        matches!(self.screen, Screen::ExportSeedQrBlock { .. })
+    }
+
+    /// True on the coin-flip / dice-roll entropy screens, whose value grid is
+    /// tap-selectable on touch builds. The platform loop routes body taps here
+    /// (via `tap_picker`) instead of the read-only Confirm fallback, so a stray
+    /// tap off the grid can't commit the current value.
+    pub fn is_picker_screen(&self) -> bool {
+        matches!(
+            self.screen,
+            Screen::CreateCoinFlips { .. } | Screen::CreateDiceRolls { .. }
+        )
+    }
+
+    /// Map a body tap to a coin/dice value cell. On the entropy-picker screens
+    /// this moves `selected` to the tapped value and returns `true` so the
+    /// caller can fire `Confirm` to commit it. Returns `false` for taps outside
+    /// the value grid (or on non-picker screens), which the caller absorbs.
+    ///
+    /// The geometry mirrors `draw_entropy_picker`: below the header sit a 16px
+    /// progress band and a 22px recent-history strip, then the value grid fills
+    /// the rest of the body above the bottom action bar.
+    pub fn tap_picker(&mut self, x: u16, y: u16) -> bool {
+        use crate::ui::widgets::{FOOTER_H, GUTTER_W};
+        let (cols, rows, choices) = match &self.screen {
+            Screen::CreateCoinFlips { .. } => (1usize, 2usize, 2usize),
+            Screen::CreateDiceRolls { .. } => (3usize, 2usize, 6usize),
+            _ => return false,
+        };
+        let header_h = self.theme.header_h as u16;
+        let footer_reserve = (self.theme.footer_h.max(FOOTER_H)) as u16;
+        let picker_top = header_h + 16 + 22;
+        let picker_bottom = self.theme.height as u16 - footer_reserve;
+        let picker_w = self.theme.width as u16 - GUTTER_W as u16;
+        if y < picker_top || y >= picker_bottom || x >= picker_w {
+            return false;
+        }
+        let cell_w = picker_w / cols as u16;
+        let cell_h = (picker_bottom - picker_top) / rows as u16;
+        if cell_w == 0 || cell_h == 0 {
+            return false;
+        }
+        let col = ((x / cell_w) as usize).min(cols - 1);
+        let row = (((y - picker_top) / cell_h) as usize).min(rows - 1);
+        let idx = row * cols + col;
+        if idx >= choices {
+            return false;
+        }
+        match &mut self.screen {
+            Screen::CreateCoinFlips { selected, .. } => *selected = idx,
+            Screen::CreateDiceRolls { selected, .. } => *selected = idx,
+            _ => return false,
+        }
+        true
+    }
+
     /// Move the cursor to `row` on the current screen without triggering a
     /// screen transition. Used by touch-screen platforms to highlight the
     /// tapped row before firing a `Confirm` event.

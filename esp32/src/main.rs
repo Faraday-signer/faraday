@@ -123,22 +123,17 @@ fn main() {
 
     let mut app = App::new(Theme::faraday_320());
 
-    // Splash screen
-    let _ = app.draw(&mut display);
-    display.flush();
-    let splash_start = std::time::Instant::now();
-    while splash_start.elapsed() < std::time::Duration::from_secs(2) {
-        if touch.poll().is_some() {
-            break;
-        }
-        FreeRtos::delay_ms(33);
-    }
+    // No splash screen — boot straight into the main menu.
     app.enter_main_menu();
     app.last_activity = std::time::Instant::now();
 
     // Delay (ms) between tapping a list row and firing Confirm — long enough
     // for one display frame to render the highlight before the transition.
     const TAP_CONFIRM_DELAY_MS: u64 = 40;
+
+    // Held-swipe scroll pacing on continuous screens (menus, coin/dice, word
+    // screens): one step per this interval, i.e. ~3 positions/second.
+    const SWIPE_REPEAT_MS: u64 = 300;
 
     // How often to re-sample the battery. The pack voltage moves slowly, so a
     // couple of seconds keeps the gauge fresh without spinning the ADC.
@@ -179,6 +174,14 @@ fn main() {
             power::camera_power_down_hold();
             power::enter_deep_sleep();
         }
+
+        // Held swipes scroll continuously (paced) on most screens, but step one
+        // piece at a time through the paper-backup walkthrough.
+        touch.set_swipe_repeat(if app.swipe_discrete() {
+            None
+        } else {
+            Some(std::time::Duration::from_millis(SWIPE_REPEAT_MS))
+        });
 
         // Touch checked at 5 ms resolution to catch short INT pulses reliably.
         match touch.poll() {
@@ -250,6 +253,14 @@ fn main() {
                         app.set_selected(row);
                     }
                     pending_tap_confirm = Some(std::time::Instant::now());
+                } else if app.is_picker_screen() {
+                    // Coin-flip / dice-roll value grid: tapping a cell selects
+                    // that value, then fires Confirm (after the short highlight
+                    // delay) to commit it. Taps off the grid are absorbed so a
+                    // stray tap can't commit the current value.
+                    if app.tap_picker(x, y) {
+                        pending_tap_confirm = Some(std::time::Instant::now());
+                    }
                 } else if app.tap_pages_review() {
                     // TX review: a body tap pages forward through the
                     // structured review (same as a down/right swipe). The SIGN

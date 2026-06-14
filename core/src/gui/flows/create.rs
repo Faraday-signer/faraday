@@ -728,6 +728,20 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     block_index = block_index.saturating_sub(blocks_per_side);
                 }
                 InputEvent::Back => {
+                    // Touch: the Back button steps one piece back through the
+                    // transcribe walkthrough, dropping out to the menu only from
+                    // the first piece. Key builds go straight to the menu (K3).
+                    #[cfg(feature = "touch-ui")]
+                    if block_index > 0 {
+                        block_index -= 1;
+                    } else {
+                        return Screen::ExportSeedQrMenu {
+                            compact_data,
+                            selected: 1,
+                            from_settings,
+                        };
+                    }
+                    #[cfg(not(feature = "touch-ui"))]
                     return Screen::ExportSeedQrMenu {
                         compact_data,
                         selected: 1,
