@@ -61,6 +61,9 @@ impl App {
 
     /// Draw the current screen.
     fn draw_screen<D: DrawTarget<Color = Rgb565>>(&self, display: &mut D) -> Result<(), D::Error> {
+        // 1 Hz text-box cursor blink (500 ms on / 500 ms off), phased off the
+        // never-reset animation anchor. Only the touch keyboard reads it.
+        let cursor_on = (self.splash_anim_start.elapsed().as_millis() / 500) % 2 == 0;
         match &self.screen {
             Screen::Splash => draw_boot_splash(display, &self.theme),
 
@@ -129,10 +132,10 @@ impl App {
                 draw_passphrase_prompt(display, &self.theme, *selected)
             }
             Screen::CreatePassphraseInput { grid, .. } => {
-                draw_passphrase_grid(display, &self.theme, grid, "PASSPHRASE")
+                draw_passphrase_grid(display, &self.theme, grid, "PASSPHRASE", cursor_on)
             }
             Screen::CreatePassphraseConfirm { grid, .. } => {
-                draw_passphrase_grid(display, &self.theme, grid, "CONFIRM")
+                draw_passphrase_grid(display, &self.theme, grid, "CONFIRM", cursor_on)
             }
             Screen::CreatePassphraseMismatch { .. } => {
                 draw_passphrase_mismatch(display, &self.theme, self.seed_loaded())
@@ -211,10 +214,10 @@ impl App {
                 draw_passphrase_prompt(display, &self.theme, *selected)
             }
             Screen::LoadPassphraseInput { grid, .. } => {
-                draw_passphrase_grid(display, &self.theme, grid, "PASSPHRASE")
+                draw_passphrase_grid(display, &self.theme, grid, "PASSPHRASE", cursor_on)
             }
             Screen::LoadPassphraseConfirm { grid, .. } => {
-                draw_passphrase_grid(display, &self.theme, grid, "CONFIRM")
+                draw_passphrase_grid(display, &self.theme, grid, "CONFIRM", cursor_on)
             }
             Screen::LoadPassphraseMismatch { .. } => {
                 draw_passphrase_mismatch(display, &self.theme, self.seed_loaded())
@@ -306,7 +309,7 @@ impl App {
                 scroll,
                 ..
             } => draw_message_review(display, &self.theme, message_bytes, *scroll, self.seed_loaded()),
-            Screen::SignMessageInput { grid } => draw_passphrase_grid(display, &self.theme, grid, "SIGN MSG"),
+            Screen::SignMessageInput { grid } => draw_passphrase_grid(display, &self.theme, grid, "SIGN MSG", cursor_on),
             Screen::SignMessageResult { signature_hex } => draw_fullscreen_qr(
                 display,
                 &self.theme,
@@ -358,7 +361,7 @@ impl App {
             }
             Screen::VerifyBackupSeedMismatch => draw_verify_backup_seed_mismatch(display, &self.theme),
             Screen::VerifyBackupPassphrase { grid } => {
-                draw_passphrase_grid(display, &self.theme, grid, "PASSPHRASE")
+                draw_passphrase_grid(display, &self.theme, grid, "PASSPHRASE", cursor_on)
             }
             Screen::VerifyBackupPassphraseMismatch => {
                 draw_verify_backup_passphrase_mismatch(display, &self.theme)
@@ -800,7 +803,17 @@ fn draw_passphrase_grid<D: DrawTarget<Color = Rgb565>>(
     theme: &Theme,
     grid: &crate::gui::app::CharGrid,
     title: &str,
+    cursor_on: bool,
 ) -> Result<(), D::Error> {
+    // Touch builds use the split QWERTY on-screen keyboard instead of the
+    // physical-key navigation grid.
+    #[cfg(feature = "touch-ui")]
+    {
+        crate::gui::touch_keyboard::draw(display, theme, grid, title, cursor_on)
+    }
+    #[cfg(not(feature = "touch-ui"))]
+    {
+    let _ = cursor_on; // cursor blink is a touch-keyboard concern only
     use crate::gui::app::{GridAction, GRID_COLS};
     use crate::ui::layout::split_top;
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, FOOTER_H, GUTTER_W};
@@ -911,9 +924,11 @@ fn draw_passphrase_grid<D: DrawTarget<Color = Rgb565>>(
         )?;
 
     Ok(())
+    }
 }
 
 /// Preview band for the passphrase grid: `••••• 5 CHARS` style.
+#[cfg(not(feature = "touch-ui"))]
 fn draw_preview<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     theme: &crate::ui::Theme,

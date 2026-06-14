@@ -198,17 +198,13 @@ fn main() {
                 }
             }
             Some(TouchEvent::BodyTap { x, y }) => {
-                if app.tap_char_grid(x, y) {
-                    // Char grid (passphrase / message entry): the action row
-                    // (SPC CAPS DEL DONE) lives at the bottom of the grid and
-                    // physically overlaps the footer zone — check this first so
-                    // action-row taps are never shadowed by the footer mapping.
+                if app.tap_keyboard(x, y) {
+                    // On-screen keyboard (passphrase / message entry): a tap
+                    // on a key mutates the buffer directly. Accept and Back
+                    // live in the footer action bar, so no Confirm is fired
+                    // here; taps in the keyboard body above the footer (text
+                    // box / slider) are absorbed.
                     pending_tap_confirm = None;
-                    if app.confirm_will_derive() {
-                        let _ = screens::draw_computing(&mut display, &app.theme);
-                        display.flush();
-                    }
-                    app.handle_input(InputEvent::Confirm);
                 } else if app.tap_word_grid(x, y) {
                     // Word-entry alphabet grid: same reasoning as char grid.
                     pending_tap_confirm = None;

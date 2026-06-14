@@ -252,7 +252,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         Screen::SignMessageInput { mut grid } => {
             let done = grid.handle_input(event);
             if done {
-                if grid.text.is_empty() && event == InputEvent::Back {
+                if event == InputEvent::Back && (cfg!(feature = "touch-ui") || grid.text.is_empty()) {
                     return Screen::SignScanTx;
                 }
                 if let Some(wallet) = &app.wallet {

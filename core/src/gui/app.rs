@@ -335,6 +335,10 @@ pub struct CharGrid {
     pub row: usize,
     pub col: usize,
     pub caps: bool,
+    /// Active half/page of the touch on-screen keyboard. Unused on
+    /// physical-key builds (those navigate `row`/`col` instead).
+    #[cfg(feature = "touch-ui")]
+    pub page: crate::gui::touch_keyboard::KbPage,
 }
 
 pub const GRID_CHARS: [[char; 10]; 5] = [
@@ -363,6 +367,39 @@ impl CharGrid {
             row: 0,
             col: 0,
             caps: false,
+            #[cfg(feature = "touch-ui")]
+            page: crate::gui::touch_keyboard::KbPage::Left,
+        }
+    }
+
+    /// Apply a touch on-screen keyboard key press to the buffer / state.
+    /// Letters honor the caps-lock; `Sym`/`Abc` switch pages; `Shift`
+    /// toggles caps (locked until pressed again).
+    #[cfg(feature = "touch-ui")]
+    pub fn apply_key(&mut self, key: crate::gui::touch_keyboard::Key) {
+        use crate::gui::touch_keyboard::{Key, KbPage};
+        match key {
+            Key::Char(c) => {
+                if self.text.len() < 64 {
+                    let c = if self.caps && c.is_ascii_lowercase() {
+                        c.to_ascii_uppercase()
+                    } else {
+                        c
+                    };
+                    self.text.push(c);
+                }
+            }
+            Key::Space => {
+                if self.text.len() < 64 {
+                    self.text.push(' ');
+                }
+            }
+            Key::Backspace => {
+                self.text.pop();
+            }
+            Key::Shift => self.caps = !self.caps,
+            Key::Sym => self.page = KbPage::Symbols,
+            Key::Abc => self.page = KbPage::Left,
         }
     }
 
@@ -398,6 +435,27 @@ impl CharGrid {
     }
 
     pub fn handle_input(&mut self, event: InputEvent) -> bool {
+        #[cfg(feature = "touch-ui")]
+        {
+            use crate::gui::touch_keyboard::KbPage;
+            match event {
+                // Swipes flip between the two QWERTY halves (and out of the
+                // symbols page). The active page is preserved on `self`.
+                InputEvent::Left => self.page = KbPage::Right,
+                InputEvent::Right => self.page = KbPage::Left,
+                InputEvent::Up | InputEvent::Down => {}
+                // Accept lives in the footer: commit and let the flow layer
+                // advance. Back also reports done; the flow navigates back.
+                InputEvent::Confirm | InputEvent::Back => return true,
+                InputEvent::Secondary => {
+                    self.text.pop();
+                }
+                InputEvent::PowerOffShortcut => {}
+            }
+            return false;
+        }
+        #[cfg(not(feature = "touch-ui"))]
+        {
         match event {
             InputEvent::Up => {
                 if self.row > 0 {
@@ -478,6 +536,7 @@ impl CharGrid {
             InputEvent::PowerOffShortcut => {}
         }
         false
+        }
     }
 }
 
@@ -1078,48 +1137,41 @@ impl App {
         }
     }
 
-    /// If the current screen contains a `CharGrid` (passphrase / message
-    /// entry), compute which grid cell `(x, y)` falls in, move the cursor
-    /// there, and return `true`. The caller should then fire `Confirm` to
-    /// type the character. Returns `false` if the tap is outside the grid
-    /// or the screen has no `CharGrid`.
-    pub fn tap_char_grid(&mut self, x: u16, y: u16) -> bool {
-        let is_grid = matches!(
-            &self.screen,
-            Screen::CreatePassphraseInput { .. }
-            | Screen::CreatePassphraseConfirm { .. }
-            | Screen::LoadPassphraseInput { .. }
-            | Screen::LoadPassphraseConfirm { .. }
-            | Screen::VerifyBackupPassphrase { .. }
-            | Screen::SignMessageInput { .. }
-        );
-        if !is_grid { return false; }
-
-        const PREVIEW_H: u16 = 28;
-        let gutter_w = crate::ui::widgets::GUTTER_W as u16;
-        let footer_h = crate::ui::widgets::FOOTER_H as u16;
-        let grid_top = self.theme.header_h as u16 + PREVIEW_H;
-        let body_w = self.theme.width as u16 - gutter_w;
-        let body_bottom = self.theme.height as u16 - footer_h;
-        if y < grid_top || y >= body_bottom || x >= body_w { return false; }
-        let cell_w = body_w / GRID_COLS as u16;
-        let row_h = (body_bottom - grid_top) / GRID_ROWS as u16;
-        if cell_w == 0 || row_h == 0 { return false; }
-
-        let col = ((x / cell_w) as usize).min(GRID_COLS - 1);
-        let row = (((y - grid_top) / row_h) as usize).min(GRID_ROWS - 1);
-
+    /// Mutable access to the `CharGrid` on the current on-screen-keyboard
+    /// screen (passphrase / message entry), if the current screen has one.
+    #[cfg(feature = "touch-ui")]
+    fn keyboard_grid(&mut self) -> Option<&mut CharGrid> {
         match &mut self.screen {
             Screen::CreatePassphraseInput { grid, .. }
             | Screen::CreatePassphraseConfirm { grid, .. }
             | Screen::LoadPassphraseInput { grid, .. }
             | Screen::LoadPassphraseConfirm { grid, .. }
             | Screen::VerifyBackupPassphrase { grid }
-            | Screen::SignMessageInput { grid } => {
-                grid.row = row;
-                grid.col = col;
+            | Screen::SignMessageInput { grid } => Some(grid),
+            _ => None,
+        }
+    }
+
+    /// Handle a body tap on the touch on-screen keyboard. Returns `true`
+    /// when the current screen is a keyboard screen and the tap lands in the
+    /// keyboard body — a key press is applied directly; taps in the text-box
+    /// / slider band are absorbed. Returns `false` for non-keyboard screens,
+    /// and for taps in the footer zone so the caller's footer handler
+    /// (Back / Accept) can claim them.
+    #[cfg(feature = "touch-ui")]
+    pub fn tap_keyboard(&mut self, x: u16, y: u16) -> bool {
+        let page = match self.keyboard_grid() {
+            Some(g) => g.page,
+            None => return false,
+        };
+        let footer_y = self.theme.height as u16 - crate::ui::widgets::FOOTER_H as u16;
+        if y >= footer_y {
+            return false;
+        }
+        if let Some(key) = crate::gui::touch_keyboard::hit_test(&self.theme, page, x, y) {
+            if let Some(grid) = self.keyboard_grid() {
+                grid.apply_key(key);
             }
-            _ => return false,
         }
         true
     }
@@ -1174,10 +1226,29 @@ impl App {
             | Screen::CreatePassphrasePrompt { selected: 0, .. } => true,
             Screen::LoadPassphraseConfirm { passphrase, grid, .. }
             | Screen::CreatePassphraseConfirm { passphrase, grid, .. } => {
-                grid.action_region() == Some(GridAction::Done) && grid.text.as_str() == passphrase.as_str()
+                // On touch, Accept lives in the footer (not an action-row
+                // cell): a matching confirmation derives. On key builds the
+                // cursor must be on the DONE cell.
+                let matched = grid.text.as_str() == passphrase.as_str();
+                #[cfg(feature = "touch-ui")]
+                {
+                    matched
+                }
+                #[cfg(not(feature = "touch-ui"))]
+                {
+                    grid.action_region() == Some(GridAction::Done) && matched
+                }
             }
             Screen::VerifyBackupPassphrase { grid } => {
-                grid.action_region() == Some(GridAction::Done)
+                #[cfg(feature = "touch-ui")]
+                {
+                    let _ = grid;
+                    true
+                }
+                #[cfg(not(feature = "touch-ui"))]
+                {
+                    grid.action_region() == Some(GridAction::Done)
+                }
             }
             _ => false,
         }

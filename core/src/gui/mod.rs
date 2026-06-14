@@ -4,3 +4,5 @@ pub mod components;
 pub(crate) mod flows;
 pub mod logo;
 pub mod screens;
+#[cfg(feature = "touch-ui")]
+pub mod touch_keyboard;

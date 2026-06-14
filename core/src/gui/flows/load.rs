@@ -234,7 +234,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         Screen::LoadPassphraseInput { mnemonic, mut grid } => {
             let done = grid.handle_input(event);
             if done {
-                if grid.text.is_empty() && event == InputEvent::Back {
+                if event == InputEvent::Back && (cfg!(feature = "touch-ui") || grid.text.is_empty()) {
                     return Screen::LoadPassphrasePrompt {
                         mnemonic,
                         selected: 1,
@@ -257,7 +257,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         } => {
             let done = grid.handle_input(event);
             if done {
-                if grid.text.is_empty() && event == InputEvent::Back {
+                if event == InputEvent::Back && (cfg!(feature = "touch-ui") || grid.text.is_empty()) {
                     let mut first_grid = CharGrid::new();
                     first_grid.text = passphrase.to_string();
                     return Screen::LoadPassphraseInput {
