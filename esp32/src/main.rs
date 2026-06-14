@@ -324,7 +324,6 @@ fn main() {
         if wants_camera && camera.is_none() && app.camera_error.is_none() {
             match camera::EspCamera::open() {
                 Ok(cam) => {
-                    cam.set_decode_enabled(true);
                     camera = Some(cam);
                 }
                 Err(e) => {
@@ -367,6 +366,11 @@ fn main() {
                 if let Some(qr) = cam.take_qr() {
                     app.scanned_qr = Some(qr);
                 }
+                // Only run the (CPU-bound, PSRAM-bandwidth-hungry) QR decoder on
+                // screens that actually scan; the camera-entropy screen just hashes
+                // a preview frame and needs no decode. Set per-frame so a screen
+                // change while the camera stays open re-gates it correctly.
+                cam.set_decode_enabled(app.wants_qr_decode());
                 cam.set_small_qr_mode(app.wants_small_qr_scan());
             }
         }

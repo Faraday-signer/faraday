@@ -980,6 +980,16 @@ impl App {
         )
     }
 
+    /// Whether the current screen actually scans QR codes (vs. just needing a
+    /// live camera frame). `CreateCameraEntropy` only hashes a preview frame, so
+    /// it wants the camera but not the QR decoder.
+    pub fn wants_qr_decode(&self) -> bool {
+        matches!(
+            &self.screen,
+            Screen::LoadScanQr | Screen::SignScanTx | Screen::VerifyBackupScan
+        )
+    }
+
     /// Per-frame update — handles timers, auto-dismiss, and scanned-QR auto-advance.
     ///
     /// Camera lifecycle (open/close, pulling frames, feeding `scanned_qr`) is
