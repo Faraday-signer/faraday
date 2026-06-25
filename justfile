@@ -39,10 +39,14 @@ check:
     cd raspberry-pi && cargo check --features simulator
     cd raspberry-pi && cargo check --release --target arm-unknown-linux-gnueabihf
 
-# Build the ESP32-S3 firmware.
-esp:
-    cd esp32 && cargo build --release
+# Build the ESP32-S3-Touch-LCD-2 firmware.
+esp-touch2:
+    cd esp32-touch2 && cargo build --release
 
-# Build and flash the ESP32-S3 firmware with serial monitor.
-esp-flash:
-    cd esp32 && cargo run --release
+# Build and flash the ESP32-S3-Touch-LCD-2 firmware with serial monitor.
+esp-touch2-flash:
+    cd esp32-touch2 && cargo run --release
+
+# Future ESP32 boards get their own crate + recipes, e.g.:
+# esp-lcd35:
+#     cd esp32-lcd35 && cargo build --release

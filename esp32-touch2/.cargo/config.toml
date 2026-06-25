@@ -14,4 +14,4 @@ ESP_IDF_VERSION = "v5.3.2"
 ESP_IDF_SDKCONFIG_DEFAULTS = { value = "sdkconfig.defaults", relative = true }
 # Required so esp-idf-sys can find this crate's package.metadata.esp-idf-sys
 # (extra_components, etc.) when the workspace root is a virtual manifest.
-ESP_IDF_SYS_ROOT_CRATE = "faraday-esp32"
+ESP_IDF_SYS_ROOT_CRATE = "faraday-esp32-touch2"

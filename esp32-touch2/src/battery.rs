@@ -20,6 +20,11 @@
 //!     an empty connector (~4.224–4.230 V) read the same, so the gauge shows
 //!     whenever the line is powered. A fuel gauge (e.g. MAX17048) fixes both.
 
+use std::borrow::Borrow;
+
+use esp32_common::BoardBattery;
+use esp_idf_hal::adc::oneshot::{AdcChannelDriver, AdcDriver};
+use esp_idf_hal::adc::AdcChannel;
 use faraday_core::gui::app::BatteryStatus;
 
 /// Resistor-divider ratio: `V_pack = V_adc × DIVIDER`. R19=200k + R20=100k
@@ -75,6 +80,60 @@ impl BatteryMonitor {
         Some(BatteryStatus {
             percent: percent_from_pack_mv(ema),
         })
+    }
+}
+
+/// Quick ADC reads averaged per sample to knock down noise before the slope
+/// detector sees the value.
+const SAMPLES_PER_READ: u32 = 8;
+
+/// Board battery gauge: the ADC channel on the divider tap plus the smoothing
+/// monitor. Owns the channel driver so the shared loop only ever calls
+/// [`BoardBattery::sample`].
+pub struct Battery<'d, C, M>
+where
+    C: AdcChannel,
+    M: Borrow<AdcDriver<'d, C::AdcUnit>>,
+{
+    chan: AdcChannelDriver<'d, C, M>,
+    monitor: BatteryMonitor,
+    /// Last computed status, returned unchanged on a fully-failed read so the
+    /// gauge holds its value instead of flickering off.
+    last: Option<BatteryStatus>,
+}
+
+impl<'d, C, M> Battery<'d, C, M>
+where
+    C: AdcChannel,
+    M: Borrow<AdcDriver<'d, C::AdcUnit>>,
+{
+    /// Wrap an already-configured ADC channel reading the battery divider tap.
+    pub fn from_channel(chan: AdcChannelDriver<'d, C, M>) -> Self {
+        Self { chan, monitor: BatteryMonitor::new(), last: None }
+    }
+}
+
+impl<'d, C, M> BoardBattery for Battery<'d, C, M>
+where
+    C: AdcChannel,
+    M: Borrow<AdcDriver<'d, C::AdcUnit>>,
+{
+    fn sample(&mut self) -> Option<BatteryStatus> {
+        // Average a handful of quick reads to knock down ADC noise before the
+        // slope detector sees the sample.
+        let mut acc = 0u32;
+        let mut n = 0u32;
+        for _ in 0..SAMPLES_PER_READ {
+            if let Ok(mv) = self.chan.read() {
+                acc += mv as u32;
+                n += 1;
+            }
+        }
+        // A reading updates the gauge; an all-failed read keeps the last value.
+        if n > 0 {
+            self.last = self.monitor.update((acc / n) as u16);
+        }
+        self.last
     }
 }
 

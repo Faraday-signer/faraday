@@ -19,6 +19,7 @@ use embedded_graphics_core::{
     pixelcolor::{raw::RawData, Rgb565},
     Pixel,
 };
+use esp32_common::BoardDisplay;
 use esp_idf_hal::delay::FreeRtos;
 use esp_idf_hal::gpio::{Output, PinDriver};
 use esp_idf_hal::ledc::LedcDriver;
@@ -238,6 +239,23 @@ impl<'d> Display<'d> {
             let _ = self.bl.enable();
             let _ = self.bl.set_duty(duty);
         }
+    }
+}
+
+// Expose the panel to the shared event loop. The work lives in the inherent
+// methods above; these forward to them through the board trait.
+impl BoardDisplay for Display<'_> {
+    fn flush(&mut self) {
+        Display::flush(self)
+    }
+    fn blit_camera_frame(&mut self, frame: &faraday_core::camera::Frame, bg: Rgb565) {
+        Display::blit_camera_frame(self, frame, bg)
+    }
+    fn set_backlight(&mut self, pct: u8) {
+        Display::set_backlight(self, pct)
+    }
+    fn sleep(&mut self) {
+        Display::sleep(self)
     }
 }
 

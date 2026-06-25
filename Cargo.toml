@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "raspberry-pi", "esp32"]
+members = ["core", "raspberry-pi", "esp32-common", "esp32-touch2"]
 resolver = "2"
 
 [profile.release]
@@ -13,5 +13,11 @@ strip = true
 [profile.release.package.rxing]
 opt-level = 3
 
-[profile.release.package.faraday-esp32]
+# The QR decoder, camera path, and main loop now live in esp32-common (shared by
+# every ESP32-S3 board), so the speed override targets it; the per-board binary
+# is thin glue but kept at opt-level 3 too for the per-pixel camera blit.
+[profile.release.package.esp32-common]
+opt-level = 3
+
+[profile.release.package.faraday-esp32-touch2]
 opt-level = 3

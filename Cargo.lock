@@ -1294,6 +1294,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "esp32-common"
+version = "0.1.0"
+dependencies = [
+ "embedded-graphics-core",
+ "esp-idf-hal",
+ "esp-idf-sys",
+ "faraday-core",
+ "log",
+ "rxing",
+]
+
+[[package]]
 name = "exr"
 version = "1.74.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1357,7 +1369,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "faraday-esp32"
+name = "faraday-esp32-touch2"
 version = "0.1.0"
 dependencies = [
  "embedded-graphics-core",
@@ -1365,9 +1377,9 @@ dependencies = [
  "esp-idf-hal",
  "esp-idf-svc",
  "esp-idf-sys",
+ "esp32-common",
  "faraday-core",
  "log",
- "rxing",
 ]
 
 [[package]]

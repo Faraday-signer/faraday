@@ -1,39 +1,34 @@
-//! Faraday ESP32-S3 — air-gapped Solana signer.
+//! Shared ESP32-S3 event loop.
+//!
+//! Board binary crates construct their concrete display / touch / battery types
+//! (implementing the [`crate::board`] traits), then hand them to [`run`], which
+//! owns the main loop: touch handling, the camera/QR lifecycle, battery polling,
+//! the draw cadence, and BOOT-button power-off. Everything board-specific lives
+//! behind the traits, so this loop is identical across boards.
 
-use esp_idf_hal::adc::attenuation::DB_12;
-use esp_idf_hal::adc::oneshot::config::{AdcChannelConfig, Calibration};
-use esp_idf_hal::adc::oneshot::{AdcChannelDriver, AdcDriver};
 use esp_idf_hal::delay::FreeRtos;
-use esp_idf_hal::gpio::{PinDriver, Pull};
-use esp_idf_hal::ledc::{config::TimerConfig, LedcDriver, LedcTimerDriver};
-use esp_idf_hal::i2c::{I2cConfig, I2cDriver};
-use esp_idf_hal::peripherals::Peripherals;
-use esp_idf_hal::spi::{
-    config::{Config as SpiConfig, DriverConfig},
-    Dma, SpiDeviceDriver, SpiDriver,
-};
-use esp_idf_hal::units::FromValueType;
-use esp_idf_svc::log::EspLogger;
 use faraday_core::gui::app::{App, InputEvent};
 use faraday_core::gui::screens;
-use faraday_core::ui::Theme;
 use faraday_core::ui::widgets::list::visible_start;
 use faraday_core::ui::widgets::FOOTER_H;
-use touch::TouchEvent;
+use faraday_core::ui::Theme;
 
-mod battery;
-mod camera;
-mod display;
-mod power;
-mod qr_decode;
-mod touch;
+use crate::board::{BoardBattery, BoardDisplay, BoardTouch, TouchEvent};
+use crate::{camera, power};
 
-
-fn main() {
-    esp_idf_svc::sys::link_patches();
-    EspLogger::initialize_default();
-    log::info!("Faraday ESP32-S3 v0.1.0");
-
+/// Run the Faraday firmware. Takes ownership of the board peripherals and never
+/// returns (it loops until BOOT long-press deep-sleeps the chip).
+pub fn run<'d, D, T, B>(
+    mut display: D,
+    mut touch: T,
+    mut power_btn: power::PowerButton<'d>,
+    mut battery: Option<B>,
+    theme: Theme,
+) where
+    D: BoardDisplay,
+    T: BoardTouch,
+    B: BoardBattery,
+{
     // Validate the hardware (mbedtls) BIP39 seed path against a known-answer
     // vector before any wallet can be created or loaded. The host test suite
     // can't exercise this path, so a divergence from the BIP39 standard would
@@ -43,77 +38,6 @@ fn main() {
         "BIP39 seed self-test failed — hardware SHA512 path diverges from spec"
     );
 
-    let peripherals = Peripherals::take().expect("failed to take peripherals");
-
-    // SPI bus: SCLK=39, MOSI=38, MISO=40 (shared with SD; unused for the
-    // write-only display but reserved to match the board wiring).
-    let spi_driver = SpiDriver::new(
-        peripherals.spi2,
-        peripherals.pins.gpio39,
-        peripherals.pins.gpio38,
-        Some(peripherals.pins.gpio40),
-        // DMA lets the CPU yield to FreeRTOS (and the watchdog idle task)
-        // during each SPI transfer instead of busy-polling.  Size matches
-        // the chunk size used in flush() — just under the 32 767-byte
-        // ESP32-S3 hardware limit per transaction.
-        &DriverConfig::new().dma(Dma::Auto(32764)),
-    )
-    .expect("SPI driver init failed");
-
-    // No hardware CS — the driver manages CS manually (see display.rs).
-    let spi_config = SpiConfig::new().baudrate(40.MHz().into());
-    let spi_device = SpiDeviceDriver::new(spi_driver, None::<esp_idf_hal::gpio::Gpio45>, &spi_config)
-        .expect("SPI device init failed");
-
-    // GPIO 42 (DC) is JTAG MTMS — PinDriver alone leaves it attached to the
-    // JTAG peripheral with its output driver disabled, so it can never go high
-    // and every command parameter / pixel byte is silently dropped. Reset it to
-    // plain GPIO function first.
-    unsafe {
-        esp_idf_svc::sys::gpio_reset_pin(42);
-    }
-
-    let cs = PinDriver::output(peripherals.pins.gpio45).expect("CS pin init failed");
-    let dc = PinDriver::output(peripherals.pins.gpio42).expect("DC pin init failed");
-    let ledc_timer = LedcTimerDriver::new(
-        peripherals.ledc.timer0,
-        &TimerConfig::default().frequency(1.kHz().into()),
-    ).expect("LEDC timer init failed");
-    let bl = LedcDriver::new(peripherals.ledc.channel0, ledc_timer, peripherals.pins.gpio1)
-        .expect("LEDC BL init failed");
-
-    let mut display = display::Display::new(spi_device, cs, dc, bl);
-
-    // I2C touch: SDA=48, SCL=47, INT=46.
-    let i2c_config = I2cConfig::new().baudrate(400.kHz().into());
-    let i2c = I2cDriver::new(
-        peripherals.i2c0,
-        peripherals.pins.gpio48,
-        peripherals.pins.gpio47,
-        &i2c_config,
-    )
-    .expect("I2C init failed");
-
-    let touch_int = PinDriver::input(peripherals.pins.gpio46, Pull::Up).expect("INT pin init failed");
-    let mut touch = touch::Touch::new(i2c, touch_int);
-
-    // BOOT button (GPIO0) as a soft power button — long-press → deep sleep.
-    let mut power_btn = power::PowerButton::new(peripherals.pins.gpio0);
-
-    // External battery monitor. Pack voltage is sampled on GPIO5 (net BAT_ADC),
-    // tapped off the board's R19/R20 = 200k/100k divider (V_pack = 3 × V_adc),
-    // and turned into a charge-level icon (no charging/presence detection is
-    // possible on this board — see battery::BatteryMonitor). If the ADC can't
-    // init we run without a battery icon.
-    let bat_cfg = AdcChannelConfig {
-        attenuation: DB_12,
-        calibration: Calibration::Curve,
-        ..Default::default()
-    };
-    let mut bat_chan = AdcDriver::new(peripherals.adc1)
-        .ok()
-        .and_then(|adc| AdcChannelDriver::new(adc, peripherals.pins.gpio5, &bat_cfg).ok());
-    let mut bat_monitor = battery::BatteryMonitor::new();
     // Back-date so the first loop iteration samples immediately. `checked_sub`
     // guards against underflow early in boot (the monotonic clock is still near
     // zero), in which case the first sample just lands one interval later.
@@ -121,7 +45,7 @@ fn main() {
         .checked_sub(std::time::Duration::from_secs(BATTERY_SAMPLE_SECS))
         .unwrap_or_else(std::time::Instant::now);
 
-    let mut app = App::new(Theme::faraday_320());
+    let mut app = App::new(theme);
 
     // No splash screen — boot straight into the main menu.
     app.enter_main_menu();
@@ -134,10 +58,6 @@ fn main() {
     // Held-swipe scroll pacing on continuous screens (menus, coin/dice, word
     // screens): one step per this interval, i.e. ~3 positions/second.
     const SWIPE_REPEAT_MS: u64 = 300;
-
-    // How often to re-sample the battery. The pack voltage moves slowly, so a
-    // couple of seconds keeps the gauge fresh without spinning the ADC.
-    const BATTERY_SAMPLE_SECS: u64 = 2;
 
     // Footer action bar: bottom FOOTER_H strip, divided into three equal
     // thirds — Back (left) / Secondary (middle) / Confirm (right), matching
@@ -294,23 +214,12 @@ fn main() {
         app.tick();
 
         // Sample the battery every couple of seconds and surface it to the GUI,
-        // which draws the footer icon. A failed read leaves the last value.
-        if let Some(chan) = bat_chan.as_mut() {
+        // which draws the footer icon. A board with no gauge (`None`) or a sample
+        // that returns nothing leaves the last value via the gauge's own caching.
+        if let Some(bat) = battery.as_mut() {
             if last_bat_sample.elapsed().as_secs() >= BATTERY_SAMPLE_SECS {
                 last_bat_sample = std::time::Instant::now();
-                // Average a handful of quick reads to knock down ADC noise
-                // before the slope detector sees the sample.
-                let mut acc = 0u32;
-                let mut n = 0u32;
-                for _ in 0..8 {
-                    if let Ok(mv) = chan.read() {
-                        acc += mv as u32;
-                        n += 1;
-                    }
-                }
-                if n > 0 {
-                    app.battery = bat_monitor.update((acc / n) as u16);
-                }
+                app.battery = bat.sample();
             }
         }
 
@@ -400,3 +309,7 @@ fn main() {
         FreeRtos::delay_ms(5);
     }
 }
+
+// How often to re-sample the battery. The pack voltage moves slowly, so a
+// couple of seconds keeps the gauge fresh without spinning the ADC.
+const BATTERY_SAMPLE_SECS: u64 = 2;

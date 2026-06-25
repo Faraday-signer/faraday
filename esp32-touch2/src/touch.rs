@@ -40,6 +40,7 @@
 //!     Swipe right = Right
 //!   Long press (>1.5 s) = PowerOffShortcut
 
+use esp32_common::{BoardTouch, TouchEvent};
 use esp_idf_hal::gpio::{Input, InterruptType, PinDriver};
 use esp_idf_hal::i2c::I2cDriver;
 use faraday_core::gui::app::InputEvent;
@@ -69,12 +70,6 @@ const LIFT_CONFIRM: Duration = Duration::from_millis(150);
 // swipe/drag rather than a tap. Below it we emit a tap on lift; at or above it
 // the tap is suppressed so dragging a scrollable list never selects a row.
 const TAP_SLOP: u16 = 24;
-
-/// What the touch driver delivers to the main loop.
-pub enum TouchEvent {
-    Input(InputEvent),
-    BodyTap { x: u16, y: u16 },
-}
 
 pub struct Touch<'d> {
     i2c: I2cDriver<'d>,
@@ -131,15 +126,25 @@ impl<'d> Touch<'d> {
         }
     }
 
+    fn emit(&mut self, event: TouchEvent) -> Option<TouchEvent> {
+        if self.last_event.elapsed() < DEBOUNCE {
+            return None;
+        }
+        self.last_event = Instant::now();
+        Some(event)
+    }
+}
+
+impl<'d> BoardTouch for Touch<'d> {
     /// Set the held-swipe repeat spacing for the current screen. `Some(interval)`
     /// lets a held swipe keep stepping at most once per `interval` (continuous
     /// scrolling, e.g. menus); `None` latches it to one step per physical swipe
     /// (the paper-backup walkthrough). Applied on the next `poll`.
-    pub fn set_swipe_repeat(&mut self, repeat: Option<Duration>) {
+    fn set_swipe_repeat(&mut self, repeat: Option<Duration>) {
         self.swipe_repeat = repeat;
     }
 
-    pub fn poll(&mut self) -> Option<TouchEvent> {
+    fn poll(&mut self) -> Option<TouchEvent> {
         // Confirm a lift if finger_num=0 has persisted long enough.
         // Checked on every main-loop tick (every 5 ms) so the timer resolves
         // even when no new interrupt fires after the finger is lifted.
@@ -237,15 +242,7 @@ impl<'d> Touch<'d> {
     /// CST816 variants only leave deep sleep on a hardware RST pulse, and this
     /// board has no touch-RST line we drive — on wake we rely on the best-effort
     /// I2C wake in `new()`. If the panel is dead after a sleep cycle, that's why.
-    pub fn sleep(&mut self) {
+    fn sleep(&mut self) {
         let _ = self.i2c.write(CST816D_ADDR, &[0xA5, 0x03], 30);
-    }
-
-    fn emit(&mut self, event: TouchEvent) -> Option<TouchEvent> {
-        if self.last_event.elapsed() < DEBOUNCE {
-            return None;
-        }
-        self.last_event = Instant::now();
-        Some(event)
     }
 }
