@@ -51,8 +51,10 @@ pub fn run<'d, D, T, B>(
     app.enter_main_menu();
     app.last_activity = std::time::Instant::now();
 
-    // Delay (ms) between tapping a list row and firing Confirm — long enough
-    // for one display frame to render the highlight before the transition.
+    // How long a tapped option on the seed-verification quiz is held
+    // highlighted (green if correct, red if wrong) before it commits — long
+    // enough for one display frame to render the flash. Every other tapped row
+    // commits immediately, no flash.
     const TAP_CONFIRM_DELAY_MS: u64 = 40;
 
     // Held-swipe scroll pacing on continuous screens (menus, coin/dice, word
@@ -153,8 +155,7 @@ pub fn run<'d, D, T, B>(
                         app.handle_input(event);
                     }
                 } else if let Some(layout) = app.tap_layout() {
-                    // List screen: move selection then fire Confirm after a
-                    // short delay so the highlight is visible for one frame.
+                    // List screen: move the selection to the tapped row.
                     if y >= layout.list_top {
                         let body_y = (y - layout.list_top) as usize;
                         let list_h =
@@ -172,14 +173,27 @@ pub fn run<'d, D, T, B>(
                         let row = (start + slot).min(layout.total_items.saturating_sub(1));
                         app.set_selected(row);
                     }
-                    pending_tap_confirm = Some(std::time::Instant::now());
+                    // Commit immediately — no highlight flash. The one exception
+                    // is the seed-verification quiz: flash the tapped option for
+                    // one frame (pending_tap_confirm) — green if correct, red if
+                    // wrong — before the Confirm advances or resets the quiz.
+                    pending_tap_confirm = None;
+                    if app.on_verify_quiz() {
+                        app.verify_flash = true;
+                        pending_tap_confirm = Some(std::time::Instant::now());
+                    } else {
+                        if app.confirm_will_derive() {
+                            let _ = screens::draw_computing(&mut display, &app.theme);
+                            display.flush();
+                        }
+                        app.handle_input(InputEvent::Confirm);
+                    }
                 } else if app.is_picker_screen() {
                     // Coin-flip / dice-roll value grid: tapping a cell selects
-                    // that value, then fires Confirm (after the short highlight
-                    // delay) to commit it. Taps off the grid are absorbed so a
-                    // stray tap can't commit the current value.
+                    // that value and commits it immediately. Taps off the grid
+                    // are absorbed so a stray tap can't commit the current value.
                     if app.tap_picker(x, y) {
-                        pending_tap_confirm = Some(std::time::Instant::now());
+                        app.handle_input(InputEvent::Confirm);
                     }
                 } else if app.tap_pages_review() {
                     // TX review: a body tap pages forward through the
@@ -200,13 +214,12 @@ pub fn run<'d, D, T, B>(
             None => {}
         }
 
+        // Only the seed-verification flash defers a Confirm now: hold the
+        // green/red highlight for one frame, then commit (advance or reset).
+        // `handle_input` clears `verify_flash`, ending the flash.
         if let Some(t) = pending_tap_confirm {
             if t.elapsed().as_millis() >= TAP_CONFIRM_DELAY_MS as u128 {
                 pending_tap_confirm = None;
-                if app.confirm_will_derive() {
-                    let _ = screens::draw_computing(&mut display, &app.theme);
-                    display.flush();
-                }
                 app.handle_input(InputEvent::Confirm);
             }
         }

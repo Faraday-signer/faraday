@@ -8,6 +8,7 @@
 use embedded_graphics::pixelcolor::Rgb565;
 use u8g2_fonts::{fonts, U8g2TextStyle};
 
+#[derive(Clone)]
 pub struct Theme {
     // Screen geometry
     pub width: u32,

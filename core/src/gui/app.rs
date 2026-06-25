@@ -854,6 +854,13 @@ pub struct App {
     /// External battery state, or `None` when no battery is connected (or on
     /// platforms without one). Drawn as a footer icon on touch builds.
     pub battery: Option<BatteryStatus>,
+    /// Touch builds only: set while a tapped option on the seed-verification
+    /// quiz is being flashed before it commits — green for the correct word
+    /// (about to advance), red for a wrong word (about to reset). The
+    /// `CreateVerify` renderer reads it (picking the colour from whether the
+    /// selection matches `correct_idx`); it is cleared on the next
+    /// `handle_input`, i.e. when the flash commits.
+    pub verify_flash: bool,
 }
 
 impl App {
@@ -874,6 +881,7 @@ impl App {
             scanned_qr: None,
             scan_diag: crate::camera::ScanDiagnostics::default(),
             battery: None,
+            verify_flash: false,
         }
     }
 
@@ -932,6 +940,9 @@ impl App {
     }
 
     pub fn handle_input(&mut self, event: InputEvent) {
+        // Any input ends a verification-quiz flash (this Confirm is usually what
+        // commits the pick), so the screen redraws with the normal accent.
+        self.verify_flash = false;
         let was_blanked = self.is_blanked();
         self.last_activity = std::time::Instant::now();
         if was_blanked {
@@ -1207,6 +1218,14 @@ impl App {
             Screen::SettingsPowerOff { selected } => *selected = row,
             _ => {}
         }
+    }
+
+    /// True when the current screen is the seed-verification quiz. Touch builds
+    /// flash a tapped option for one beat before committing (green if it matches
+    /// `correct_idx`, red otherwise); every other tapped row commits instantly
+    /// with no highlight.
+    pub fn on_verify_quiz(&self) -> bool {
+        matches!(&self.screen, Screen::CreateVerify { .. })
     }
 
     /// Mutable access to the `CharGrid` on the current on-screen-keyboard

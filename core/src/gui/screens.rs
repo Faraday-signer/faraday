@@ -113,7 +113,7 @@ impl App {
                 checks,
                 current,
                 options,
-                correct_idx: _,
+                correct_idx,
                 selected,
                 mnemonic: _,
             } => {
@@ -126,6 +126,8 @@ impl App {
                     *selected,
                     *current + 1,
                     checks.len(),
+                    *correct_idx,
+                    self.verify_flash,
                 )
             }
             Screen::CreatePassphrasePrompt { selected, .. } => {
@@ -1328,6 +1330,8 @@ fn draw_verify_word<D: DrawTarget<Color = Rgb565>>(
     selected: usize,
     check_num: usize,
     total_checks: usize,
+    correct_idx: usize,
+    flashing: bool,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::{EdgeHints, EdgeIcon, HeaderKind, ListRow};
     use crate::ui::screens::ListScreen;
@@ -1336,6 +1340,19 @@ fn draw_verify_word<D: DrawTarget<Color = Rgb565>>(
     let title = alloc::format!("WORD {:02}?", word_num);
     let rows: Vec<ListRow> = options.iter().map(|s| ListRow::new(s)).collect();
     let sel = selected.min(options.len().saturating_sub(1));
+
+    // While a tapped pick is being flashed, recolour the selection accent for
+    // this render only: green for the correct word (about to advance), red for
+    // a wrong one (about to reset). The resting cyan accent just means
+    // "selected", so it would read as neither right nor wrong here.
+    let mut theme = theme.clone();
+    if flashing {
+        theme.accent = if sel == correct_idx {
+            colors::SUCCESS
+        } else {
+            theme.danger
+        };
+    }
 
     ListScreen {
         header: HeaderKind::Title(&title),
