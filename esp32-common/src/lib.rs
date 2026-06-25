@@ -11,5 +11,5 @@ pub mod power;
 pub mod qr_decode;
 mod run;
 
-pub use board::{BoardBattery, BoardDisplay, BoardTouch, TouchEvent};
+pub use board::{BoardBattery, BoardDisplay, BoardTouch, NoBattery, TouchEvent};
 pub use run::run;

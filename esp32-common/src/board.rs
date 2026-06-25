@@ -53,3 +53,14 @@ pub trait BoardBattery {
     /// present / the reading isn't ready.
     fn sample(&mut self) -> Option<BatteryStatus>;
 }
+
+/// Placeholder gauge for boards with no battery hardware. Always reports no
+/// reading, so the GUI never draws the battery icon. Pass `None::<NoBattery>`
+/// to [`crate::run`] as the type witness for "this board has no battery".
+pub struct NoBattery;
+
+impl BoardBattery for NoBattery {
+    fn sample(&mut self) -> Option<BatteryStatus> {
+        None
+    }
+}

@@ -63,7 +63,8 @@ If you have a wallet that's already been online and you want to move to Faraday:
 |------|------------|
 | [`core/`](core) | Shared platform-agnostic library (`faraday-core`). Crypto, parser, signer, QR, GUI state machine, and UI widgets — used by all hardware targets. |
 | [`raspberry-pi/`](raspberry-pi) | Rust firmware for the Pi Zero — also runs as a desktop simulator (`cargo run --features simulator`) for development. Self-contained crate with its own `Cargo.toml`, assets, and test data. |
-| [`esp32/`](esp32) | Rust firmware for the Waveshare ESP32-S3-Touch-LCD-2. Touch-driven UI on a 240×320 display. |
+| [`esp32-common/`](esp32-common) | Shared firmware for the ESP32-S3 board family (`esp32-common`). Camera, QR decode, BOOT power button, and the main event loop — used by every ESP32-S3 board. |
+| [`esp32-touch2/`](esp32-touch2) | Board firmware for the Waveshare ESP32-S3-Touch-LCD-2. Touch-driven UI on a 240×320 display. |
 | [`opt/`](opt) | Buildroot recipe that produces the Pi OS image. See [`opt/README.md`](opt/README.md) |
 | [`extension/`](extension) | Chromium browser extension — Wallet Standard companion that relays dapp signing requests to Faraday over QR. See [`extension/README.md`](extension/README.md) |
 | [`mobile/`](mobile) | React Native + Expo wallet for the Solana Seeker phone (work in progress). See [`mobile/README.md`](mobile/README.md) |
@@ -221,7 +222,7 @@ sudo apt install python3-venv
 ### Build
 
 ```bash
-just esp
+just esp-touch2
 ```
 
 The first build takes several minutes — it downloads ESP-IDF v5.3.2 and compiles the standard library for Xtensa. Subsequent builds are fast.
@@ -231,7 +232,7 @@ The first build takes several minutes — it downloads ESP-IDF v5.3.2 and compil
 Connect the board via USB, then:
 
 ```bash
-just esp-flash
+just esp-touch2-flash
 ```
 
 This flashes the firmware and opens a serial monitor. The board boots into the same UI as the Pi — splash screen, then main menu.
@@ -245,13 +246,13 @@ USB serial devices aren't accessible from WSL, so flash from the Windows side:
 cargo install espflash
 
 # Flash directly from the WSL build output (adjust your WSL distro/username)
-espflash flash --monitor \\wsl$\Ubuntu\home\<user>\development\faraday\target\xtensa-esp32s3-espidf\release\faraday-esp32
+espflash flash --monitor \\wsl$\Ubuntu\home\<user>\development\faraday\target\xtensa-esp32s3-espidf\release\faraday-esp32-touch2
 ```
 
 Alternatively, copy the binary first:
 ```powershell
-copy \\wsl$\Ubuntu\home\<user>\development\faraday\target\xtensa-esp32s3-espidf\release\faraday-esp32 C:\temp\faraday-esp32.bin
-espflash flash --monitor C:\temp\faraday-esp32.bin
+copy \\wsl$\Ubuntu\home\<user>\development\faraday\target\xtensa-esp32s3-espidf\release\faraday-esp32-touch2 C:\temp\faraday-esp32-touch2.bin
+espflash flash --monitor C:\temp\faraday-esp32-touch2.bin
 ```
 
 ### Touch controls
@@ -265,11 +266,9 @@ espflash flash --monitor C:\temp\faraday-esp32.bin
 | Tap bottom bar — right third | Confirm |
 | Long press (>1.5s) | Wipe wallet (kill switch) |
 
-### Battery & power
+### Power
 
-The ESP32-S3 board runs off a single-cell Li-ion pack on its JST connector (the Pi build has no battery). Two power features are specific to this target.
-
-**Charge gauge.** Pack voltage is sampled on GPIO5 (net `BAT_ADC`) through the board's 200k/100k divider (`V_pack = 3 × V_adc`) and mapped to a 0–100% charge icon in the footer. The gauge is **level-only**: this board exposes no charge-status line and no fuel-gauge IC, so charging and battery presence can't be told from voltage alone — on USB a full pack and an empty connector read the same. A fuel gauge such as the MAX17048 would be needed for a truthful charging/percentage readout. See [`esp32/src/battery.rs`](esp32/src/battery.rs).
+The ESP32-S3-Touch-LCD-2 has no battery hardware (it runs off USB), so there is no charge gauge or battery icon. Battery support lives in the shared `esp32-common` crate (the `BoardBattery` trait) for other ESP32-S3 boards that do have a pack.
 
 **Power button (on/off).** The BOOT button (GPIO0) doubles as a soft power button:
 
@@ -278,7 +277,7 @@ The ESP32-S3 board runs off a single-cell Li-ion pack on its JST connector (the 
 | Long-press BOOT (≥1.5s) while on | Wipes the in-memory wallet, then deep-sleeps — "off" |
 | Press BOOT while asleep | Wakes via a full reset, boots fresh to the first screen — "on" |
 
-Power-off wipes the seed/keys from RAM *before* sleeping, so nothing sensitive is retained while the device is off. Wake is a deep-sleep power-cycle reset, so the firmware reboots cleanly (RAM cleared) and the USB-Serial/JTAG re-initializes — the board stays flashable over USB after an off→on cycle without needing the physical RESET button. See [`esp32/src/power.rs`](esp32/src/power.rs).
+Power-off wipes the seed/keys from RAM *before* sleeping, so nothing sensitive is retained while the device is off. Wake is a deep-sleep power-cycle reset, so the firmware reboots cleanly (RAM cleared) and the USB-Serial/JTAG re-initializes — the board stays flashable over USB after an off→on cycle without needing the physical RESET button. See [`esp32-common/src/power.rs`](esp32-common/src/power.rs).
 
 ## `just` commands
 
@@ -288,8 +287,8 @@ just arm          # Cross-compile the ARM binary for Pi Zero
 just image        # Build the full Pi OS image (cold Buildroot — slow)
 just image-fast   # Rebuild reusing warm Buildroot state
 just flash DEVICE # Flash to SD card (DEVICE=/dev/diskN)
-just esp          # Build the ESP32-S3 firmware
-just esp-flash    # Flash ESP32-S3 and open serial monitor
+just esp-touch2       # Build the ESP32-S3-Touch-LCD-2 firmware
+just esp-touch2-flash # Flash ESP32-S3-Touch-LCD-2 and open serial monitor
 just ext          # Build the browser extension
 just test         # cargo test
 just check        # Type-check both simulator and Pi targets

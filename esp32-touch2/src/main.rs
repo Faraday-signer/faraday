@@ -1,13 +1,10 @@
 //! Faraday ESP32-S3-Touch-LCD-2 ("touch2") — air-gapped Solana signer.
 //!
 //! Board binary for the Waveshare ESP32-S3-Touch-LCD-2: a 240×320 ST7789T3
-//! panel, CST816D touch, an OV2640/OV5640 camera, and an ADC-divider battery
-//! gauge. It owns the board-specific peripheral init, then hands the concrete
-//! display / touch / battery drivers to the shared `esp32_common::run` loop.
+//! panel, CST816D touch, and an OV2640/OV5640 camera. This board has no battery
+//! hardware. It owns the board-specific peripheral init, then hands the concrete
+//! display / touch drivers to the shared `esp32_common::run` loop.
 
-use esp_idf_hal::adc::attenuation::DB_12;
-use esp_idf_hal::adc::oneshot::config::{AdcChannelConfig, Calibration};
-use esp_idf_hal::adc::oneshot::{AdcChannelDriver, AdcDriver};
 use esp_idf_hal::gpio::{PinDriver, Pull};
 use esp_idf_hal::i2c::{I2cConfig, I2cDriver};
 use esp_idf_hal::ledc::{config::TimerConfig, LedcDriver, LedcTimerDriver};
@@ -20,7 +17,6 @@ use esp_idf_hal::units::FromValueType;
 use esp_idf_svc::log::EspLogger;
 use faraday_core::ui::Theme;
 
-mod battery;
 mod display;
 mod touch;
 
@@ -88,20 +84,13 @@ fn main() {
     // BOOT button (GPIO0) as a soft power button — long-press → deep sleep.
     let power_btn = esp32_common::power::PowerButton::new(peripherals.pins.gpio0);
 
-    // External battery monitor. Pack voltage is sampled on GPIO5 (net BAT_ADC),
-    // tapped off the board's R19/R20 = 200k/100k divider (V_pack = 3 × V_adc),
-    // and turned into a charge-level icon (no charging/presence detection is
-    // possible on this board — see battery::BatteryMonitor). If the ADC can't
-    // init we run without a battery icon.
-    let bat_cfg = AdcChannelConfig {
-        attenuation: DB_12,
-        calibration: Calibration::Curve,
-        ..Default::default()
-    };
-    let battery = AdcDriver::new(peripherals.adc1)
-        .ok()
-        .and_then(|adc| AdcChannelDriver::new(adc, peripherals.pins.gpio5, &bat_cfg).ok())
-        .map(battery::Battery::from_channel);
-
-    esp32_common::run(display, touch, power_btn, battery, Theme::faraday_320());
+    // This board has no battery hardware, so there is no gauge and the GUI draws
+    // no battery icon. Other ESP32-S3 boards pass a real `BoardBattery` here.
+    esp32_common::run(
+        display,
+        touch,
+        power_btn,
+        None::<esp32_common::NoBattery>,
+        Theme::faraday_320(),
+    );
 }
