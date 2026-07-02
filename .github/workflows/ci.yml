@@ -77,7 +77,7 @@ jobs:
         run: cargo zigbuild --release --target arm-unknown-linux-gnueabihf
 
   rust-core-touch:
-    name: Rust core (touch-ui feature)
+    name: Rust core (tests + touch-ui feature)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -85,9 +85,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: core
-      - name: cargo check core with touch-ui
+      # Security-critical tests (BIP39/SLIP-0010 vectors, tx parsers, signer,
+      # QR/UR decode) live in faraday-core. Run them on both the pure-Rust
+      # default path and the touch-ui path so the cfg-forked GUI halves compile
+      # and their tests run. hardware-sha512 is NOT enabled on host: it needs
+      # esp-idf-sys and won't build.
+      - name: cargo test core (default features)
         working-directory: core
-        run: cargo check --features touch-ui
+        run: cargo test
+      - name: cargo test core with touch-ui
+        working-directory: core
+        run: cargo test --features touch-ui
 
   extension:
     name: Extension typecheck
