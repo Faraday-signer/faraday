@@ -175,7 +175,7 @@ fn run_simulator() {
             cam.set_decode_enabled(app.is_scan_screen());
             cam.set_small_qr_mode(app.wants_small_qr_scan());
             if let Some(f) = cam.latest() {
-                app.latest_frame = Some(f);
+                app.latest_frame = Some(std::sync::Arc::new(f));
             }
             app.scan_diag = cam.diagnostics();
             if let Some(err) = cam.take_fatal_err() {
@@ -310,7 +310,7 @@ fn run_pi() {
             cam.set_decode_enabled(app.is_scan_screen());
             cam.set_small_qr_mode(app.wants_small_qr_scan());
             if let Some(f) = cam.latest() {
-                app.latest_frame = Some(f);
+                app.latest_frame = Some(std::sync::Arc::new(f));
             }
             app.scan_diag = cam.diagnostics();
             if let Some(err) = cam.take_fatal_err() {

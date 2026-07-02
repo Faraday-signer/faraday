@@ -1,7 +1,7 @@
 //! OV2640 / OV5640 camera driver via ESP-IDF esp_camera component.
 //!
 //! Captures 320×240 QVGA in YUV422, converts to `Frame` (interleaved RGB +
-//! luma plane), and publishes via `Arc<Mutex<Option<Frame>>>` — the same
+//! luma plane), and publishes via `Arc<Mutex<Option<Arc<Frame>>>>` — the same
 //! pattern as `PiCamera` in the raspberry-pi crate.
 //!
 //! # GPIO pin assignments (Waveshare ESP32-S3-Touch-LCD-2)
@@ -94,7 +94,12 @@ const CAPTURE_H: u32 = 600;
 // tied to the camera-hardware lifetime (spawned in open, joined in drop).
 
 struct QrPipeline {
-    latest: Arc<Mutex<Option<Frame>>>,
+    // Holds an `Arc<Frame>`, not a `Frame`: the reader publishes one shared
+    // buffer per capture and both consumers (`latest()` for the GUI, the
+    // decoder) clone the Arc (a refcount bump) rather than deep-copying the
+    // ~480 KB luma plane under the mutex. This keeps the lock hold to a pointer
+    // copy and lets the decoder crop outside the lock.
+    latest: Arc<Mutex<Option<Arc<Frame>>>>,
     pending_qr: Arc<Mutex<Option<Vec<u8>>>>,
     diag: Arc<Mutex<ScanDiagnostics>>,
     small_qr_mode: Arc<AtomicBool>,
@@ -140,7 +145,7 @@ fn pipeline() -> Result<&'static QrPipeline, String> {
 
 impl QrPipeline {
     fn start() -> Result<QrPipeline, String> {
-        let latest: Arc<Mutex<Option<Frame>>> = Arc::new(Mutex::new(None));
+        let latest: Arc<Mutex<Option<Arc<Frame>>>> = Arc::new(Mutex::new(None));
         let pending_qr: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
         let diag: Arc<Mutex<ScanDiagnostics>> =
             Arc::new(Mutex::new(ScanDiagnostics::default()));
@@ -268,7 +273,9 @@ impl EspCamera {
         Ok(EspCamera { _private: () })
     }
 
-    pub fn latest(&self) -> Option<Frame> {
+    pub fn latest(&self) -> Option<Arc<Frame>> {
+        // Clones the Arc (pointer), not the frame — the lock hold is a refcount
+        // bump, and the ~480 KB buffer is shared with the reader/decoder.
         pipeline().expect("pipeline not initialised").latest.lock().ok().and_then(|g| g.clone())
     }
 
@@ -427,7 +434,7 @@ unsafe fn sensor_standby(on: bool) {
 // ---------- reader thread ---------------------------------------------------
 
 fn reader_loop(
-    latest: Arc<Mutex<Option<Frame>>>,
+    latest: Arc<Mutex<Option<Arc<Frame>>>>,
     fatal: Arc<Mutex<Option<String>>>,
     streaming: Arc<AtomicBool>,
 ) {
@@ -500,8 +507,10 @@ fn reader_loop(
             luma,
         };
 
+        // Publish as an Arc so consumers share this buffer instead of copying
+        // it: the lock hold below is just the pointer store.
         if let Ok(mut g) = latest.lock() {
-            *g = Some(frame);
+            *g = Some(Arc::new(frame));
         }
     }
 }
@@ -509,7 +518,7 @@ fn reader_loop(
 // ---------- decoder thread --------------------------------------------------
 
 fn decoder_loop(
-    latest: Arc<Mutex<Option<Frame>>>,
+    latest: Arc<Mutex<Option<Arc<Frame>>>>,
     pending_qr: Arc<Mutex<Option<Vec<u8>>>>,
     diag: Arc<Mutex<ScanDiagnostics>>,
     small_qr_mode: Arc<AtomicBool>,
@@ -532,19 +541,13 @@ fn decoder_loop(
             thread::sleep(Duration::from_millis(50));
             continue;
         }
-        // Clone only the luma plane, not the whole frame: the decode pipeline
-        // never touches `rgb` (that's only for the preview blit on the main
-        // thread), so copying the ~230 KB RGB buffer out of PSRAM every attempt
-        // is pure waste. An empty `rgb` keeps the `Frame` shape the core helper
-        // expects.
+        // Clone the Arc (a pointer), not the luma plane: the reader's frame is
+        // shared, so we drop the lock immediately and let the crop/decode below
+        // (which copies only the smaller crop window) run outside the critical
+        // section instead of holding the mutex across a ~480 KB copy.
         let frame = match latest.lock() {
             Ok(g) => match g.as_ref() {
-                Some(f) => Frame {
-                    width: f.width,
-                    height: f.height,
-                    rgb: Vec::new(),
-                    luma: f.luma.clone(),
-                },
+                Some(f) => Arc::clone(f),
                 None => {
                     drop(g);
                     thread::sleep(Duration::from_millis(50));

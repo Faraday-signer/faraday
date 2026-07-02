@@ -860,7 +860,7 @@ pub struct App {
     /// deterministic function of `elapsed()`, so transitions in and out of
     /// the splash don't cause it to jump.
     pub splash_anim_start: std::time::Instant,
-    pub latest_frame: Option<crate::camera::Frame>,
+    pub latest_frame: Option<std::sync::Arc<crate::camera::Frame>>,
     pub camera_error: Option<String>,
     pub scanned_qr: Option<Vec<u8>>,
     pub scan_diag: crate::camera::ScanDiagnostics,

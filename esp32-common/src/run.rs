@@ -257,11 +257,11 @@ pub fn run<'d, D, T, B>(
                 camera_died = true;
             } else {
                 app.scan_diag = cam.diagnostics();
-                // Clone the ~480 KB SVGA preview frame only on the iterations we
-                // actually draw. Pulling it every loop iteration saturates PSRAM
-                // bandwidth, which tears the camera DMA (black blocks) and starves
-                // the display flush (flicker). The decoder thread keeps its own
-                // copy, so QR detection is unaffected.
+                // Grab the latest preview frame (a shared Arc clone, not a
+                // ~480 KB copy) only on the iterations we actually draw — the
+                // reference is only consumed by the blit below, so refreshing it
+                // off-draw is pointless work. The decoder shares the same Arc, so
+                // QR detection is unaffected.
                 if will_draw {
                     if let Some(frame) = cam.latest() {
                         app.latest_frame = Some(frame);
