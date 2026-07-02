@@ -116,7 +116,14 @@ impl<'d> Touch<'d> {
         Self {
             i2c,
             int,
-            last_event: Instant::now() - DEBOUNCE,
+            // Back-date so the first real gesture isn't debounced. checked_sub
+            // guards the boot case: ESP-IDF's monotonic clock starts near zero,
+            // so uptime may be < DEBOUNCE when Touch::new() runs (bare `-` would
+            // panic on underflow). Falling back to now() just debounces a tap in
+            // the first 120 ms of boot — harmless. (Mirrors run.rs.)
+            last_event: Instant::now()
+                .checked_sub(DEBOUNCE)
+                .unwrap_or_else(Instant::now),
             finger_down: false,
             lifting_since: None,
             press_origin: None,
