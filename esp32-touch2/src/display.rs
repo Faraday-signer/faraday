@@ -166,17 +166,6 @@ impl<'d> Display<'d> {
         let _ = self.cs.set_high();
     }
 
-    pub fn clear_color(&mut self, color: Rgb565) {
-        let raw = embedded_graphics_core::pixelcolor::raw::RawU16::from(color).into_inner();
-        let hi = (raw >> 8) as u8;
-        let lo = (raw & 0xFF) as u8;
-        for i in (0..self.buffer.len()).step_by(2) {
-            self.buffer[i] = hi;
-            self.buffer[i + 1] = lo;
-        }
-        self.flush();
-    }
-
     /// Blit a camera frame into the top WIDTH×WIDTH (240×240) region of the
     /// display buffer, then clear the rows below it (240..320) to `bg`.
     ///

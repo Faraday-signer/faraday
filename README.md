@@ -122,7 +122,7 @@ A 240×240 window opens. Pick `CREATE → 12 or 24 WORDS → RANDOM` to generate
 
 For Windows, working in WSL is recommended, but the Windows camera isn't available inside it. To work around this:
 
-- **File camera:** Use `cargo run --features simulator-no-cam` — opens a JPEG, PNG, or animated GIF each time the camera is triggered.
+- **File camera:** From `raspberry-pi/`, use `cargo run --features simulator_no_cam` — opens a JPEG, PNG, or animated GIF each time the camera is triggered.
 - **USB/IP:** Attach the camera to WSL with [usbipd-win](https://github.com/dorssel/usbipd-win), then use `--features simulator` normally.
 - **Native Windows build:** Compile on Windows pointing to the WSL repo path (`\\wsl$\Ubuntu\home\…\faraday`) — the camera works directly.
 

@@ -1550,7 +1550,9 @@ fn draw_qr_block<D: DrawTarget<Color = Rgb565>>(
 
 // Only compiled for `simulator_no_cam` on non-Linux hosts (the one place
 // VerifyBackupScan needs a no-camera fallback). See `Screen::VerifyBackupScan`.
-#[cfg(not(any(feature = "_desktop_sim", target_os = "linux")))]
+// The cfg must match that call site's exactly, or this goes dead-code-warn on
+// the `touch-ui` build (which has a live camera and never calls it).
+#[cfg(not(any(feature = "_desktop_sim", target_os = "linux", feature = "touch-ui")))]
 fn draw_message<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     theme: &Theme,
