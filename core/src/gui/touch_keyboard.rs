@@ -186,36 +186,50 @@ fn keys_bottom(theme: &Theme) -> i32 {
     theme.height as i32 - FOOTER_H as i32
 }
 
+/// Cell rectangles for every key on `page`. Single source of truth for the
+/// key geometry: both `draw_keys` (rendering) and `hit_test` (touch mapping)
+/// consume this, so a change to a row's weights or the key-area bounds moves
+/// draw and tap together and can never drift a tap onto a neighbouring key.
+fn key_cells(theme: &Theme, page: KbPage) -> Vec<(Key, Rectangle)> {
+    let top = keys_top(theme);
+    let bottom = keys_bottom(theme);
+    let rows = page.rows();
+    let row_h = (bottom - top) / rows.len() as i32;
+    let w = theme.width;
+
+    let mut cells = Vec::new();
+    if row_h <= 0 {
+        return cells;
+    }
+    for (r, row) in rows.iter().enumerate() {
+        let total: u32 = row.iter().map(|(_, weight)| *weight as u32).sum();
+        let y = top + r as i32 * row_h;
+        let mut acc: u32 = 0;
+        for (key, weight) in row.iter() {
+            let x0 = (acc * w / total) as i32;
+            acc += *weight as u32;
+            let x1 = (acc * w / total) as i32;
+            let cell = Rectangle::new(Point::new(x0, y), Size::new((x1 - x0) as u32, row_h as u32));
+            cells.push((*key, cell));
+        }
+    }
+    cells
+}
+
 /// Map a body tap `(x, y)` to the key under it, or `None` if the tap falls
 /// above the key area (text box / slider band). The caller has already
 /// excluded the footer.
 pub fn hit_test(theme: &Theme, page: KbPage, x: u16, y: u16) -> Option<Key> {
-    let top = keys_top(theme);
-    let bottom = keys_bottom(theme);
     let (x, y) = (x as i32, y as i32);
-    if y < top || y >= bottom {
-        return None;
-    }
-    let rows = page.rows();
-    let row_h = (bottom - top) / rows.len() as i32;
-    if row_h <= 0 {
-        return None;
-    }
-    let row_idx = ((y - top) / row_h) as usize;
-    let row = rows.get(row_idx)?;
-
-    let total: u32 = row.iter().map(|(_, w)| *w as u32).sum();
-    let w = theme.width;
-    let mut acc: u32 = 0;
-    for (key, weight) in row.iter() {
-        let x0 = (acc * w / total) as i32;
-        acc += *weight as u32;
-        let x1 = (acc * w / total) as i32;
-        if x >= x0 && x < x1 {
-            return Some(*key);
-        }
-    }
-    None
+    key_cells(theme, page)
+        .into_iter()
+        .find(|(_, cell)| {
+            x >= cell.top_left.x
+                && x < cell.top_left.x + cell.size.width as i32
+                && y >= cell.top_left.y
+                && y < cell.top_left.y + cell.size.height as i32
+        })
+        .map(|(key, _)| key)
 }
 
 /// Render the full keyboard screen: header, text box, slider, keys, and the
@@ -373,26 +387,8 @@ fn draw_keys<D: DrawTarget<Color = Rgb565>>(
     theme: &Theme,
     grid: &CharGrid,
 ) -> Result<(), D::Error> {
-    let top = keys_top(theme);
-    let bottom = keys_bottom(theme);
-    let rows = grid.page.rows();
-    let row_h = (bottom - top) / rows.len() as i32;
-    let w = theme.width;
-
-    for (r, row) in rows.iter().enumerate() {
-        let total: u32 = row.iter().map(|(_, w)| *w as u32).sum();
-        let y = top + r as i32 * row_h;
-        let mut acc: u32 = 0;
-        for (key, weight) in row.iter() {
-            let x0 = (acc * w / total) as i32;
-            acc += *weight as u32;
-            let x1 = (acc * w / total) as i32;
-            let cell = Rectangle::new(
-                Point::new(x0, y),
-                Size::new((x1 - x0) as u32, row_h as u32),
-            );
-            draw_key(display, theme, *key, cell, grid.caps)?;
-        }
+    for (key, cell) in key_cells(theme, grid.page) {
+        draw_key(display, theme, key, cell, grid.caps)?;
     }
     Ok(())
 }
@@ -522,4 +518,29 @@ fn draw_backspace<D: DrawTarget<Color = Rgb565>>(
         .into_styled(style)
         .draw(display)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The drawn key geometry (`key_cells`) and the tap mapping (`hit_test`)
+    /// must stay in lockstep: a tap on the centre of any drawn key must return
+    /// exactly that key. This guards against draw/tap drift on the weighted
+    /// cell boundaries (a passphrase character registering as its neighbour).
+    #[test]
+    fn tap_center_of_each_key_hits_that_key() {
+        let theme = Theme::faraday_240();
+        for page in [KbPage::Left, KbPage::Right, KbPage::Symbols] {
+            for (key, cell) in key_cells(&theme, page) {
+                let cx = (cell.top_left.x + cell.size.width as i32 / 2) as u16;
+                let cy = (cell.top_left.y + cell.size.height as i32 / 2) as u16;
+                assert_eq!(
+                    hit_test(&theme, page, cx, cy),
+                    Some(key),
+                    "tap on centre of {key:?} on {page:?} did not map back to it"
+                );
+            }
+        }
+    }
 }

@@ -9,7 +9,6 @@
 use esp_idf_hal::delay::FreeRtos;
 use faraday_core::gui::app::{App, InputEvent};
 use faraday_core::gui::screens;
-use faraday_core::ui::widgets::list::visible_start;
 use faraday_core::ui::widgets::FOOTER_H;
 use faraday_core::ui::Theme;
 
@@ -154,28 +153,11 @@ pub fn run<'d, D, T, B>(
                         }
                         app.handle_input(event);
                     }
-                } else if let Some(layout) = app.tap_layout() {
-                    // List screen: move the selection to the tapped row.
-                    if y >= layout.list_top {
-                        let body_y = (y - layout.list_top) as usize;
-                        let list_h =
-                            (app.theme.height as u16 - footer_h - layout.list_top) as usize;
-                        let slot = if list_h > 0 {
-                            (body_y * layout.max_visible / list_h).min(layout.max_visible - 1)
-                        } else {
-                            0
-                        };
-                        let start = visible_start(
-                            layout.total_items,
-                            layout.max_visible,
-                            layout.current_selected,
-                        );
-                        let row = (start + slot).min(layout.total_items.saturating_sub(1));
-                        app.set_selected(row);
-                    }
-                    // Commit immediately — no highlight flash. The one exception
-                    // is the seed-verification quiz: flash the tapped option for
-                    // one frame (pending_tap_confirm) — green if correct, red if
+                } else if app.tap_list_row(y, footer_h) {
+                    // List screen: the tapped row is now selected. Commit
+                    // immediately — no highlight flash. The one exception is the
+                    // seed-verification quiz: flash the tapped option for one
+                    // frame (pending_tap_confirm) — green if correct, red if
                     // wrong — before the Confirm advances or resets the quiz.
                     pending_tap_confirm = None;
                     if app.on_verify_quiz() {

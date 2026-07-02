@@ -3086,7 +3086,7 @@ fn draw_create_backup_warning<D: DrawTarget<Color = Rgb565>>(
     .draw(display, &theme, header_rect)?;
 
     // Reserve chrome (gutter or bottom bar); rows + text live in what remains.
-    // `tap_layout` for this screen mirrors the same third split.
+    // `App::tap_list_row` for this screen mirrors the same third split.
     let body_inner = Rectangle::new(
         body_rect.top_left,
         Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height - FOOTER_H),
@@ -3202,6 +3202,11 @@ fn draw_reset_wallet<D: DrawTarget<Color = Rgb565>>(
 /// BIP39 word picker. Header shows progress ("WORD 4/12"), a preview band
 /// renders the typed prefix with the current cursor letter highlighted
 /// ("app[l]"), and the filtered candidates appear as a scrollable list.
+/// Height (pixels) of the assembled-prefix band above the alphabet grid on
+/// the word-entry screen. `App::tap_word_grid` mirrors this so taps map to the
+/// drawn letter cells.
+pub(crate) const WORD_PICKER_PREFIX_H: i32 = 36;
+
 fn draw_word_picker_new<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     theme: &Theme,
@@ -3234,8 +3239,7 @@ fn draw_word_picker_new<D: DrawTarget<Color = Rgb565>>(
 
     // Top band: the prefix being assembled. `_` cursor follows it so the
     // user reads the live input as a single string.
-    let prefix_h = 36i32;
-    let (prefix_rect, grid_rect) = split_top(body_inner, prefix_h);
+    let (prefix_rect, grid_rect) = split_top(body_inner, WORD_PICKER_PREFIX_H);
     let prefix_baseline = prefix_rect.top_left.y + prefix_rect.size.height as i32 - 8;
     let composed = alloc::format!("{}_", picker.prefix);
     Text::with_alignment(
@@ -3801,6 +3805,13 @@ enum PickerLayout {
     Grid { cols: usize, rows: usize },
 }
 
+/// Entropy-picker band heights (pixels) below the header, above the value
+/// grid: a progress bar then the recent-history strip. `App::tap_picker`
+/// mirrors these so a tap on a value cell maps to the cell that was drawn —
+/// change one side only and a tap on "3" could register "6".
+pub(crate) const PICKER_PROGRESS_H: i32 = 16;
+pub(crate) const PICKER_RECENT_H: i32 = 22;
+
 /// Shared entropy-collection layout: header + progress bar + recent-history
 /// strip + N-way value picker + button bar. Drives both the coin-flip and
 /// dice-roll screens.
@@ -3844,10 +3855,10 @@ fn draw_entropy_picker<D: DrawTarget<Color = Rgb565>>(
     .draw(display, &theme, header_rect)?;
 
     // Progress bar band, then recent-history strip, then picker fills the rest.
-    let (progress_rect, rest) = split_top(body_rect, 16);
+    let (progress_rect, rest) = split_top(body_rect, PICKER_PROGRESS_H);
     draw_progress_bar(display, theme, progress_rect, progress, target)?;
 
-    let (recent_rect, picker_rect) = split_top(rest, 22);
+    let (recent_rect, picker_rect) = split_top(rest, PICKER_RECENT_H);
     let cx = recent_rect.top_left.x + recent_rect.size.width as i32 / 2;
     let cy = recent_rect.top_left.y + recent_rect.size.height as i32 - 6;
     Text::with_alignment(

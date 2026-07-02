@@ -3,6 +3,7 @@
 use crate::crypto::derivation;
 use crate::crypto::slip0010::SolanaKeypair;
 use crate::gui::flows;
+use crate::ui::widgets::list::visible_start;
 use crate::ui::Theme;
 use zeroize::Zeroizing;
 
@@ -793,22 +794,6 @@ pub struct LoadedWallet {
     pub address: String,
 }
 
-/// Layout information for the selectable list on the current screen.
-/// Returned by `App::tap_layout()` for use by touch-screen platforms.
-pub struct TapLayout {
-    /// Number of slots the list widget divides the body area into.
-    pub max_visible: usize,
-    /// Total number of items in the list (may exceed `max_visible`).
-    pub total_items: usize,
-    /// Currently highlighted item index (absolute, not slot-relative).
-    pub current_selected: usize,
-    /// Y coordinate (pixels) where the tappable list area begins.
-    /// For standard `ListScreen`s this equals `theme.header_h`.
-    /// For screens with a text preamble (e.g. `CreateBackupWarning`)
-    /// it is further down the screen.
-    pub list_top: u16,
-}
-
 /// Default screen-blanking timeout. Zero disables blanking entirely.
 pub const DEFAULT_BLANK_TIMEOUT_MS: u64 = 120_000; // 2 minutes
 
@@ -1070,52 +1055,74 @@ impl App {
         )
     }
 
-    /// Geometry of the selectable list on the current screen, if any.
-    /// Used by touch-screen platforms to map a tap y-coordinate to a row
-    /// index. Returns `None` for screens without a tappable list.
-    pub fn tap_layout(&self) -> Option<TapLayout> {
+    /// Map a body tap at height `y` to a row on the current screen's
+    /// selectable list, move the selection there, and return `true` so the
+    /// caller commits with `Confirm`. Returns `false` for screens without a
+    /// tappable list (the caller then tries its other tap routes).
+    ///
+    /// `footer_h` is the platform's bottom action-bar reserve in pixels; the
+    /// list occupies the body between the header and that bar. This is the
+    /// single place the per-screen row counts and the `selected` mutation
+    /// live — previously split across `tap_layout` (geometry) and
+    /// `set_selected` (mutation), which could silently drift when a screen was
+    /// registered in one but not the other. One match now yields the row count
+    /// and a mutable handle to the screen's `selected`.
+    pub fn tap_list_row(&mut self, y: u16, footer_h: u16) -> bool {
         let header_h = self.theme.header_h as u16;
-        // Most screens are standard ListScreens whose list begins right
-        // below the header.
-        let t = |max_visible, total_items, current_selected| TapLayout {
-            max_visible,
-            total_items,
-            current_selected,
-            list_top: header_h,
-        };
-        match &self.screen {
-            Screen::ModeSelect { selected, .. } => Some(t(2, 2, *selected)),
-            Screen::MainMenu { selected } => Some(t(3, self.menu_items().len(), *selected)),
-            Screen::CreateWordCount { selected } => Some(t(3, 2, *selected)),
-            Screen::LoadWordCount { selected } => Some(t(3, 2, *selected)),
-            Screen::CreateMethod { selected, .. } => Some(t(3, 4, *selected)),
-            Screen::LoadMethod { selected } => Some(t(3, 2, *selected)),
-            Screen::CreatePassphrasePrompt { selected, .. } => Some(t(3, 2, *selected)),
-            Screen::LoadPassphrasePrompt { selected, .. } => Some(t(3, 2, *selected)),
-            Screen::LoadFinalize { selected, .. } => Some(t(3, 2, *selected)),
-            Screen::CreateVerify { options, selected, .. } => Some(t(4, options.len(), *selected)),
-            Screen::ExportSeedQrMenu { selected, .. } => Some(t(3, 3, *selected)),
-            Screen::ExportSeedWarning { selected, .. } => Some(t(3, 2, *selected)),
-            Screen::ShowWordsWarning { selected, .. } => Some(t(3, 2, *selected)),
-            Screen::SettingsMenu { selected } => Some(t(3, 4, *selected)),
-            Screen::SettingsPowerOff { selected } => Some(t(3, 2, *selected)),
-            // Custom layout: top third is instruction text, bottom two-thirds
-            // is the 2-item list.
-            Screen::CreateBackupWarning { selected, .. } => {
-                // Mirror draw_create_backup_warning: the body is shrunk by the
-                // chrome (FOOTER_H on touch builds) before the third split, so
-                // the tappable list begins at the same y the rows are drawn.
-                let footer_h = crate::ui::widgets::FOOTER_H as u16;
-                let body_h = self.theme.height as u16 - header_h - footer_h;
-                Some(TapLayout {
-                    max_visible: 2,
-                    total_items: 2,
-                    current_selected: *selected,
-                    list_top: header_h + body_h / 3,
-                })
-            }
-            _ => None,
+        let height = self.theme.height as u16;
+        // Resolve the main-menu length before the mutable borrow of the screen.
+        let menu_len = self.menu_items().len();
+
+        // (max_visible, total_items, list_top, &mut selected). Most screens are
+        // standard ListScreens whose list begins right below the header.
+        let (max_visible, total, list_top, selected): (usize, usize, u16, &mut usize) =
+            match &mut self.screen {
+                Screen::ModeSelect { selected, .. } => (2, 2, header_h, selected),
+                Screen::MainMenu { selected } => (3, menu_len, header_h, selected),
+                Screen::CreateWordCount { selected } => (3, 2, header_h, selected),
+                Screen::LoadWordCount { selected } => (3, 2, header_h, selected),
+                Screen::CreateMethod { selected, .. } => (3, 4, header_h, selected),
+                Screen::LoadMethod { selected } => (3, 2, header_h, selected),
+                Screen::CreatePassphrasePrompt { selected, .. } => (3, 2, header_h, selected),
+                Screen::LoadPassphrasePrompt { selected, .. } => (3, 2, header_h, selected),
+                Screen::LoadFinalize { selected, .. } => (3, 2, header_h, selected),
+                Screen::CreateVerify { options, selected, .. } => {
+                    (4, options.len(), header_h, selected)
+                }
+                Screen::ExportSeedQrMenu { selected, .. } => (3, 3, header_h, selected),
+                Screen::ExportSeedWarning { selected, .. } => (3, 2, header_h, selected),
+                Screen::ShowWordsWarning { selected, .. } => (3, 2, header_h, selected),
+                Screen::SettingsMenu { selected } => (3, 4, header_h, selected),
+                Screen::SettingsPowerOff { selected } => (3, 2, header_h, selected),
+                // Custom layout: top third is instruction text, bottom
+                // two-thirds is the 2-item list. Mirror
+                // draw_create_backup_warning: the body is shrunk by the chrome
+                // (footer_h) before the third split, so the tappable list
+                // begins at the same y the rows are drawn.
+                Screen::CreateBackupWarning { selected, .. } => {
+                    let body_h = height - header_h - footer_h;
+                    (2, 2, header_h + body_h / 3, selected)
+                }
+                _ => return false,
+            };
+
+        // Taps in the list area move the selection to that row; taps above it
+        // (e.g. the instruction band) leave the selection unchanged but still
+        // return true so the screen commits — matching the previous behaviour
+        // where any tap on a list screen fired Confirm.
+        if y >= list_top {
+            let body_y = (y - list_top) as usize;
+            let list_h = (height - footer_h - list_top) as usize;
+            let slot = if list_h > 0 {
+                (body_y * max_visible / list_h).min(max_visible - 1)
+            } else {
+                0
+            };
+            let start = visible_start(total, max_visible, *selected);
+            let row = (start + slot).min(total.saturating_sub(1));
+            *selected = row;
         }
+        true
     }
 
     /// True when a body tap on the current screen should page forward through
@@ -1170,7 +1177,9 @@ impl App {
         };
         let header_h = self.theme.header_h as u16;
         let footer_reserve = (self.theme.footer_h.max(FOOTER_H)) as u16;
-        let picker_top = header_h + 16 + 22;
+        let picker_top = header_h
+            + crate::gui::screens::PICKER_PROGRESS_H as u16
+            + crate::gui::screens::PICKER_RECENT_H as u16;
         let picker_bottom = self.theme.height as u16 - footer_reserve;
         let picker_w = self.theme.width as u16 - GUTTER_W as u16;
         if y < picker_top || y >= picker_bottom || x >= picker_w {
@@ -1193,31 +1202,6 @@ impl App {
             _ => return false,
         }
         true
-    }
-
-    /// Move the cursor to `row` on the current screen without triggering a
-    /// screen transition. Used by touch-screen platforms to highlight the
-    /// tapped row before firing a `Confirm` event.
-    pub fn set_selected(&mut self, row: usize) {
-        match &mut self.screen {
-            Screen::ModeSelect { selected, .. } => *selected = row,
-            Screen::MainMenu { selected } => *selected = row,
-            Screen::CreateWordCount { selected } => *selected = row,
-            Screen::LoadWordCount { selected } => *selected = row,
-            Screen::CreateMethod { selected, .. } => *selected = row,
-            Screen::LoadMethod { selected } => *selected = row,
-            Screen::CreatePassphrasePrompt { selected, .. } => *selected = row,
-            Screen::LoadPassphrasePrompt { selected, .. } => *selected = row,
-            Screen::LoadFinalize { selected, .. } => *selected = row,
-            Screen::CreateVerify { selected, .. } => *selected = row,
-            Screen::ExportSeedQrMenu { selected, .. } => *selected = row,
-            Screen::ExportSeedWarning { selected, .. } => *selected = row,
-            Screen::ShowWordsWarning { selected, .. } => *selected = row,
-            Screen::CreateBackupWarning { selected, .. } => *selected = row,
-            Screen::SettingsMenu { selected } => *selected = row,
-            Screen::SettingsPowerOff { selected } => *selected = row,
-            _ => {}
-        }
     }
 
     /// True when the current screen is the seed-verification quiz. Touch builds
@@ -1272,10 +1256,10 @@ impl App {
     /// `true` only if the letter is non-blank and currently valid (not
     /// dimmed). The caller should then fire `Confirm` to append the letter.
     pub fn tap_word_grid(&mut self, x: u16, y: u16) -> bool {
-        const PREFIX_H: u16 = 36;
+        let prefix_h = crate::gui::screens::WORD_PICKER_PREFIX_H as u16;
         let gutter_w = crate::ui::widgets::GUTTER_W as u16;
         let footer_h = crate::ui::widgets::FOOTER_H as u16;
-        let grid_top = self.theme.header_h as u16 + PREFIX_H;
+        let grid_top = self.theme.header_h as u16 + prefix_h;
         let body_w = self.theme.width as u16 - gutter_w;
         let body_bottom = self.theme.height as u16 - footer_h;
         if y < grid_top || y >= body_bottom || x >= body_w { return false; }
@@ -1695,5 +1679,58 @@ mod review_lines_tests {
         );
         assert!(lines.iter().any(|l| l.contains("0.01 SOL")));
         assert!(lines.iter().any(|l| l.contains("SOL Transfer")));
+    }
+}
+
+#[cfg(test)]
+mod tap_list_tests {
+    use super::*;
+
+    fn app() -> App {
+        App::new(Theme::faraday_240())
+    }
+
+    #[test]
+    fn non_list_screen_is_not_a_list_tap() {
+        let mut a = app();
+        a.screen = Screen::Splash;
+        assert!(!a.tap_list_row(100, 44));
+    }
+
+    #[test]
+    fn tap_selects_the_row_under_the_finger() {
+        let mut a = app();
+        a.screen = Screen::SettingsMenu { selected: 0 };
+        let header_h = a.theme.header_h as u16;
+        let footer_h = 44u16;
+        let list_h = a.theme.height as u16 - footer_h - header_h;
+
+        // Tap in the top slot -> row 0.
+        assert!(a.tap_list_row(header_h + 1, footer_h));
+        assert!(matches!(a.screen, Screen::SettingsMenu { selected: 0 }));
+
+        // Tap deep in the third slot -> row 2 (4 items, 3 visible, start 0).
+        let y = header_h + list_h * 5 / 6;
+        assert!(a.tap_list_row(y, footer_h));
+        assert!(matches!(a.screen, Screen::SettingsMenu { selected: 2 }));
+    }
+
+    #[test]
+    fn tap_in_instruction_band_commits_without_moving_selection() {
+        // CreateBackupWarning draws an instruction third above its 2-item list;
+        // its list_top sits below the header. A tap in that band still commits
+        // (returns true) but must not change the selection.
+        let mut a = app();
+        a.screen = Screen::CreateBackupWarning {
+            mnemonic: Zeroizing::new(String::new()),
+            word_count: 12,
+            selected: 1,
+        };
+        let header_h = a.theme.header_h as u16;
+        assert!(a.tap_list_row(header_h + 1, 44));
+        assert!(matches!(
+            a.screen,
+            Screen::CreateBackupWarning { selected: 1, .. }
+        ));
     }
 }
