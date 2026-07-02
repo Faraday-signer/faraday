@@ -449,7 +449,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         Screen::CreatePassphraseInput { mnemonic, mut grid } => {
             let done = grid.handle_input(event);
             if done {
-                if event == InputEvent::Back && (cfg!(feature = "touch-ui") || grid.text.is_empty()) {
+                if event == InputEvent::Back && (app.touch_input() || grid.text.is_empty()) {
                     return Screen::CreatePassphrasePrompt {
                         mnemonic,
                         selected: 1,
@@ -472,7 +472,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         } => {
             let done = grid.handle_input(event);
             if done {
-                if event == InputEvent::Back && (cfg!(feature = "touch-ui") || grid.text.is_empty()) {
+                if event == InputEvent::Back && (app.touch_input() || grid.text.is_empty()) {
                     let mut first_grid = CharGrid::new();
                     first_grid.text = passphrase.to_string();
                     return Screen::CreatePassphraseInput {
@@ -730,9 +730,8 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 InputEvent::Back => {
                     // Touch: the Back button steps one piece back through the
                     // transcribe walkthrough, dropping out to the menu only from
-                    // the first piece. Key builds go straight to the menu (K3).
-                    #[cfg(feature = "touch-ui")]
-                    if block_index > 0 {
+                    // the first piece. Keys go straight to the menu (K3).
+                    if app.touch_input() && block_index > 0 {
                         block_index -= 1;
                     } else {
                         return Screen::ExportSeedQrMenu {
@@ -741,12 +740,6 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             from_settings,
                         };
                     }
-                    #[cfg(not(feature = "touch-ui"))]
-                    return Screen::ExportSeedQrMenu {
-                        compact_data,
-                        selected: 1,
-                        from_settings,
-                    };
                 }
                 _ => {}
             }

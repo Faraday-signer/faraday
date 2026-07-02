@@ -8,8 +8,11 @@ lto = true
 strip = true
 
 # QR decoding is compute-bound; size-optimized code (opt-level "s") makes it
-# 2-4x slower. Override to speed-optimized for the ESP32-only QR path. Both
-# crates are ESP32-only (the Pi uses rxing), so the Pi build is unaffected.
+# 2-4x slower. Override to speed-optimized for the QR decode path. rxing is a
+# shared dependency of both esp32-common and raspberry-pi, and Cargo profile
+# overrides are workspace-wide, so this applies to the Pi build too — this is
+# intentional (faster QR decode), at the cost of a larger rxing object on the
+# Pi. The ESP32 speed win is the primary motivation.
 [profile.release.package.rxing]
 opt-level = 3
 

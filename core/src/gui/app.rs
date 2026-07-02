@@ -23,6 +23,34 @@ pub enum InputEvent {
     PowerOffShortcut,
 }
 
+/// How the platform feeds input, and therefore what a given `InputEvent` means
+/// to shared flow logic. Carried at runtime on `App` (rather than gating flow
+/// code on `#[cfg(feature = "touch-ui")]`) so both interpretations compile on
+/// every build and can be unit-tested from the host — see `App::touch_input`.
+///
+/// - `Keys`  — physical D-pad + K1/K2/K3 (Raspberry Pi). Left/Right toggles an
+///   on-screen selection; `Confirm` acts on that selection.
+/// - `Touch` — touchscreen gestures mapped to events (ESP32). Swipes page;
+///   footer cells (`Confirm`/`Secondary`) act directly with no selection toggle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputModel {
+    Keys,
+    Touch,
+}
+
+impl InputModel {
+    /// The model this build ships with, derived from the `touch-ui` feature.
+    /// This is the sole place the compile-time feature maps to the runtime
+    /// model; flow code branches on the runtime value instead.
+    pub const fn default_for_build() -> Self {
+        if cfg!(feature = "touch-ui") {
+            Self::Touch
+        } else {
+            Self::Keys
+        }
+    }
+}
+
 /// Topics for the guided-mode interstitial help screens.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HelpTopic {
@@ -846,6 +874,10 @@ pub struct App {
     /// selection matches `correct_idx`); it is cleared on the next
     /// `handle_input`, i.e. when the flash commits.
     pub verify_flash: bool,
+    /// How input is interpreted by shared flow logic (keys vs touch). Defaults
+    /// to the build's feature but is a plain runtime value so host tests can
+    /// exercise either interpretation. See [`InputModel`] / [`App::touch_input`].
+    pub input_model: InputModel,
 }
 
 impl App {
@@ -867,7 +899,16 @@ impl App {
             scan_diag: crate::camera::ScanDiagnostics::default(),
             battery: None,
             verify_flash: false,
+            input_model: InputModel::default_for_build(),
         }
+    }
+
+    /// True when input should be interpreted as touchscreen gestures rather
+    /// than physical keys. Shared flow logic branches on this at runtime, so
+    /// the touch and key semantics both compile — and are both testable — on
+    /// every build.
+    pub fn touch_input(&self) -> bool {
+        self.input_model == InputModel::Touch
     }
 
     /// True when the current screen uses the middle footer cell (`k2`) for a
@@ -1305,23 +1346,16 @@ impl App {
                 // cell): a matching confirmation derives. On key builds the
                 // cursor must be on the DONE cell.
                 let matched = grid.text.as_str() == passphrase.as_str();
-                #[cfg(feature = "touch-ui")]
-                {
+                if self.touch_input() {
                     matched
-                }
-                #[cfg(not(feature = "touch-ui"))]
-                {
+                } else {
                     grid.action_region() == Some(GridAction::Done) && matched
                 }
             }
             Screen::VerifyBackupPassphrase { grid } => {
-                #[cfg(feature = "touch-ui")]
-                {
-                    let _ = grid;
+                if self.touch_input() {
                     true
-                }
-                #[cfg(not(feature = "touch-ui"))]
-                {
+                } else {
                     grid.action_region() == Some(GridAction::Done)
                 }
             }

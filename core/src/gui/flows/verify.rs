@@ -87,7 +87,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         Screen::VerifyBackupPassphrase { mut grid } => {
             let done = grid.handle_input(event);
             if done {
-                if event == InputEvent::Back && (cfg!(feature = "touch-ui") || grid.text.is_empty()) {
+                if event == InputEvent::Back && (app.touch_input() || grid.text.is_empty()) {
                     return Screen::MainMenu { selected: app.menu_index_of(2) };
                 }
                 let wallet = match app.wallet.as_ref() {

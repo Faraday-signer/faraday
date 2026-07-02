@@ -74,10 +74,6 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             Screen::SignScanTx
         }
 
-        // Touch build only pages (it mutates `page`); `scroll` and `selected`
-        // are carried through unchanged, so the shared `mut` pattern bindings
-        // are unused-mut there only.
-        #[cfg_attr(feature = "touch-ui", allow(unused_mut))]
         Screen::SignReview {
             tx_bytes,
             tx_base64,
@@ -94,30 +90,28 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             let total_pages = 3 + interesting_count + 1;
 
             match event {
-                // Touch build: swipe up/left steps to the previous page (stops
-                // at the first); swipe down/right and a body tap (Secondary)
-                // advance to the next page, wrapping back to the first after
-                // the last. The SIGN footer cell (Confirm) signs directly —
-                // there is no Sign/Reject selection toggle.
-                #[cfg(feature = "touch-ui")]
-                InputEvent::Up | InputEvent::Left => {
+                // Touch: swipe up/left steps to the previous page (stops at the
+                // first); swipe down/right and a body tap (Secondary) advance to
+                // the next page, wrapping back to the first after the last. The
+                // SIGN footer cell (Confirm) signs directly — there is no
+                // Sign/Reject selection toggle.
+                InputEvent::Up | InputEvent::Left if app.touch_input() => {
                     page = page.saturating_sub(1);
                 }
-                #[cfg(feature = "touch-ui")]
-                InputEvent::Down | InputEvent::Right | InputEvent::Secondary => {
+                InputEvent::Down | InputEvent::Right | InputEvent::Secondary
+                    if app.touch_input() =>
+                {
                     page = (page + 1) % total_pages;
                 }
 
-                // Key build: K2 (Down) advances to the next page, wrapping back
-                // to the summary after the last page. Up steps backward.
-                // Left/Right toggle the Sign/Reject selection. The navigation
-                // model stays "K1 = sign, K2 = next, K3 = cancel".
-                #[cfg(not(feature = "touch-ui"))]
+                // Keys: K2 (Down) advances to the next page, wrapping back to
+                // the summary after the last page. Up steps backward. Left/Right
+                // toggle the Sign/Reject selection. The navigation model stays
+                // "K1 = sign, K2 = next, K3 = cancel".
                 InputEvent::Down => {
                     page = (page + 1) % total_pages;
                     scroll = 0;
                 }
-                #[cfg(not(feature = "touch-ui"))]
                 InputEvent::Up => {
                     // Step backward through pages — symmetric with Down so
                     // the user can correct a misclick without cycling all
@@ -125,7 +119,6 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     page = if page == 0 { total_pages - 1 } else { page - 1 };
                     scroll = 0;
                 }
-                #[cfg(not(feature = "touch-ui"))]
                 InputEvent::Left | InputEvent::Right => {
                     if can_sign {
                         selected = 1 - selected;
@@ -135,11 +128,12 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 }
                 InputEvent::Confirm => {
                     // Touch: the SIGN cell signs whenever the wallet can sign.
-                    // Key: only when the Sign option (selected == 0) is active.
-                    #[cfg(feature = "touch-ui")]
-                    let want_sign = can_sign;
-                    #[cfg(not(feature = "touch-ui"))]
-                    let want_sign = selected == 0 && can_sign;
+                    // Keys: only when the Sign option (selected == 0) is active.
+                    let want_sign = if app.touch_input() {
+                        can_sign
+                    } else {
+                        selected == 0 && can_sign
+                    };
                     if want_sign {
                         if let Some(wallet) = &app.wallet {
                             if let Ok(signed) = crate::signer::sign_transaction_base64(
@@ -169,14 +163,13 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             }
                         }
                     }
-                    // Key build: a Confirm on Sign when signing isn't possible
-                    // bumps the selection to Reject so the next Confirm cancels
-                    // cleanly; any other Confirm cancels. Touch build never
-                    // cancels via Confirm — the SIGN cell only signs and is
-                    // hidden when the wallet can't sign, so a tap on its blank
-                    // zone falls through to redraw the same screen below.
-                    #[cfg(not(feature = "touch-ui"))]
-                    {
+                    // Keys: a Confirm on Sign when signing isn't possible bumps
+                    // the selection to Reject so the next Confirm cancels
+                    // cleanly; any other Confirm cancels. Touch never cancels
+                    // via Confirm — the SIGN cell only signs and is hidden when
+                    // the wallet can't sign, so a tap on its blank zone falls
+                    // through to redraw the same screen below.
+                    if !app.touch_input() {
                         if selected == 0 && !can_sign {
                             return Screen::SignReview {
                                 tx_bytes,
@@ -252,7 +245,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         Screen::SignMessageInput { mut grid } => {
             let done = grid.handle_input(event);
             if done {
-                if event == InputEvent::Back && (cfg!(feature = "touch-ui") || grid.text.is_empty()) {
+                if event == InputEvent::Back && (app.touch_input() || grid.text.is_empty()) {
                     return Screen::SignScanTx;
                 }
                 if let Some(wallet) = &app.wallet {
@@ -347,5 +340,102 @@ mod tests {
             Err(_) => return,
         };
         assert!(looks_like_solana_tx(&tx));
+    }
+}
+
+/// SignReview navigation semantics under both input models. These used to be
+/// `#[cfg(feature = "touch-ui")]` forks, so only one interpretation was ever
+/// compiled and none were tested. With the runtime `InputModel` on `App` both
+/// interpretations compile on every build and are exercised here regardless of
+/// which feature the test binary was built with.
+#[cfg(test)]
+mod input_model_tests {
+    use super::*;
+    use crate::gui::app::InputModel;
+    use crate::parser::{ParsedTransaction, TransactionVersion};
+    use crate::ui::Theme;
+
+    fn review_screen(page: usize, selected: usize, can_sign: bool) -> Screen {
+        Screen::SignReview {
+            tx_bytes: vec![1, 2, 3],
+            tx_base64: String::new(),
+            info_lines: Vec::new(),
+            parsed: Box::new(ParsedTransaction {
+                version: TransactionVersion::Legacy,
+                fee_payer: String::new(),
+                signers: Vec::new(),
+                instructions: Vec::new(),
+                fee_lamports: 0,
+                size: 0,
+            }),
+            page,
+            scroll: 0,
+            selected,
+            can_sign,
+        }
+    }
+
+    fn app_with(model: InputModel) -> App {
+        let mut app = App::new(Theme::faraday_240());
+        app.input_model = model;
+        app
+    }
+
+    #[test]
+    fn keys_left_toggles_selection_and_leaves_page() {
+        let mut app = app_with(InputModel::Keys);
+        match handle(&mut app, review_screen(0, 0, true), InputEvent::Left) {
+            Screen::SignReview { page, selected, .. } => {
+                assert_eq!(page, 0, "keys Left must not page");
+                assert_eq!(selected, 1, "keys Left toggles Sign/Reject");
+            }
+            _ => panic!("expected SignReview"),
+        }
+    }
+
+    #[test]
+    fn touch_left_pages_back_and_leaves_selection() {
+        let mut app = app_with(InputModel::Touch);
+        match handle(&mut app, review_screen(1, 0, true), InputEvent::Left) {
+            Screen::SignReview { page, selected, .. } => {
+                assert_eq!(page, 0, "touch Left steps to the previous page");
+                assert_eq!(selected, 0, "touch Left must not toggle selection");
+            }
+            _ => panic!("expected SignReview"),
+        }
+    }
+
+    #[test]
+    fn touch_right_pages_forward() {
+        let mut app = app_with(InputModel::Touch);
+        match handle(&mut app, review_screen(0, 0, true), InputEvent::Right) {
+            Screen::SignReview { page, .. } => assert_eq!(page, 1),
+            _ => panic!("expected SignReview"),
+        }
+    }
+
+    #[test]
+    fn keys_confirm_on_reject_cancels_to_menu() {
+        // selected == 1 (Reject): Confirm cancels straight to the menu — no
+        // wallet needed, and it must never sign.
+        let mut app = app_with(InputModel::Keys);
+        let next = handle(&mut app, review_screen(0, 1, true), InputEvent::Confirm);
+        assert!(
+            matches!(next, Screen::MainMenu { .. }),
+            "keys Confirm on Reject cancels to menu"
+        );
+    }
+
+    #[test]
+    fn touch_confirm_without_wallet_never_cancels() {
+        // Touch has no Reject cell: Confirm can only sign. With no wallet loaded
+        // it can't produce a signature, so it must fall through and redraw the
+        // same review screen — never route to the menu the way a keys cancel does.
+        let mut app = app_with(InputModel::Touch);
+        let next = handle(&mut app, review_screen(0, 0, true), InputEvent::Confirm);
+        assert!(
+            matches!(next, Screen::SignReview { .. }),
+            "touch Confirm never cancels via menu"
+        );
     }
 }
