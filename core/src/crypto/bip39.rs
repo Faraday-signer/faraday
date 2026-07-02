@@ -192,6 +192,7 @@ pub fn mnemonic_to_seed(mnemonic: &str, passphrase: &str) -> Zeroizing<Vec<u8>> 
 /// bindings, so we declare it manually. The symbol is present in the linked
 /// ESP-IDF libraries.
 #[cfg(feature = "hardware-sha512")]
+#[allow(unsafe_code)]
 pub fn mnemonic_to_seed(mnemonic: &str, passphrase: &str) -> Zeroizing<Vec<u8>> {
     extern "C" {
         fn mbedtls_pkcs5_pbkdf2_hmac_ext(

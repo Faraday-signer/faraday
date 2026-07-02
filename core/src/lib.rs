@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature = "hardware-sha512"), forbid(unsafe_code))]
+#![cfg_attr(feature = "hardware-sha512", deny(unsafe_code))]
 //! Faraday core — shared platform-agnostic library.
 //!
 //! Contains crypto, transaction parsing, QR encoding/decoding,
