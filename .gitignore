@@ -8,8 +8,9 @@
 # macOS
 .DS_Store
 
-# Claude Code
-.claude/
+# Claude Code (local settings stay ignored; shared agent definitions are committed)
+.claude/*
+!.claude/agents/
 
 # Secrets - NEVER commit these
 .env

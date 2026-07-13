@@ -1,0 +1,6 @@
+# Shared single-file docs that many branches edit: keep both sides' lines
+# instead of conflicting. The claim protocol in docs/backlog.md is the real
+# coordination mechanism; this is the belt-and-suspenders for merges.
+docs/backlog.md merge=union
+docs/state.md merge=union
+docs/roadmap.md merge=union
