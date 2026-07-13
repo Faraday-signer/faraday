@@ -19,6 +19,7 @@ Everything a contributor (human or agent) needs to work on Faraday, in one place
 - **`@project-manager`** (Fable) — owns the board and writes the detailed implementation plan on every card. Plans, never code: its edits stay in `docs/**`.
 - **`@builder`** (Opus) — implements one backlog card end-to-end from its plan: branch, tests, verified change, board + docs updated, PR-ready.
 - **`@pr-reviewer`** (Opus) — reviews a PR: ranked findings + a manual/local test plan. Advisory, read-only.
+- **`@chrome-extension-expert`** (Opus) — MV3 + Chrome Web Store review master: pre-submission audits (7 gates), rejection decoding (violation reference IDs), permission↔API mapping. Run it before every store submission and on any manifest-touching PR.
 
 **Model policy:** Fable plans (detailed, prose-only — it never writes code); Opus builds and reviews.
 
