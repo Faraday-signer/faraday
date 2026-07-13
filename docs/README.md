@@ -12,7 +12,7 @@ Everything a contributor (human or agent) needs to work on Faraday, in one place
 | [`updates/`](./updates/) | The change log — one file per change, no merge conflicts | Everyone |
 | [`proposals/`](./proposals/) | Design proposals under discussion | Authors |
 
-**The loop:** pick a card from `backlog.md` → read `/CLAUDE.md` → build it on its own branch → PR (the `pr-reviewer` agent gives a first pass + a manual test guide) → merge → update the board + `state.md` + add an `updates/` entry.
+**The loop:** pick an unclaimed card from `backlog.md` (check open PRs first — **the open draft PR, not the board, is the claim**) → claim it: branch, board edit as first commit, draft PR titled with the card ID → read `/CLAUDE.md` → build → mark ready for review (`pr-reviewer` gives a first pass + manual test guide) → merge → board + `state.md` + `updates/` entry land with it. Full claiming protocol in [`backlog.md`](./backlog.md#claiming-a-card-how-we-dont-step-on-each-other).
 
 ## Agents
 

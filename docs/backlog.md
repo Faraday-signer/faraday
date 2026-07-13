@@ -6,10 +6,21 @@
 
 ## How to use this board
 
-- **Pick the lowest-ID, highest-priority card in `To Do`/`Backlog` that isn't blocked.** Grant-push cards take precedence while that milestone is open.
+- **Pick the lowest-ID, highest-priority card in `To Do`/`Backlog` that isn't blocked *and isn't claimed*.** Grant-push cards take precedence while that milestone is open.
 - **Read the card fully**, then read [`/CLAUDE.md`](../CLAUDE.md) before writing code.
 - **Move the card** as you go: `Backlog → To Do → In Progress → In Review → Done`. Set yourself as owner when you start.
 - **Definition of done** (from CLAUDE.md): own branch + conventional commits + focused PR, CI green (`cargo test`, clippy `-D warnings`, JS typechecks), acceptance criteria met, board + `state.md` updated, an entry added to `docs/updates/`.
+
+### Claiming a card (how we don't step on each other)
+
+Several people work this repo in parallel, and this file only syncs when PRs merge — so **the board is not the claim. The open PR is the claim.**
+
+1. **Before picking a card:** `git fetch`, then check `gh pr list --state open` and remote branches. A card whose ID appears in an open branch or PR title is taken, whatever the board says.
+2. **To claim:** create your branch (`type/short-description`), make your *first* commit the board edit (card → In Progress, owner = you), push, and **open a draft PR immediately** titled with the card ID (e.g. `feat(site): FA-05 email-capture hardening`). From that moment the claim is visible to everyone in real time — no main commits, no race on this file.
+3. **Abandoning:** close the draft PR and move the card back in a small PR (or ask the PM agent to). A draft PR with no commits for a week is fair game — ping the owner first.
+4. **One card, one branch, one PR.** If your work grows past the card, that's a new card, not a bigger PR.
+
+Merge conflicts on this file are further defused by `.gitattributes` (`merge=union` on the shared docs) — but the protocol above is what actually prevents duplicate effort.
 
 ### Legend
 

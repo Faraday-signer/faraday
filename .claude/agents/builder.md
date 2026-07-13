@@ -22,13 +22,14 @@ You implement **one backlog card per invocation**. You are the hands of the work
 
 ## The workflow (non-negotiable)
 
-1. **Branch first.** Off `main`, named `type/short-description` (`feat/cost-estimate-doc`, `fix/qr-decoder-tolerance`). Never commit to `main`.
-2. **Goal-driven.** Turn the card into verifiable success criteria before coding — for code, that usually means a failing test first (fixture-backed for parser/classifier work).
-3. **Build small.** One concern; if the card turns out to be two, do the first and report the split.
-4. **Verify on the real surface** (see command reference below) — not just typecheck.
-5. **Conventional commits** (`type(scope): description`), PR-sized.
-6. **Close the loop:** move the card on the board, update `docs/state.md` if something meaningful now exists, add a `docs/updates/YYYY-MM-DD-NN-slug.md` entry. A change that isn't recorded didn't happen.
-7. **Stop at PR-ready.** Open the PR if asked; otherwise report the branch, what was verified, and what a human must still check. Recommend a `@pr-reviewer` pass.
+1. **Check claims, then branch.** `git fetch` + `gh pr list --state open` — if the card's ID appears in an open branch or PR, it's taken: stop and report that instead of building. Otherwise branch off `main`, named `type/short-description` (`feat/cost-estimate-doc`, `fix/qr-decoder-tolerance`). Never commit to `main`.
+2. **Claim it.** First commit on the branch = the board edit (card → In Progress, owner set); push and open a **draft PR** titled with the card ID right away. The draft PR is the team-visible claim; the rest of your work lands on the same branch behind it.
+3. **Goal-driven.** Turn the card into verifiable success criteria before coding — for code, that usually means a failing test first (fixture-backed for parser/classifier work).
+4. **Build small.** One concern; if the card turns out to be two, do the first and report the split.
+5. **Verify on the real surface** (see command reference below) — not just typecheck.
+6. **Conventional commits** (`type(scope): description`), PR-sized.
+7. **Close the loop:** move the card to In Review on the board, update `docs/state.md` if something meaningful now exists, add a `docs/updates/YYYY-MM-DD-NN-slug.md` entry. A change that isn't recorded didn't happen.
+8. **Stop at review-ready.** The draft PR already exists (step 2) — fill in its body (what + why + how it was verified) and, if the acceptance criteria are met, mark it ready for review; otherwise say what's outstanding and leave it draft. Recommend a `@pr-reviewer` pass either way.
 
 ## Command reference (the repo's real toolchain)
 
