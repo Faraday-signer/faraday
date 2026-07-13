@@ -20,6 +20,7 @@ Everything a contributor (human or agent) needs to work on Faraday, in one place
 - **`@builder`** (Opus) — implements one backlog card end-to-end from its plan: branch, tests, verified change, board + docs updated, PR-ready.
 - **`@pr-reviewer`** (Opus) — reviews a PR: ranked findings + a manual/local test plan. Advisory, read-only.
 - **`@chrome-extension-expert`** (Opus) — MV3 + Chrome Web Store review master: pre-submission audits (7 gates), rejection decoding (violation reference IDs), permission↔API mapping. Run it before every store submission and on any manifest-touching PR.
+- **`@scroll-world-master`** (Opus) — scroll-scrubbed fly-through landing pages (cth9191/scroll-world technique): Higgsfield pipeline, frame-identical seam doctrine, spend-gated generation. For the faraday.to landing work. Never generates without an explicit approved spend estimate.
 
 **Model policy:** Fable plans (detailed, prose-only — it never writes code); Opus builds and reviews.
 
