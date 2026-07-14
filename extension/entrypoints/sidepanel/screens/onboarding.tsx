@@ -89,7 +89,7 @@ export function OnboardingScreen() {
         </div>
 
         <a
-          href="https://faraday.dev"
+          href="https://faraday.to"
           target="_blank"
           rel="noreferrer"
           style={footerLinkStyle}

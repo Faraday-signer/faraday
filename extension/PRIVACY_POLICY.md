@@ -31,6 +31,14 @@ The extension makes the following network requests, all directed to public Solan
 
 No data is sent to servers owned or operated by Faraday. No cookies, identifiers, or tracking parameters are included in any request.
 
+## Camera access
+
+The extension requests access to your camera for exactly one purpose: scanning QR codes displayed by the Faraday device (pairing your public address, and reading signed transactions back from the device). Camera access is requested through the browser's standard permission prompt the first time a scanner opens, and only on the extension's own pages — never on websites you visit.
+
+- Video frames are processed locally in your browser to detect QR codes and are discarded immediately; nothing is recorded, stored, or transmitted
+- The microphone is never requested
+- You can revoke camera access at any time from the browser's extension settings; the extension offers paste-based alternatives where possible
+
 ## Third-party services
 
 The extension does not integrate any analytics, advertising, or tracking services.
