@@ -1,0 +1,40 @@
+[package]
+name = "faraday-core"
+version = "0.1.0"
+edition = "2021"
+description = "Shared core library for Faraday air-gapped signer"
+build = "build.rs"
+
+[features]
+default = []
+_desktop_sim = []
+hardware-sha512 = ["dep:esp-idf-sys"]
+# Touch-screen chrome: drop the right-edge key gutter and render a horizontal
+# action bar along the bottom instead. Enabled by the ESP32 (no physical keys).
+touch-ui = []
+
+[dependencies]
+# Hardware SHA512 via ESP-IDF mbedtls (ESP32 only)
+esp-idf-sys = { version = "0.37", optional = true }
+
+# Display rendering
+embedded-graphics = "0.8"
+embedded-graphics-core = "0.4"
+u8g2-fonts = { version = "0.5", features = ["embedded_graphics_textstyle"] }
+
+# Crypto (all pure Rust)
+sha2 = "0.10"
+hmac = "0.12"
+pbkdf2 = "0.12"
+ed25519-dalek = "2"
+bs58 = "0.5"
+zeroize = { version = "1", features = ["zeroize_derive"] }
+hex = "0.4"
+base64 = "0.22"
+getrandom = "0.2"
+
+# QR encoding
+qrcode = "0.14"
+
+# UR (Uniform Resource) animated QR streams
+ur = { version = "0.4", default-features = false }

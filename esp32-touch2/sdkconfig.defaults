@@ -1,0 +1,44 @@
+# ESP-IDF configuration for Waveshare ESP32-S3-Touch-LCD-2
+
+# Run the CPU at the full 240 MHz (default is 160 MHz). QR grid-fitting and
+# PBKDF2 are compute-bound, so this is a flat ~1.5x speedup.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=240
+
+# PSRAM (octal, 8MB)
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# SPI for ST7789T3 display
+CONFIG_SPI_MASTER_IN_IRAM=y
+
+# I2C for CST816D touch
+CONFIG_I2C_ISR_IRAM_SAFE=y
+
+# Stack size — GUI rendering needs headroom
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
+
+# PBKDF2-HMAC-SHA512 (2048 rounds) runs for several seconds on the main task
+# without yielding, which starves IDLE0 and triggers the watchdog. This device
+# intentionally runs long crypto operations, so suppress the IDLE0 check.
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
+
+# The QR decoder thread runs on CPU1 and a single rqrr decode can occupy the
+# core for more than the watchdog period, starving IDLE1. Suppress the IDLE1
+# check too so a long decode never reboots the device.
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n
+
+# Camera (espressif/esp32-camera component): use I2C port 1 for SCCB so it
+# doesn't conflict with the touch sensor on I2C port 0 (SDA=GPIO48, SCL=GPIO47).
+# This key is defined by the camera component's Kconfig; it will warn as
+# "unknown symbol" until the component is present in the build.
+CONFIG_SCCB_HARDWARE_I2C_PORT=1
+
+# OV2640 and OV5640 are both default-y in the esp32-camera Kconfig, so no
+# explicit sensor-support entry is needed here. (Autofocus is intentionally not
+# enabled: the attached OV5640 is a fixed-focus module with no VCM, so AF init
+# only blocks for several seconds and fails.)
+
+# Logging
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y

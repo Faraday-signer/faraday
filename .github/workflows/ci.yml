@@ -29,14 +29,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: hardware
+          workspaces: raspberry-pi
       # Some optional deps (nokhwa, minifb) need X11/V4L2 headers on Linux.
       - name: Install linux deps
         run: |
           sudo apt-get update
           sudo apt-get install -y libv4l-dev libudev-dev libxkbcommon-dev pkg-config
       - name: cargo check
-        working-directory: hardware
+        working-directory: raspberry-pi
         run: cargo check --features ${{ matrix.features }}
 
   rust-test:
@@ -47,13 +47,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: hardware
+          workspaces: raspberry-pi
       - name: Install linux deps
         run: |
           sudo apt-get update
           sudo apt-get install -y libv4l-dev libudev-dev libxkbcommon-dev pkg-config
       - name: cargo test
-        working-directory: hardware
+        working-directory: raspberry-pi
         run: cargo test --features simulator
 
   rust-arm:
@@ -66,15 +66,36 @@ jobs:
           targets: arm-unknown-linux-gnueabihf
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: hardware
+          workspaces: raspberry-pi
           key: arm
       - uses: mlugg/setup-zig@v2
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-zigbuild
       - name: cargo zigbuild (ARM)
-        working-directory: hardware
+        working-directory: raspberry-pi
         run: cargo zigbuild --release --target arm-unknown-linux-gnueabihf
+
+  rust-core-touch:
+    name: Rust core (tests + touch-ui feature)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      # Security-critical tests (BIP39/SLIP-0010 vectors, tx parsers, signer,
+      # QR/UR decode) live in faraday-core. Run them on both the pure-Rust
+      # default path and the touch-ui path so the cfg-forked GUI halves compile
+      # and their tests run. hardware-sha512 is NOT enabled on host: it needs
+      # esp-idf-sys and won't build.
+      - name: cargo test core (default features)
+        working-directory: core
+        run: cargo test
+      - name: cargo test core with touch-ui
+        working-directory: core
+        run: cargo test --features touch-ui
 
   extension:
     name: Extension typecheck

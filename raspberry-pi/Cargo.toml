@@ -1,0 +1,66 @@
+[package]
+name = "faraday"
+version = "0.1.0"
+edition = "2021"
+description = "Air-gapped Solana transaction signer"
+default-run = "faraday"
+
+[features]
+default = []
+_desktop_sim = ["dep:minifb", "faraday-core/_desktop_sim"]
+simulator = ["_desktop_sim", "dep:nokhwa"]
+simulator_no_cam = ["_desktop_sim", "dep:rfd", "image/png", "image/jpeg"]
+templates = ["dep:pdf-writer"]
+
+[[bin]]
+name = "faraday"
+path = "src/main.rs"
+
+[[bin]]
+name = "gen-templates"
+path = "src/bin/gen_templates.rs"
+required-features = ["templates"]
+
+[[bin]]
+name = "gen-test-qr"
+path = "src/bin/gen_test_qr.rs"
+required-features = ["simulator"]
+
+[[bin]]
+name = "gen-test-tx"
+path = "src/bin/gen_test_tx.rs"
+required-features = ["simulator"]
+
+[dependencies]
+faraday-core = { path = "../core" }
+
+embedded-graphics-core = "0.4"
+base64 = "0.22"
+
+# QR decoding + image buffer. `rxing` is paired with an Otsu binarize pass
+# (core/src/qr/threshold.rs) so it copes with hand-drawn CompactSeedQR
+# sheets (where rxing-only and rqrr both fail).
+rxing = { version = "0.7", default-features = false, features = ["image"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+# Desktop simulator (optional)
+minifb = { version = "0.27", optional = true }
+nokhwa = { version = "0.10", default-features = false, optional = true }
+rfd = { version = "0.17", optional = true, default-features = false, features = ["xdg-portal"] }
+
+# Printable template generator (optional, dev-only). Cross-compile builds for
+# the Pi don't enable this feature so pdf-writer never ends up in the image.
+pdf-writer = { version = "0.14", optional = true }
+
+# Pi hardware (Linux only). Camera goes through a raspividyuv subprocess
+# (MMAL path) rather than a V4L2 crate — the kernel V4L2 shim couldn't
+# deliver frames on this firmware.
+[target.'cfg(target_os = "linux")'.dependencies]
+rppal = "0.22"
+nokhwa = { version = "0.10", features = ["input-v4l"], optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nokhwa = { version = "0.10", features = ["input-avfoundation"], optional = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+nokhwa = { version = "0.10", features = ["input-msmf"], optional = true }
