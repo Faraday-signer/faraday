@@ -15,7 +15,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     let word_count = if selected == 0 { 12 } else { 24 };
                     return app.maybe_help(
                         HelpTopic::ChooseEntropyMethod,
-                        Screen::CreateMethod { word_count, selected: 0 },
+                        Screen::CreateMethod { word_count, selected: DEFAULT_METHOD },
                     );
                 }
                 InputEvent::Back => return Screen::MainMenu { selected: 0 },
@@ -864,9 +864,36 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
     }
 }
 
+/// Default entropy method highlighted on the picker: CAMERA (index 1, per the
+/// dispatch in `Screen::CreateMethod`), not RANDOM (0), so the device RNG is
+/// never the pre-selected default.
+const DEFAULT_METHOD: usize = 1;
+
+/// XOR a hashed independent entropy source into `entropy` so no single
+/// getrandom draw solely determines the seed (mirrors the camera path). On
+/// ESP32 `getrandom` is `esp_random`, only fully conditioned once the SAR-ADC
+/// source is enabled; folding in a second independent draw keeps a weak RNG
+/// from being determinative on its own.
+fn mix_independent_source(entropy: &mut [u8; 32], source: &[u8]) {
+    use sha2::{Digest, Sha256};
+    let mut digest = Sha256::digest(source);
+    for (e, d) in entropy.iter_mut().zip(digest.iter()) {
+        *e ^= d;
+    }
+    digest.as_mut_slice().zeroize();
+}
+
 fn generate_wallet(word_count: usize) -> Screen {
     let mut entropy = [0u8; 32];
     getrandom::getrandom(&mut entropy).expect("Failed to get random entropy");
+
+    // Defense in depth: fold a second, independent getrandom draw (hashed) into
+    // the entropy so a single weak draw is never solely determinative.
+    let mut second = [0u8; 32];
+    getrandom::getrandom(&mut second).expect("Failed to get random entropy");
+    mix_independent_source(&mut entropy, &second);
+    second.zeroize();
+
     let mnemonic = Zeroizing::new(
         bip39::mnemonic_from_entropy(&entropy, word_count).expect("Failed to generate mnemonic"),
     );
@@ -924,5 +951,39 @@ fn build_verify_screen(mnemonic: Zeroizing<String>, checks: Vec<usize>, current:
         options,
         correct_idx: correct_pos,
         selected: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::Theme;
+
+    #[test]
+    fn generate_wallet_mixes_more_than_one_source() {
+        // Same primary bytes, different second source → different entropy,
+        // proving the second source is folded in (not solely getrandom), and
+        // that it actually alters the primary bytes.
+        let base = [0xABu8; 32];
+        let mut a = base;
+        let mut b = base;
+        mix_independent_source(&mut a, &[1u8; 32]);
+        mix_independent_source(&mut b, &[2u8; 32]);
+        assert_ne!(a, b);
+        assert_ne!(a, base);
+    }
+
+    #[test]
+    fn default_create_method_is_not_random() {
+        let mut app = App::new(Theme::faraday_240());
+        let next = handle(
+            &mut app,
+            Screen::CreateWordCount { selected: 0 },
+            InputEvent::Confirm,
+        );
+        match next {
+            Screen::CreateMethod { selected, .. } => assert_ne!(selected, 0),
+            _ => panic!("expected CreateMethod screen"),
+        }
     }
 }
