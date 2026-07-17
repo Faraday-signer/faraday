@@ -2750,11 +2750,18 @@ fn wrap_line_for_width(text: &str, max_chars: usize) -> Vec<String> {
                 out.push(current.clone());
                 current.clear();
             }
-            let mut start = 0;
-            while start < word.len() {
-                let end = (start + max_chars).min(word.len());
-                out.push(word[start..end].to_string());
-                start = end;
+            let mut chunk = String::new();
+            let mut count = 0;
+            for ch in word.chars() {
+                chunk.push(ch);
+                count += 1;
+                if count == max_chars {
+                    out.push(core::mem::take(&mut chunk));
+                    count = 0;
+                }
+            }
+            if !chunk.is_empty() {
+                out.push(chunk);
             }
             continue;
         }
@@ -2803,16 +2810,25 @@ fn draw_message_review<D: DrawTarget<Color = Rgb565>>(
 
     let text = core::str::from_utf8(message_bytes).unwrap_or("(binary data)");
     let max_chars_per_line = 38usize;
-    let lines: Vec<&str> = text
-        .as_bytes()
-        .chunks(max_chars_per_line)
-        .map(|chunk| core::str::from_utf8(chunk).unwrap_or(""))
-        .collect();
+    let mut lines: Vec<String> = Vec::new();
+    let mut line = String::new();
+    let mut count = 0;
+    for ch in text.chars() {
+        line.push(ch);
+        count += 1;
+        if count == max_chars_per_line {
+            lines.push(core::mem::take(&mut line));
+            count = 0;
+        }
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
     let max_visible = 12usize;
     let clamped_scroll = scroll.min(lines.len().saturating_sub(max_visible));
     for (vi, i) in (clamped_scroll..lines.len().min(clamped_scroll + max_visible)).enumerate() {
         let y = 50 + vi as i32 * 12;
-        Text::new(lines[i], Point::new(5, y), text_style).draw(display)?;
+        Text::new(lines[i].as_str(), Point::new(5, y), text_style).draw(display)?;
     }
 
     Text::new(
@@ -4129,4 +4145,25 @@ fn draw_scan_diag<D: DrawTarget<Color = Rgb565>>(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wrap_line_for_width;
+
+    #[test]
+    fn hard_split_multibyte_does_not_panic() {
+        // Offsets that bisect a UTF-8 codepoint used to panic on a &str slice.
+        let _ = wrap_line_for_width(&"日".repeat(64), 10);
+        let mixed = format!("aaaaa{}", "🚀".repeat(20));
+        let _ = wrap_line_for_width(&mixed, 8);
+    }
+
+    #[test]
+    fn ascii_sentence_wraps_as_before() {
+        assert_eq!(
+            wrap_line_for_width("the quick brown fox", 9),
+            vec!["the quick".to_string(), "brown fox".to_string()],
+        );
+    }
 }
