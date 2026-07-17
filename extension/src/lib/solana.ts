@@ -3,16 +3,6 @@ import nacl from "tweetnacl";
 
 const BASE58_RE = /^[1-9A-HJ-NP-Za-km-z]+$/;
 const SIGN_MESSAGE_QR_PREFIX = 0xff;
-
-// Solana off-chain-message signing domain. The signer prepends this to the
-// raw message before signing so a signed message can never validate as an
-// ed25519 transaction signature. Byte-for-byte identical to the signer's
-// preimage: b"\xffsolana offchain" (0xFF + 15 ASCII bytes) then version 0x00.
-const OFFCHAIN_DOMAIN_TAG = new Uint8Array([
-  0xff,
-  ...new TextEncoder().encode("solana offchain")
-]);
-const OFFCHAIN_VERSION = 0x00;
 const MIN_SIGN_MESSAGE_QR_BASE64_LENGTH = 51;
 
 export const FARADAY_SIG_PREFIX = "faraday:sig:";
@@ -107,23 +97,6 @@ export function decodeHexSignature(signatureHex: string): Uint8Array {
   return out;
 }
 
-/**
- * Reconstruct the Solana off-chain-message signing preimage:
- * `b"\xffsolana offchain" || version(0u8) || len(u16 le) || message`.
- * The signer signs this preimage, never the raw message, so verification
- * must run over the same bytes.
- */
-export function buildOffchainPreimage(message: Uint8Array): Uint8Array {
-  const lenOffset = OFFCHAIN_DOMAIN_TAG.length + 1;
-  const preimage = new Uint8Array(lenOffset + 2 + message.length);
-  preimage.set(OFFCHAIN_DOMAIN_TAG, 0);
-  preimage[OFFCHAIN_DOMAIN_TAG.length] = OFFCHAIN_VERSION;
-  preimage[lenOffset] = message.length & 0xff;
-  preimage[lenOffset + 1] = (message.length >> 8) & 0xff;
-  preimage.set(message, lenOffset + 2);
-  return preimage;
-}
-
 export function validateSignedMessage(
   messageBytes: Uint8Array,
   signatureHex: string,
@@ -131,8 +104,9 @@ export function validateSignedMessage(
 ): Uint8Array {
   const signatureBytes = decodeHexSignature(signatureHex);
   const pubkey = pubkeyToBytes(expectedSigner);
-  const preimage = buildOffchainPreimage(messageBytes);
-  const verified = nacl.sign.detached.verify(preimage, signatureBytes, pubkey);
+  // Signed over the RAW message bytes, matching the signer and a dApp's
+  // nacl.verify(message, sig, pubkey) / SIWS verifySignIn.
+  const verified = nacl.sign.detached.verify(messageBytes, signatureBytes, pubkey);
   if (!verified) {
     throw new Error("Message signature does not match the paired signer account.");
   }
@@ -315,6 +289,71 @@ function parseEnvelope(txBytes: Uint8Array): TxEnvelope {
     messageBytes,
     signerAddresses: parseSignerAddresses(messageBytes)
   };
+}
+
+/**
+ * Walk the instruction section of a legacy message and confirm it forms a
+ * coherent, fully-consumed transaction message with at least one instruction.
+ * Reuses the same shortvec reader the tx-envelope parser relies on. The caller
+ * has already validated the header + account-key table via parseEnvelope.
+ */
+function messageConsumesWithInstruction(message: Uint8Array): boolean {
+  // Non-versioned messages only reach here (0x80 handled by the caller), so
+  // the 3-byte header sits at offset 0.
+  let offset = 3;
+  const keyCount = readShortVec(message, offset);
+  offset += keyCount.bytesRead + keyCount.value * 32;
+  offset += 32; // recent blockhash
+  if (offset > message.length) {
+    return false;
+  }
+
+  const ixCount = readShortVec(message, offset);
+  offset += ixCount.bytesRead;
+  if (ixCount.value < 1) {
+    return false;
+  }
+
+  for (let i = 0; i < ixCount.value; i += 1) {
+    offset += 1; // program id index
+    const accounts = readShortVec(message, offset);
+    offset += accounts.bytesRead + accounts.value;
+    const dataLen = readShortVec(message, offset);
+    offset += dataLen.bytesRead + dataLen.value;
+    if (offset > message.length) {
+      return false;
+    }
+  }
+
+  return offset === message.length;
+}
+
+/**
+ * Transaction-shape guard mirroring the Rust signer (#79). Returns true when
+ * `messageBytes` — what a dApp handed to signMessage / signIn — actually form a
+ * signable Solana transaction *message*: a v0 version prefix, or a legacy
+ * message that parses coherently, consumes the whole buffer, and carries at
+ * least one instruction. Signing such bytes would mint a valid transaction
+ * signature, so the wallet refuses them. Real text / SIWS plaintext does not
+ * parse this way, so it passes through unchanged.
+ */
+export function looksLikeTransaction(messageBytes: Uint8Array): boolean {
+  // A high-bit-set first byte is a versioned-message prefix (0x80 = v0):
+  // unambiguously a transaction.
+  if (messageBytes.length > 0 && (messageBytes[0] & 0x80) !== 0) {
+    return true;
+  }
+
+  try {
+    // Prepend a zero signature count so the wire-format envelope parser reads
+    // the bare message directly, validating the header + account-key table.
+    const wire = new Uint8Array(messageBytes.length + 1);
+    wire.set(messageBytes, 1);
+    const { messageBytes: message } = parseEnvelope(wire);
+    return messageConsumesWithInstruction(message);
+  } catch {
+    return false;
+  }
 }
 
 export function validateUnsignedTransactionPayload(

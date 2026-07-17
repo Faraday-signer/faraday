@@ -31,9 +31,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         // decodes to message_bytes. Route to the dedicated
                         // review screen before falling through to tx parsing.
                         if let Some(message_bytes) = decoded.message_bytes.clone() {
-                            // Defense-in-depth on top of the domain separation in
-                            // sign_message: refuse a "message" that is actually a
-                            // transaction so it can't be smuggled past tx review.
+                            // Cheap first-line UX router: bounce an obvious tx
+                            // scan back to the scanner. The authoritative
+                            // anti-forge check is `is_transaction_message`
+                            // inside `sign_message`, which refuses to sign
+                            // anything that parses as a transaction (#79).
                             if looks_like_solana_tx(&message_bytes) {
                                 return Screen::SignScanTx;
                             }
@@ -230,12 +232,18 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 }
                 InputEvent::Confirm => {
                     if let Some(wallet) = &app.wallet {
-                        if let Ok(sig) = crate::signer::sign_message(
+                        match crate::signer::sign_message(
                             &message_bytes,
                             &wallet.keypair.private_key,
                         ) {
-                            let signature_hex = hex::encode(&sig);
-                            return Screen::SignMessageResult { signature_hex };
+                            Ok(sig) => {
+                                let signature_hex = hex::encode(&sig);
+                                return Screen::SignMessageResult { signature_hex };
+                            }
+                            // Any refusal (tx-shaped #79, or over-length) shows
+                            // the refusal outcome — never a signature, never a
+                            // silent drop to the menu.
+                            Err(_) => return Screen::SignMessageRefused,
                         }
                     }
                     return Screen::MainMenu { selected: app.menu_index_of(2) };
@@ -256,12 +264,15 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     return Screen::SignScanTx;
                 }
                 if let Some(wallet) = &app.wallet {
-                    if let Ok(sig) = crate::signer::sign_message(
+                    match crate::signer::sign_message(
                         grid.text.as_bytes(),
                         &wallet.keypair.private_key,
                     ) {
-                        let signature_hex = hex::encode(&sig);
-                        return Screen::SignMessageResult { signature_hex };
+                        Ok(sig) => {
+                            let signature_hex = hex::encode(&sig);
+                            return Screen::SignMessageResult { signature_hex };
+                        }
+                        Err(_) => return Screen::SignMessageRefused,
                     }
                 }
             }
@@ -274,6 +285,16 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 _ => {}
             }
             Screen::SignMessageResult { signature_hex }
+        }
+
+        Screen::SignMessageRefused => {
+            match event {
+                InputEvent::Confirm | InputEvent::Back => {
+                    return Screen::MainMenu { selected: app.menu_index_of(2) }
+                }
+                _ => {}
+            }
+            Screen::SignMessageRefused
         }
 
         _ => unreachable!("sign::handle called with non-sign screen"),

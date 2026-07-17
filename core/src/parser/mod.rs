@@ -642,6 +642,14 @@ fn decode_b58_pubkey(s: &str) -> Option<[u8; 32]> {
     Some(out)
 }
 
+/// Refuse-to-sign guard for the off-chain message channel: true when these
+/// bytes parse as a signable Solana transaction message. Delegates to the
+/// wire-format deserializer so the check stays in lock-step with the parser
+/// that drives tx review. See `message::is_signable_tx_message` (#79).
+pub fn is_transaction_message(message_bytes: &[u8]) -> bool {
+    message::is_signable_tx_message(message_bytes)
+}
+
 // === Entry point ===
 
 pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {

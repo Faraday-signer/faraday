@@ -3,13 +3,13 @@ import bs58 from "bs58";
 import nacl from "tweetnacl";
 
 import {
-  buildOffchainPreimage,
   buildSignMessageQrPayload,
   decodeHexSignature,
   decodeBase64,
   encodeBase64,
   formatSiwsMessage,
   isValidSolanaAddress,
+  looksLikeTransaction,
   parseFaradaySigEnvelope,
   pubkeyToBytes,
   spliceFaradaySignature,
@@ -502,27 +502,80 @@ describe("buildSignMessageQrPayload", () => {
   });
 });
 
-describe("buildOffchainPreimage", () => {
-  it("prepends the offchain domain, version, and u16-le length", () => {
-    const message = new Uint8Array([0xaa, 0xbb, 0xcc]);
-    const preimage = buildOffchainPreimage(message);
-    const tag = new Uint8Array([0xff, ...new TextEncoder().encode("solana offchain")]);
-    expect(tag.length).toBe(16);
-    expect(preimage.slice(0, 16)).toEqual(tag);
-    expect(preimage[16]).toBe(0x00); // version
-    expect(preimage[17]).toBe(3); // length low byte
-    expect(preimage[18]).toBe(0); // length high byte
-    expect(preimage.slice(19)).toEqual(message);
+/* --------------------------------------------------------------------- *
+ * looksLikeTransaction — transaction-shape guard (#79)
+ * --------------------------------------------------------------------- */
+
+describe("looksLikeTransaction", () => {
+  // A minimal legacy tx *message* (no signature prefix) with one signer and a
+  // single instruction — the exact shape a forger would smuggle through
+  // signMessage to mint a transaction signature.
+  function txMessageWithInstruction(): Uint8Array {
+    const signer = makeAccount(10);
+    const program = makeAccount(0);
+    const ix = concat([
+      new Uint8Array([1]), // program id index
+      new Uint8Array([1]), // 1 account index
+      new Uint8Array([0]), // account_indices[0]
+      new Uint8Array([4]), // data len
+      new Uint8Array([2, 0, 0, 0]) // System Transfer discriminant
+    ]);
+    return concat([
+      new Uint8Array([1, 0, 1]), // header
+      new Uint8Array([2]), // account key count
+      signer.bytes,
+      program.bytes,
+      new Uint8Array(32), // recent blockhash
+      new Uint8Array([1]), // instruction count
+      ix
+    ]);
+  }
+
+  it("rejects a crafted 1-signer transaction message", () => {
+    expect(looksLikeTransaction(txMessageWithInstruction())).toBe(true);
+  });
+
+  it("rejects a v0 versioned-message prefix (0x80)", () => {
+    const versioned = concat([new Uint8Array([0x80]), txMessageWithInstruction()]);
+    expect(looksLikeTransaction(versioned)).toBe(true);
+  });
+
+  it("does NOT reject a real SIWS plaintext", () => {
+    const text = formatSiwsMessage({
+      domain: "example.com",
+      address: "11111111111111111111111111111111",
+      statement: "Sign in to Example.",
+      uri: "https://example.com",
+      version: "1",
+      nonce: "abc123",
+      issuedAt: "2026-01-01T00:00:00Z"
+    });
+    const bytes = new TextEncoder().encode(text);
+    expect(looksLikeTransaction(bytes)).toBe(false);
+  });
+
+  it("does NOT reject a short plain-text message", () => {
+    expect(looksLikeTransaction(new TextEncoder().encode("gm from faraday"))).toBe(false);
+  });
+
+  it("does NOT reject a message that parses but leaves trailing bytes", () => {
+    // A tx message with an extra trailing byte no longer fully consumes.
+    const withTail = concat([txMessageWithInstruction(), new Uint8Array([0xff])]);
+    expect(looksLikeTransaction(withTail)).toBe(false);
   });
 });
+
+/* --------------------------------------------------------------------- *
+ * message signature helpers — RAW-message contract
+ * --------------------------------------------------------------------- */
 
 describe("message signature helpers", () => {
   const seed = new Uint8Array(32).fill(7);
   const keypair = nacl.sign.keyPair.fromSeed(seed);
   const signer = bs58.encode(keypair.publicKey);
   const message = new TextEncoder().encode("faraday message signing fixture");
-  // The signer signs the off-chain preimage, never the raw message.
-  const signature = nacl.sign.detached(buildOffchainPreimage(message), keypair.secretKey);
+  // The signer signs the RAW message bytes.
+  const signature = nacl.sign.detached(message, keypair.secretKey);
   const signatureHex = Buffer.from(signature).toString("hex");
 
   it("decodes a 64-byte hex signature", () => {
@@ -531,15 +584,9 @@ describe("message signature helpers", () => {
     expect(decoded).toEqual(signature);
   });
 
-  it("accepts a signature made over the offchain preimage", () => {
+  it("accepts a signature made over the raw message", () => {
     const verified = validateSignedMessage(message, signatureHex, signer);
     expect(verified).toEqual(signature);
-  });
-
-  it("rejects a signature made over the raw message", () => {
-    const rawSig = nacl.sign.detached(message, keypair.secretKey);
-    const rawSigHex = Buffer.from(rawSig).toString("hex");
-    expect(() => validateSignedMessage(message, rawSigHex, signer)).toThrow(/does not match/i);
   });
 
   it("rejects malformed signature hex", () => {
@@ -549,6 +596,22 @@ describe("message signature helpers", () => {
   it("rejects signature that does not match message", () => {
     const tampered = new TextEncoder().encode("faraday message signing fixture (tampered)");
     expect(() => validateSignedMessage(tampered, signatureHex, signer)).toThrow(/does not match/i);
+  });
+
+  it("verifies a SIWS plaintext signature on the raw bytes (round-trip)", () => {
+    const text = formatSiwsMessage({
+      domain: "example.com",
+      address: signer,
+      nonce: "n0nce",
+      issuedAt: "2026-01-01T00:00:00Z"
+    });
+    const bytes = new TextEncoder().encode(text);
+    const sig = nacl.sign.detached(bytes, keypair.secretKey);
+    const sigHex = Buffer.from(sig).toString("hex");
+
+    expect(validateSignedMessage(bytes, sigHex, signer)).toEqual(sig);
+    // And the guard must let a genuine SIWS login through.
+    expect(looksLikeTransaction(bytes)).toBe(false);
   });
 });
 
