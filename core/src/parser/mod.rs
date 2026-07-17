@@ -28,7 +28,7 @@ mod jupiter_rfq;
 mod jupiter_ultra;
 mod raydium;
 
-use bytes::pubkey_short;
+use bytes::{pubkey_short, render_account};
 use sha2::Digest;
 
 // === Public types ===
@@ -40,6 +40,10 @@ pub struct ParsedTransaction {
     pub instructions: Vec<ParsedInstruction>,
     pub fee_lamports: u64,
     pub size: usize,
+    /// True when the expanded account list contains an ALT entry we couldn't
+    /// resolve offline. Such a tx must never be signed: the user sees a
+    /// sentinel, not the account the validator will actually use.
+    pub has_unresolved_accounts: bool,
 }
 
 pub enum TransactionVersion {
@@ -442,10 +446,8 @@ fn detect_swap_shape(tx_bytes: &[u8], fee_lamports: u64) -> Option<ZonedAction> 
         // Empty `buy_amount` is the explicit "device cannot verify this
         // number offline" signal. The renderer surfaces it as a dash.
         buy_amount: String::new(),
-        buy_symbol: token_registry::lookup(&receive_entry.mint).map_or_else(
-            || bs58::encode(receive_entry.mint).into_string(),
-            |i| i.symbol.to_string(),
-        ),
+        buy_symbol: token_registry::lookup(&receive_entry.mint)
+            .map_or_else(|| render_account(&receive_entry.mint), |i| i.symbol.to_string()),
         fee_lamports,
         fee_payer,
         dex_name: String::new(),
@@ -640,6 +642,14 @@ fn decode_b58_pubkey(s: &str) -> Option<[u8; 32]> {
     Some(out)
 }
 
+/// Refuse-to-sign guard for the off-chain message channel: true when these
+/// bytes parse as a signable Solana transaction message. Delegates to the
+/// wire-format deserializer so the check stays in lock-step with the parser
+/// that drives tx review. See `message::is_signable_tx_message` (#79).
+pub fn is_transaction_message(message_bytes: &[u8]) -> bool {
+    message::is_signable_tx_message(message_bytes)
+}
+
 // === Entry point ===
 
 pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
@@ -659,6 +669,7 @@ pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
                 }],
                 fee_lamports: 0,
                 size: tx_bytes.len(),
+                has_unresolved_accounts: false,
             }
         }
     };
@@ -672,6 +683,7 @@ pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
 
     // Expand account list with resolved ALT entries (v0 transactions)
     let all_accounts = lookup_tables::expand_accounts(&msg.accounts, &msg.address_table_lookups);
+    let has_unresolved_accounts = all_accounts.iter().any(lookup_tables::is_unresolved);
 
     let n_signers = (msg.num_required_signers as usize).min(all_accounts.len());
     let signers = all_accounts[..n_signers].to_vec();
@@ -723,6 +735,7 @@ pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
         instructions,
         fee_lamports,
         size: tx_bytes.len(),
+        has_unresolved_accounts,
     }
 }
 
@@ -802,7 +815,8 @@ pub fn build_review_lines(
     wallet_pubkey: &[u8; 32],
 ) -> (Vec<String>, bool, ParsedTransaction) {
     let parsed = parse(tx_bytes);
-    let can_sign = parsed.signers.iter().any(|s| s == wallet_pubkey);
+    let has_signer = parsed.signers.iter().any(|s| s == wallet_pubkey);
+    let can_sign = has_signer && !parsed.has_unresolved_accounts;
     let mut lines = Vec::new();
     let classification = classification::classify(tx_bytes, wallet_pubkey);
     let primary = primary_instruction(&parsed);
@@ -815,7 +829,38 @@ pub fn build_review_lines(
         }
     }
 
-    add_hero_action_lines(&mut lines, primary, classification.as_ref());
+    if parsed.has_unresolved_accounts {
+        lines.push("! Unresolved lookup-table account — cannot sign".to_string());
+    }
+
+    // Fund-moving legs the wallet authorizes, grouped per asset. Multiple legs
+    // of the same asset must never hide behind a small primary leg in the hero:
+    // warn on every multi-leg asset (SOL OR token) and show its SUMMED total.
+    let outflow_legs = classification::wallet_outflow_legs(tx_bytes, wallet_pubkey);
+    let outflow_groups = group_outflows(&outflow_legs);
+    for group in &outflow_groups {
+        if group.count > 1 {
+            lines.push(format!(
+                "! {} {} sends — total {}",
+                group.count,
+                group.unit_label(),
+                group.format_total()
+            ));
+        }
+    }
+
+    // Substitute the summed total into the hero ONLY when the primary leg is
+    // the same asset being summed — otherwise a SOL total could stamp onto a
+    // token recipient (or vice versa). Falls back to the primary's own amount.
+    let primary_index =
+        primary.and_then(|p| parsed.instructions.iter().position(|ix| std::ptr::eq(ix, p)));
+    let batch_total = primary_index
+        .and_then(|pi| outflow_legs.iter().find(|l| l.ix_index == pi))
+        .and_then(|leg| outflow_groups.iter().find(|g| g.key == leg.key))
+        .filter(|g| g.count > 1)
+        .map(OutflowGroup::format_total);
+
+    add_hero_action_lines(&mut lines, primary, batch_total);
 
     // Signer-required warning is the only @HM we keep in the hero zone —
     // it's a blocker the user must see at a glance. Everything else
@@ -914,23 +959,70 @@ fn has_transfer_fields(ix: &ParsedInstruction) -> bool {
     field_value(ix, "From").is_some() && field_value(ix, "To").is_some()
 }
 
+/// Outflow legs of one asset, summed. `key` is the grouping identity; `total`
+/// is in raw units, formatted for display via the asset's decimals/symbol.
+struct OutflowGroup {
+    key: String,
+    count: usize,
+    total: u64,
+    decimals: Option<u8>,
+    symbol: Option<&'static str>,
+}
+
+impl OutflowGroup {
+    fn format_total(&self) -> String {
+        match self.decimals {
+            Some(d) => match self.symbol {
+                Some(sym) => format!("{} {}", token_registry::format_amount(self.total, d), sym),
+                None => token_registry::format_amount(self.total, d),
+            },
+            None => self.total.to_string(),
+        }
+    }
+
+    fn unit_label(&self) -> &str {
+        self.symbol.unwrap_or("token")
+    }
+}
+
+/// Merge outflow legs by asset key, preserving first-seen order. Amounts sum;
+/// decimals/symbol are taken from the first leg that carries them (a
+/// TransferChecked with a known mint beats a bare plain-Transfer leg).
+fn group_outflows(legs: &[classification::OutflowLeg]) -> Vec<OutflowGroup> {
+    let mut groups: Vec<OutflowGroup> = Vec::new();
+    for leg in legs {
+        if let Some(g) = groups.iter_mut().find(|g| g.key == leg.key) {
+            g.count += 1;
+            g.total = g.total.saturating_add(leg.amount);
+            if g.decimals.is_none() {
+                g.decimals = leg.decimals;
+            }
+            if g.symbol.is_none() {
+                g.symbol = leg.symbol;
+            }
+        } else {
+            groups.push(OutflowGroup {
+                key: leg.key.clone(),
+                count: 1,
+                total: leg.amount,
+                decimals: leg.decimals,
+                symbol: leg.symbol,
+            });
+        }
+    }
+    groups
+}
+
 fn add_hero_action_lines(
     lines: &mut Vec<String>,
     primary: Option<&ParsedInstruction>,
-    classification: Option<&classification::Classification>,
+    batch_total: Option<String>,
 ) {
     let Some(ix) = primary else {
         lines.push("@H1 REVIEW".to_string());
         lines.push("@H2 Unable to decode action".to_string());
         return;
     };
-
-    // Classification headline ("Likely: DeFi swap (90%)") was previously
-    // emitted as an @HM hero-meta line. Dropped: the @H1 title already
-    // communicates the tx category ("SWAP" / "TRANSFER" / ...) without the
-    // confidence-score noise. High-risk classifications still emit "!"
-    // warning lines above the hero.
-    let _ = classification;
 
     let spend = field_value(ix, "You spend").or_else(|| field_value(ix, "You spend (max)"));
     let receive = field_value(ix, "You receive").or_else(|| field_value(ix, "You receive (min)"));
@@ -977,7 +1069,10 @@ fn add_hero_action_lines(
     let from = field_value(ix, "From");
     let to = field_value(ix, "To");
     if let (Some(_from), Some(to)) = (from, to) {
-        let amount = field_value(ix, "Amount").unwrap_or("?");
+        // In a multi-transfer batch the primary leg alone under-represents
+        // the outflow, so the hero shows the SUMMED total instead. Single
+        // transfers keep their own leg amount unchanged.
+        let amount = batch_total.unwrap_or_else(|| field_value(ix, "Amount").unwrap_or("?").to_string());
         // Hero stays at ~3 rows to match the swap hero, so the scrollable
         // detail zone gets consistent vertical space across tx types.
         // "From" drops off the hero: the source is always the paired
@@ -1458,6 +1553,481 @@ mod tests {
         tx
     }
 
+    /// Legacy tx with N System.Transfer ixs, all from `from` to the same
+    /// `dest`. Accounts: [from (signer), dest, system program].
+    fn system_transfers_tx(from: [u8; 32], dest: [u8; 32], amounts: &[u64]) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.push(1u8);
+        tx.extend_from_slice(&[0u8; 64]);
+        // header: 1 signer, 0 readonly-signed, 1 readonly-unsigned (system prog)
+        tx.push(1);
+        tx.push(0);
+        tx.push(1);
+        // 3 accounts: signer + dest + system program (all zeros)
+        tx.push(3);
+        tx.extend_from_slice(&from);
+        tx.extend_from_slice(&dest);
+        tx.extend_from_slice(&[0u8; 32]);
+        // blockhash
+        tx.extend_from_slice(&[0xABu8; 32]);
+        tx.push(amounts.len() as u8);
+        for amount in amounts {
+            tx.push(2); // program_id_index = 2 (system program)
+            tx.push(2); // 2 accounts
+            tx.push(0); // from = index 0
+            tx.push(1); // to = index 1 (dest)
+            tx.push(12); // data len
+            tx.extend_from_slice(&[2u8, 0, 0, 0]); // Transfer
+            tx.extend_from_slice(&amount.to_le_bytes());
+        }
+        tx
+    }
+
+    #[test]
+    fn multi_transfer_hero_surfaces_summed_outflow_and_warning() {
+        let from = [0x01u8; 32];
+        let dest = [0x09u8; 32];
+        // 0.001 SOL primary leg hiding a 5.0 SOL leg → 5.001 SOL total.
+        let tx = system_transfers_tx(from, dest, &[1_000_000, 5_000_000_000]);
+
+        let (lines, can_sign, parsed) = build_review_lines(&tx, &from);
+        assert!(can_sign);
+        assert_eq!(parsed.instructions.len(), 2);
+
+        // Hero zone is everything before the first blank line (details block).
+        let hero_end = lines.iter().position(String::is_empty).unwrap_or(lines.len());
+        let hero = &lines[..hero_end];
+
+        // A visible warning that more than one SOL send is present.
+        assert!(
+            hero.iter()
+                .any(|l| l.starts_with("! ") && l.contains('2') && l.contains("SOL sends")),
+            "expected multi-transfer warning in hero, got: {:?}",
+            hero
+        );
+        // Hero headline amount is the SUMMED total, not the 0.001 primary leg.
+        assert!(
+            hero.iter().any(|l| l.starts_with("@H2") && l.contains("5.001 SOL")),
+            "expected summed 5.001 SOL total in hero @H2, got: {:?}",
+            hero
+        );
+        assert!(
+            !hero.iter().any(|l| l.starts_with("@H2") && l.contains("0.001")),
+            "hero @H2 must not under-represent the batch with the 0.001 leg: {:?}",
+            hero
+        );
+    }
+
+    #[test]
+    fn single_transfer_hero_unchanged() {
+        let from = [0x01u8; 32];
+        let dest = [0x09u8; 32];
+        let tx = system_transfers_tx(from, dest, &[2_000_000_000]);
+
+        let (lines, can_sign, _) = build_review_lines(&tx, &from);
+        assert!(can_sign);
+
+        let hero_end = lines.iter().position(String::is_empty).unwrap_or(lines.len());
+        let hero = &lines[..hero_end];
+
+        assert!(hero.iter().any(|l| l == "@H1 TRANSFER"));
+        assert!(hero.iter().any(|l| l.starts_with("@H2") && l.contains("2 SOL")));
+        // No batch warning for a lone transfer.
+        assert!(
+            !hero.iter().any(|l| l.starts_with("!")),
+            "single transfer must not emit a batch warning: {:?}",
+            hero
+        );
+    }
+
+    const USDC_MINT_B58: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const TOKEN_PROG_B58: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+    fn b58_key(s: &str) -> [u8; 32] {
+        bs58::decode(s).into_vec().unwrap().try_into().unwrap()
+    }
+
+    /// Legacy tx with N SPL TransferChecked (USDC) ixs, all from `source` to
+    /// `dest`, authorized by `wallet`. Accounts:
+    /// [wallet(0), source(1), dest(2), usdc_mint(3), token_prog(4)].
+    fn usdc_transfers_tx(
+        wallet: [u8; 32],
+        source: [u8; 32],
+        dest: [u8; 32],
+        amounts: &[u64],
+    ) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.push(1u8);
+        tx.extend_from_slice(&[0u8; 64]);
+        // header: 1 signer, 0 readonly-signed, 2 readonly-unsigned (mint, token prog)
+        tx.push(1);
+        tx.push(0);
+        tx.push(2);
+        tx.push(5); // 5 accounts
+        tx.extend_from_slice(&wallet);
+        tx.extend_from_slice(&source);
+        tx.extend_from_slice(&dest);
+        tx.extend_from_slice(&b58_key(USDC_MINT_B58));
+        tx.extend_from_slice(&b58_key(TOKEN_PROG_B58));
+        tx.extend_from_slice(&[0xABu8; 32]); // blockhash
+        tx.push(amounts.len() as u8);
+        for amount in amounts {
+            tx.push(4); // program_id_index = 4 (token program)
+            tx.push(4); // 4 accounts: source, mint, dest, authority
+            tx.push(1); // source
+            tx.push(3); // mint
+            tx.push(2); // dest
+            tx.push(0); // authority = wallet
+            tx.push(10); // data len
+            tx.push(12); // TransferChecked disc
+            tx.extend_from_slice(&amount.to_le_bytes());
+            tx.push(6); // decimals
+        }
+        tx
+    }
+
+    /// Legacy tx: one USDC TransferChecked (primary) followed by SOL sends,
+    /// all authorized by / sent from `wallet`. Accounts: [wallet(0),
+    /// sol_dest(1), usdc_source(2), usdc_dest(3), usdc_mint(4), system(5),
+    /// token(6)].
+    fn mixed_usdc_then_sol_tx(
+        wallet: [u8; 32],
+        sol_dest: [u8; 32],
+        usdc_source: [u8; 32],
+        usdc_dest: [u8; 32],
+        usdc_amount: u64,
+        sol_lamports: &[u64],
+    ) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.push(1u8);
+        tx.extend_from_slice(&[0u8; 64]);
+        // header: 1 signer, 0 readonly-signed, 3 readonly-unsigned (mint, system, token)
+        tx.push(1);
+        tx.push(0);
+        tx.push(3);
+        tx.push(7); // 7 accounts
+        tx.extend_from_slice(&wallet);
+        tx.extend_from_slice(&sol_dest);
+        tx.extend_from_slice(&usdc_source);
+        tx.extend_from_slice(&usdc_dest);
+        tx.extend_from_slice(&b58_key(USDC_MINT_B58));
+        tx.extend_from_slice(&[0u8; 32]); // system program
+        tx.extend_from_slice(&b58_key(TOKEN_PROG_B58));
+        tx.extend_from_slice(&[0xABu8; 32]); // blockhash
+        tx.push(1 + sol_lamports.len() as u8);
+        // ix0: USDC TransferChecked (primary)
+        tx.push(6); // token program index
+        tx.push(4);
+        tx.push(2); // source
+        tx.push(4); // mint
+        tx.push(3); // dest
+        tx.push(0); // authority = wallet
+        tx.push(10);
+        tx.push(12);
+        tx.extend_from_slice(&usdc_amount.to_le_bytes());
+        tx.push(6);
+        for l in sol_lamports {
+            tx.push(5); // system program index
+            tx.push(2);
+            tx.push(0); // from = wallet
+            tx.push(1); // to = sol_dest
+            tx.push(12);
+            tx.extend_from_slice(&[2u8, 0, 0, 0]);
+            tx.extend_from_slice(&l.to_le_bytes());
+        }
+        tx
+    }
+
+    /// Legacy tx: `out_amounts` SOL sends from `wallet`→`dest`, plus one inflow
+    /// `other`→`wallet` that must be EXCLUDED from the outflow sum. Accounts:
+    /// [wallet(0), dest(1), other(2), system(3)].
+    fn sol_out_with_inflow_tx(
+        wallet: [u8; 32],
+        dest: [u8; 32],
+        other: [u8; 32],
+        out_amounts: &[u64],
+        inflow: u64,
+    ) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.push(1u8);
+        tx.extend_from_slice(&[0u8; 64]);
+        tx.push(1);
+        tx.push(0);
+        tx.push(1); // system program readonly-unsigned
+        tx.push(4); // 4 accounts
+        tx.extend_from_slice(&wallet);
+        tx.extend_from_slice(&dest);
+        tx.extend_from_slice(&other);
+        tx.extend_from_slice(&[0u8; 32]); // system program
+        tx.extend_from_slice(&[0xABu8; 32]); // blockhash
+        tx.push(out_amounts.len() as u8 + 1);
+        for l in out_amounts {
+            tx.push(3); // system program index
+            tx.push(2);
+            tx.push(0); // from = wallet
+            tx.push(1); // to = dest
+            tx.push(12);
+            tx.extend_from_slice(&[2u8, 0, 0, 0]);
+            tx.extend_from_slice(&l.to_le_bytes());
+        }
+        // inflow: other -> wallet (source != wallet ⇒ not an outflow)
+        tx.push(3);
+        tx.push(2);
+        tx.push(2); // from = other
+        tx.push(0); // to = wallet
+        tx.push(12);
+        tx.extend_from_slice(&[2u8, 0, 0, 0]);
+        tx.extend_from_slice(&inflow.to_le_bytes());
+        tx
+    }
+
+    #[test]
+    fn spl_token_batch_hero_surfaces_summed_token_total() {
+        let wallet = [0x01u8; 32];
+        let source = [0x02u8; 32];
+        let dest = [0x09u8; 32];
+        // 1 USDC primary leg hiding a 5000 USDC leg → 5001 USDC total (6 decimals).
+        let tx = usdc_transfers_tx(wallet, source, dest, &[1_000_000, 5_000_000_000]);
+
+        let (lines, can_sign, parsed) = build_review_lines(&tx, &wallet);
+        assert!(can_sign);
+        assert_eq!(parsed.instructions.len(), 2);
+
+        let hero_end = lines.iter().position(String::is_empty).unwrap_or(lines.len());
+        let hero = &lines[..hero_end];
+
+        assert!(
+            hero.iter()
+                .any(|l| l.starts_with("! ") && l.contains('2') && l.contains("USDC sends")),
+            "expected multi USDC-send warning, got: {:?}",
+            hero
+        );
+        assert!(
+            hero.iter().any(|l| l.starts_with("@H2") && l.contains("5001 USDC")),
+            "expected summed 5001 USDC total in hero @H2, got: {:?}",
+            hero
+        );
+        assert!(
+            !hero.iter().any(|l| l == "@H2 1 USDC"),
+            "hero @H2 must not under-represent the batch with the 1 USDC leg: {:?}",
+            hero
+        );
+    }
+
+    #[test]
+    fn mixed_sol_and_spl_primary_does_not_stamp_sol_total_on_token() {
+        let wallet = [0x01u8; 32];
+        let sol_dest = [0x07u8; 32];
+        let usdc_source = [0x02u8; 32];
+        let usdc_dest = [0x09u8; 32];
+        // Primary is 100 USDC; two SOL sends (3 + 2 = 5 SOL) trail behind it.
+        let tx = mixed_usdc_then_sol_tx(
+            wallet,
+            sol_dest,
+            usdc_source,
+            usdc_dest,
+            100_000_000,
+            &[3_000_000_000, 2_000_000_000],
+        );
+
+        let (lines, can_sign, _) = build_review_lines(&tx, &wallet);
+        assert!(can_sign);
+
+        let hero_end = lines.iter().position(String::is_empty).unwrap_or(lines.len());
+        let hero = &lines[..hero_end];
+
+        // Hero headline stays on the primary token amount — never the SOL total.
+        assert!(
+            hero.iter().any(|l| l == "@H2 100 USDC"),
+            "hero @H2 must show the primary 100 USDC, got: {:?}",
+            hero
+        );
+        assert!(
+            !hero.iter().any(|l| l.starts_with("@H2") && l.contains("SOL")),
+            "SOL total must not stamp onto the USDC recipient's hero: {:?}",
+            hero
+        );
+        // The hidden SOL batch is still surfaced as a warning.
+        assert!(
+            hero.iter().any(|l| l.starts_with("! ")
+                && l.contains("2 SOL sends")
+                && l.contains("total 5 SOL")),
+            "expected a 2 SOL sends warning for the hidden legs, got: {:?}",
+            hero
+        );
+        // Only one USDC leg → no USDC batch warning.
+        assert!(
+            !hero.iter().any(|l| l.contains("USDC sends")),
+            "single USDC leg must not warn: {:?}",
+            hero
+        );
+    }
+
+    #[test]
+    fn inflow_and_third_party_legs_excluded_from_outflow_sum() {
+        let wallet = [0x01u8; 32];
+        let dest = [0x07u8; 32];
+        let other = [0x22u8; 32];
+        // Wallet sends 2 + 3 = 5 SOL; a 100 SOL inflow (other → wallet) is excluded.
+        let tx =
+            sol_out_with_inflow_tx(wallet, dest, other, &[2_000_000_000, 3_000_000_000], 100_000_000_000);
+
+        let (lines, can_sign, parsed) = build_review_lines(&tx, &wallet);
+        assert!(can_sign);
+        assert_eq!(parsed.instructions.len(), 3);
+
+        let hero_end = lines.iter().position(String::is_empty).unwrap_or(lines.len());
+        let hero = &lines[..hero_end];
+
+        // Exactly the two outbound legs are summed — the inflow is excluded.
+        assert!(
+            hero.iter().any(|l| l.starts_with("! ")
+                && l.contains("2 SOL sends")
+                && l.contains("total 5 SOL")),
+            "expected 2 SOL sends totalling 5 SOL, got: {:?}",
+            hero
+        );
+        assert!(
+            !hero.iter().any(|l| l.contains("105 SOL") || l.contains("3 SOL sends")),
+            "inflow leg must not inflate the outflow sum/count: {:?}",
+            hero
+        );
+    }
+
+    /// v0 tx whose transfer destination (account index 2) resolves from an
+    /// ALT we don't have — so it expands to the UNRESOLVED sentinel.
+    fn v0_unresolved_alt_tx(from: [u8; 32], lamports: u64) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.push(1u8);
+        tx.extend_from_slice(&[0u8; 64]);
+        tx.push(0x80); // v0 prefix
+        tx.push(1);
+        tx.push(0);
+        tx.push(1);
+        tx.push(2); // 2 static accounts: signer + system program
+        tx.extend_from_slice(&from);
+        tx.extend_from_slice(&[0u8; 32]);
+        tx.extend_from_slice(&[0xABu8; 32]); // blockhash
+        tx.push(1); // 1 instruction
+        tx.push(1); // program_id_index = 1 (system)
+        tx.push(2); // 2 accounts
+        tx.push(0); // from = index 0
+        tx.push(2); // to = index 2 (ALT-resolved → unresolved)
+        tx.push(12);
+        tx.extend_from_slice(&[2u8, 0, 0, 0]); // Transfer
+        tx.extend_from_slice(&lamports.to_le_bytes());
+        // 1 address table lookup against an unknown table
+        tx.push(1);
+        tx.extend_from_slice(&[0x42u8; 32]); // unknown ALT account_key
+        tx.push(0); // 0 writable indices
+        tx.push(1); // 1 readonly index
+        tx.push(7); // index into the (unknown) table → UNRESOLVED
+        tx
+    }
+
+    #[test]
+    fn v0_unresolved_alt_account_blocks_signing_and_hides_sentinel() {
+        let from = [0x01u8; 32];
+        let tx = v0_unresolved_alt_tx(from, 1_000_000_000);
+
+        // Must not panic on the 35-byte / unknown-table path.
+        let parsed = parse(&tx);
+        assert!(parsed.has_unresolved_accounts);
+
+        let (lines, can_sign, _) = build_review_lines(&tx, &from);
+        assert!(!can_sign, "unresolved ALT account must not be signable");
+
+        // The destination renders as the marker, never the sentinel address.
+        assert!(
+            lines.iter().any(|l| l.contains("<ALT unresolved>")),
+            "expected the unresolved marker in review lines"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("JEKN")),
+            "sentinel must never render as a base58 address"
+        );
+    }
+
+    /// The zoned hero (page-0 SEND screen) reads its TO account from
+    /// `extract_zoned`, then `screens.rs` renders it. An unresolved ALT index
+    /// must reach that zone as the marker, never the sentinel's base58 form.
+    #[test]
+    fn zoned_send_to_unresolved_alt_renders_marker_not_sentinel() {
+        let from = [0x01u8; 32];
+        let tx = v0_unresolved_alt_tx(from, 1_000_000_000);
+        let parsed = parse(&tx);
+
+        // The sentinel must actually reach the zoned SEND `to` — this is the
+        // value the hero's TO zone renders, and the previously-open leak.
+        let action = extract_zoned(&tx, &parsed).expect("send-shaped tx yields a zoned action");
+        let to = match action {
+            ZonedAction::Send { to, .. } => to,
+            _ => panic!("expected a Send action"),
+        };
+        assert!(
+            lookup_tables::is_unresolved(&to),
+            "unresolved ALT account must reach the zoned SEND `to`"
+        );
+
+        // `screens.rs` renders the TO zone via `render_account`; it must
+        // collapse the sentinel to the marker, never emit the base58 address.
+        let rendered = crate::parser::bytes::render_account(&to);
+        assert_eq!(rendered, "<ALT unresolved>");
+        assert!(!rendered.contains("JEKN"), "sentinel base58 must not leak");
+        assert_ne!(rendered, bs58::encode(to).into_string());
+    }
+
+    /// v0 tx whose instruction targets an UNRECOGNIZED program, so the
+    /// unresolved ALT account routes through `unknown::parse` (a render path
+    /// that does NOT go via `pubkey_short`). Guards the previously-open leak.
+    fn v0_unresolved_alt_unknown_program_tx(from: [u8; 32]) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.push(1u8);
+        tx.extend_from_slice(&[0u8; 64]);
+        tx.push(0x80); // v0 prefix
+        tx.push(1);
+        tx.push(0);
+        tx.push(1);
+        tx.push(2); // 2 static accounts: signer + unknown program
+        tx.extend_from_slice(&from);
+        tx.extend_from_slice(&[0x42u8; 32]); // unrecognized program id
+        tx.extend_from_slice(&[0xABu8; 32]); // blockhash
+        tx.push(1); // 1 instruction
+        tx.push(1); // program_id_index = 1 (the unknown program)
+        tx.push(1); // 1 account
+        tx.push(2); // account = index 2 (ALT-resolved → unresolved)
+        tx.push(0); // 0 data bytes
+        // 1 address table lookup against an unknown table
+        tx.push(1);
+        tx.extend_from_slice(&[0x77u8; 32]); // unknown ALT account_key
+        tx.push(0); // 0 writable indices
+        tx.push(1); // 1 readonly index
+        tx.push(3); // index into the (unknown) table → UNRESOLVED
+        tx
+    }
+
+    #[test]
+    fn v0_unresolved_alt_via_unknown_program_hides_sentinel() {
+        let from = [0x01u8; 32];
+        let tx = v0_unresolved_alt_unknown_program_tx(from);
+
+        let parsed = parse(&tx);
+        assert!(parsed.has_unresolved_accounts);
+
+        let (lines, can_sign, _) = build_review_lines(&tx, &from);
+        assert!(!can_sign, "unresolved ALT account must not be signable");
+
+        // unknown::parse renders the account — as the marker, never the sentinel.
+        assert!(
+            lines.iter().any(|l| l.contains("<ALT unresolved>")),
+            "expected the unresolved marker via the unknown-program path"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("JEKN")),
+            "sentinel must never leak through the unknown-program render path"
+        );
+    }
+
     // --- parse() ---
 
     #[test]
@@ -1601,7 +2171,9 @@ mod tests {
         let (lines, can_sign, _parsed) = build_review_lines(&tx, &[0x01u8; 32]);
         assert!(can_sign);
         assert!(lines.iter().any(|line| line == "@H1 TRANSFER"));
-        assert!(lines.iter().any(|line| line == "@H2 1 SOL"));
+        // Two 1-SOL sends from the wallet form a batch: the hero shows the
+        // summed 2 SOL, never a single 1-SOL leg (finding #87).
+        assert!(lines.iter().any(|line| line == "@H2 2 SOL"));
         assert!(lines
             .iter()
             .any(|line| line == "Review full transaction details:"));
@@ -1707,6 +2279,7 @@ mod tests {
             ],
             fee_lamports: 5000,
             size: 123,
+            has_unresolved_accounts: false,
         };
 
         let primary = primary_instruction(&parsed).expect("primary instruction exists");
@@ -1742,6 +2315,7 @@ mod tests {
             ],
             fee_lamports: 5000,
             size: 200,
+            has_unresolved_accounts: false,
         };
 
         let primary = primary_instruction(&parsed).expect("primary instruction exists");
@@ -1775,6 +2349,7 @@ mod tests {
                 ],
                 fee_lamports: 5000,
                 size: 200,
+                has_unresolved_accounts: false,
             };
             let primary = primary_instruction(&parsed)
                 .unwrap_or_else(|| panic!("no primary chosen for {}", dex));
@@ -1798,6 +2373,7 @@ mod tests {
             }],
             fee_lamports: 5000,
             size: 200,
+            has_unresolved_accounts: false,
         };
         let primary = primary_instruction(&parsed).expect("primary instruction exists");
         assert_eq!(primary.program, "AssocToken");

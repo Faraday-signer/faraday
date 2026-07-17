@@ -104,6 +104,8 @@ export function validateSignedMessage(
 ): Uint8Array {
   const signatureBytes = decodeHexSignature(signatureHex);
   const pubkey = pubkeyToBytes(expectedSigner);
+  // Signed over the RAW message bytes, matching the signer and a dApp's
+  // nacl.verify(message, sig, pubkey) / SIWS verifySignIn.
   const verified = nacl.sign.detached.verify(messageBytes, signatureBytes, pubkey);
   if (!verified) {
     throw new Error("Message signature does not match the paired signer account.");
@@ -287,6 +289,70 @@ function parseEnvelope(txBytes: Uint8Array): TxEnvelope {
     messageBytes,
     signerAddresses: parseSignerAddresses(messageBytes)
   };
+}
+
+/**
+ * Walk the instruction section of a legacy message and confirm it forms a
+ * coherent, fully-consumed transaction message. Instruction count may be zero:
+ * a zero-instruction message still lands on-chain and charges the fee payer.
+ * Reuses the same shortvec reader the tx-envelope parser relies on. The caller
+ * has already validated the header + account-key table via parseEnvelope.
+ */
+function messageFullyConsumes(message: Uint8Array): boolean {
+  // Non-versioned messages only reach here (0x80 handled by the caller), so
+  // the 3-byte header sits at offset 0.
+  let offset = 3;
+  const keyCount = readShortVec(message, offset);
+  offset += keyCount.bytesRead + keyCount.value * 32;
+  offset += 32; // recent blockhash
+  if (offset > message.length) {
+    return false;
+  }
+
+  const ixCount = readShortVec(message, offset);
+  offset += ixCount.bytesRead;
+
+  for (let i = 0; i < ixCount.value; i += 1) {
+    offset += 1; // program id index
+    const accounts = readShortVec(message, offset);
+    offset += accounts.bytesRead + accounts.value;
+    const dataLen = readShortVec(message, offset);
+    offset += dataLen.bytesRead + dataLen.value;
+    if (offset > message.length) {
+      return false;
+    }
+  }
+
+  return offset === message.length;
+}
+
+/**
+ * Transaction-shape guard mirroring the Rust signer (#79). Returns true when
+ * `messageBytes` — what a dApp handed to signMessage / signIn — actually form a
+ * signable Solana transaction *message*: a v0 version prefix, or a legacy
+ * message that parses coherently and consumes the whole buffer — instruction
+ * count included zero, since a zero-instruction message still lands on-chain
+ * and charges the fee payer. Signing such bytes would mint a valid transaction
+ * signature, so the wallet refuses them. Real text / SIWS plaintext does not
+ * parse this way, so it passes through unchanged.
+ */
+export function looksLikeTransaction(messageBytes: Uint8Array): boolean {
+  // A high-bit-set first byte is a versioned-message prefix (0x80 = v0):
+  // unambiguously a transaction.
+  if (messageBytes.length > 0 && (messageBytes[0] & 0x80) !== 0) {
+    return true;
+  }
+
+  try {
+    // Prepend a zero signature count so the wire-format envelope parser reads
+    // the bare message directly, validating the header + account-key table.
+    const wire = new Uint8Array(messageBytes.length + 1);
+    wire.set(messageBytes, 1);
+    const { messageBytes: message } = parseEnvelope(wire);
+    return messageFullyConsumes(message);
+  } catch {
+    return false;
+  }
 }
 
 export function validateUnsignedTransactionPayload(

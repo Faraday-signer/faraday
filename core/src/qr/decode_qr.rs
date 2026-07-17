@@ -152,6 +152,21 @@ mod tests {
     }
 
     #[test]
+    fn test_compact_seed_qr_has_no_integrity_check() {
+        // The Compact format is raw entropy — the mnemonic is rebuilt and its
+        // checksum recomputed from whatever bytes arrive. Any 16 or 32 bytes
+        // therefore decode as a valid CompactSeedQr with no way to detect a
+        // substituted seed. This is why the Load flow gates it behind a
+        // blocking address confirmation (finding #89).
+        for len in [16usize, 32] {
+            let data = vec![0xABu8; len];
+            let decoded = detect_and_decode(&data);
+            assert_eq!(decoded.qr_type, QrType::CompactSeedQr);
+            assert!(decoded.mnemonic.is_some());
+        }
+    }
+
+    #[test]
     fn test_solana_address() {
         let addr = "11111111111111111111111111111111";
         let decoded = detect_and_decode(addr.as_bytes());

@@ -209,6 +209,9 @@ impl App {
             Screen::LoadInvalidMnemonic { word_count } => {
                 draw_invalid_mnemonic(display, &self.theme, *word_count)
             }
+            Screen::LoadAddressConfirm { preview_address, .. } => {
+                draw_compact_address_confirm(display, &self.theme, preview_address)
+            }
             Screen::LoadFinalize { preview_address, selected, .. } => {
                 draw_load_finalize(display, &self.theme, preview_address, *selected)
             }
@@ -319,6 +322,7 @@ impl App {
                 crate::qr::encode_qr::QrEcLevel::M,
                 4,
             ),
+            Screen::SignMessageRefused => draw_message_refused(display, &self.theme),
 
             // Settings
             Screen::SettingsMenu { selected } => {
@@ -797,6 +801,41 @@ fn draw_derivation_error<D: DrawTarget<Color = Rgb565>>(
     .draw(display, &theme)
 }
 
+/// Refusal outcome for the off-chain message signer (#79): the payload parses
+/// as a Solana transaction, so the device refuses to sign it — never a
+/// signature. The user must route a transaction through the tx flow instead.
+fn draw_message_refused<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    theme: &Theme,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, CardRow, HeaderKind};
+    use crate::ui::screens::CardScreen;
+
+    let rows: [CardRow; 1] = [
+        CardRow::new("REASON", "Looks like a tx"),
+    ];
+    let body = [
+        "Refused to sign.",
+        "",
+        "Parses as a",
+        "transaction.",
+        "Use the tx flow.",
+    ];
+
+    CardScreen {
+        header: HeaderKind::Title("REFUSED"),
+        counter: None,
+        right_label: None,
+        title: Some("SIGN MSG"),
+        subtitle: Some("Looks like a transaction"),
+        body_lines: &body,
+        rows: &rows,
+        title_danger: true,
+        edge_hints: EdgeHints::new().k1(EdgeIcon::Check),
+    }
+    .draw(display, &theme)
+}
+
 /// Passphrase / message character grid. First input-register screen.
 /// Layout: header + dot/count preview + 5-row char grid + action row + button bar.
 /// The selected cell renders full-bleed cyan with the char in bg color (inverted).
@@ -1137,6 +1176,40 @@ fn draw_wallet_confirm<D: DrawTarget<Color = Rgb565>>(
         body_lines: &body,
         rows: &rows,
         title_danger: false,
+        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::Cross),
+    }
+    .draw(display, &theme)
+}
+
+/// Blocking address confirm for a checksum-less CompactSeedQR import. Danger
+/// register — the Compact format has no checksum, so a swapped QR would import
+/// a stranger's seed silently. The user must confirm the derived address is
+/// theirs (K1) or cancel (K3).
+fn draw_compact_address_confirm<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    theme: &Theme,
+    address: &str,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
+    use crate::ui::screens::CardScreen;
+
+    // Split the address into two halves so it wraps inside the card body.
+    let mid = address.len() / 2;
+    let first = &address[..mid];
+    let second = &address[mid..];
+    let body = [first, second];
+
+    let rows: [CardRow; 1] = [CardRow::new("QR:", "NO CHECKSUM")];
+
+    CardScreen {
+        header: HeaderKind::Title("YOUR ADDRESS?"),
+        counter: None,
+        right_label: None,
+        title: Some("CONFIRM"),
+        subtitle: Some("Not yours? Cancel"),
+        body_lines: &body,
+        rows: &rows,
+        title_danger: true,
         edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::Cross),
     }
     .draw(display, &theme)
@@ -1653,8 +1726,10 @@ fn draw_tx_review_zoned<D: DrawTarget<Color = Rgb565>>(
             amount_lamports,
             ..
         } => {
-            let from_b58 = bs58::encode(from).into_string();
-            let to_b58 = bs58::encode(to).into_string();
+            // Collapse the unresolved-ALT sentinel to a marker so the hero's
+            // TO zone can never show a fake destination address.
+            let from_b58 = crate::parser::bytes::render_account(from);
+            let to_b58 = crate::parser::bytes::render_account(to);
             let from_is_self = wallet_pubkey.map_or(false, |w| w == from);
 
             // profont17 ≈ 9 px wide on a 240 px panel with 12 px padding +
@@ -1735,7 +1810,7 @@ fn draw_tx_review_zoned<D: DrawTarget<Color = Rgb565>>(
                 &crate::parser::token_registry::format_amount(*fee_lamports, 9),
             );
             let fee_str = alloc::format!("{} SOL", fee_value);
-            let payer_b58 = bs58::encode(fee_payer).into_string();
+            let payer_b58 = crate::parser::bytes::render_account(fee_payer);
             let payer_is_self = wallet_pubkey.map_or(false, |w| w == fee_payer);
             draw_zone_fee(
                 display,
@@ -2750,11 +2825,18 @@ fn wrap_line_for_width(text: &str, max_chars: usize) -> Vec<String> {
                 out.push(current.clone());
                 current.clear();
             }
-            let mut start = 0;
-            while start < word.len() {
-                let end = (start + max_chars).min(word.len());
-                out.push(word[start..end].to_string());
-                start = end;
+            let mut chunk = String::new();
+            let mut count = 0;
+            for ch in word.chars() {
+                chunk.push(ch);
+                count += 1;
+                if count == max_chars {
+                    out.push(core::mem::take(&mut chunk));
+                    count = 0;
+                }
+            }
+            if !chunk.is_empty() {
+                out.push(chunk);
             }
             continue;
         }
@@ -2803,16 +2885,25 @@ fn draw_message_review<D: DrawTarget<Color = Rgb565>>(
 
     let text = core::str::from_utf8(message_bytes).unwrap_or("(binary data)");
     let max_chars_per_line = 38usize;
-    let lines: Vec<&str> = text
-        .as_bytes()
-        .chunks(max_chars_per_line)
-        .map(|chunk| core::str::from_utf8(chunk).unwrap_or(""))
-        .collect();
+    let mut lines: Vec<String> = Vec::new();
+    let mut line = String::new();
+    let mut count = 0;
+    for ch in text.chars() {
+        line.push(ch);
+        count += 1;
+        if count == max_chars_per_line {
+            lines.push(core::mem::take(&mut line));
+            count = 0;
+        }
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
     let max_visible = 12usize;
     let clamped_scroll = scroll.min(lines.len().saturating_sub(max_visible));
     for (vi, i) in (clamped_scroll..lines.len().min(clamped_scroll + max_visible)).enumerate() {
         let y = 50 + vi as i32 * 12;
-        Text::new(lines[i], Point::new(5, y), text_style).draw(display)?;
+        Text::new(lines[i].as_str(), Point::new(5, y), text_style).draw(display)?;
     }
 
     Text::new(
@@ -4129,4 +4220,25 @@ fn draw_scan_diag<D: DrawTarget<Color = Rgb565>>(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wrap_line_for_width;
+
+    #[test]
+    fn hard_split_multibyte_does_not_panic() {
+        // Offsets that bisect a UTF-8 codepoint used to panic on a &str slice.
+        let _ = wrap_line_for_width(&"日".repeat(64), 10);
+        let mixed = format!("aaaaa{}", "🚀".repeat(20));
+        let _ = wrap_line_for_width(&mixed, 8);
+    }
+
+    #[test]
+    fn ascii_sentence_wraps_as_before() {
+        assert_eq!(
+            wrap_line_for_width("the quick brown fox", 9),
+            vec!["the quick".to_string(), "brown fox".to_string()],
+        );
+    }
 }

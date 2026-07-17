@@ -93,17 +93,28 @@ fn parse_transfer_checked(
         .as_ref()
         .map(|b| pubkey_short(b))
         .unwrap_or_else(|| "?".into());
-    let symbol = mint_bytes
+    let info = mint_bytes
         .as_ref()
-        .and_then(|b| token_registry::lookup(b))
-        .map(|info| info.symbol);
+        .and_then(|b| token_registry::lookup(b));
     let dest = accounts
         .get(2)
         .map(pubkey_short)
         .unwrap_or_else(|| "?".into());
 
-    let amount_str = match symbol {
-        Some(sym) => format!("{} {}", token_registry::format_amount(amount, decimals), sym),
+    let amount_str = match info {
+        // For a known mint the registry decimals are trusted; the data byte is
+        // attacker-controlled, so prefer the registry and flag any disagreement.
+        Some(info) => {
+            let mut s = format!(
+                "{} {}",
+                token_registry::format_amount(amount, info.decimals),
+                info.symbol
+            );
+            if decimals != info.decimals {
+                s.push_str(&format!(" (data decimals {} != known {})", decimals, info.decimals));
+            }
+            s
+        }
         None => token_registry::format_amount(amount, decimals),
     };
 

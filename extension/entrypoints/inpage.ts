@@ -496,9 +496,12 @@ class FaradayWallet {
       throw new Error(done.error || "Message signing was not completed.");
     }
 
+    // Return the RAW message as signedMessage so dApps that
+    // nacl.verify(signedMessage, signature, pubkey) succeed unchanged. The
+    // device already refuses any message that parses as a transaction (#79).
     return [
       {
-        signedMessage: messageBytes,
+        signedMessage: messageBytes /*raw*/,
         signature: decodeHexSignature(done.signatureHex)
       }
     ];
@@ -601,10 +604,13 @@ class FaradayWallet {
       throw new Error(done.error || "SIWS signing was not completed.");
     }
 
+    // Return the RAW SIWS plaintext as signedMessage so SIWS verifySignIn
+    // validates the exact bytes it built. The device refuses tx-shaped
+    // messages (#79), which SIWS plaintext never is.
     return [
       {
         account: this.account,
-        signedMessage: messageBytes,
+        signedMessage: messageBytes /*raw SIWS plaintext*/,
         signature: decodeHexSignature(done.signatureHex),
         signatureType: "ed25519" as const
       }

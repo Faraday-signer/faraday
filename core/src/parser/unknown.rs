@@ -3,22 +3,18 @@
 //! Shows the program ID and raw data so the user can make an informed decision
 //! rather than signing a black box.
 
+use crate::parser::bytes::{pubkey_short, render_account};
 use crate::parser::{ParsedInstruction, ReviewItem};
 
 pub fn parse(program_id: &[u8; 32], data: &[u8], accounts: &[[u8; 32]]) -> ParsedInstruction {
-    let program_b58 = bs58::encode(program_id).into_string();
-    let program_short = format!(
-        "{}..{}",
-        &program_b58[..4],
-        &program_b58[program_b58.len() - 4..]
-    );
+    let program_short = pubkey_short(program_id);
 
     let mut items = vec![
         ReviewItem::Header(format!("Unknown {}", program_short)),
         ReviewItem::Warning("Unrecognized program — review carefully".into()),
         ReviewItem::Field {
             label: "Program".into(),
-            value: program_b58,
+            value: render_account(program_id),
         },
         ReviewItem::Field {
             label: "Accounts".into(),
@@ -46,10 +42,9 @@ pub fn parse(program_id: &[u8; 32], data: &[u8], accounts: &[[u8; 32]]) -> Parse
 
     // Show first 3 account addresses
     for (i, account) in accounts.iter().take(3).enumerate() {
-        let b58 = bs58::encode(account).into_string();
         items.push(ReviewItem::Field {
             label: format!("Acct {}", i),
-            value: format!("{}..{}", &b58[..4], &b58[b58.len() - 4..]),
+            value: pubkey_short(account),
         });
     }
     if accounts.len() > 3 {

@@ -14,7 +14,7 @@ AI is getting smarter every day, and **anything online will eventually be hacked
 
 Faraday flips that. The whole stack is open: signer firmware, OS image recipe, browser extension, mobile companion. You can read the code, build it yourself, and verify that the binary you run is the one you compiled.
 
-The signer device itself has **no antennas**. No WiFi, no Bluetooth, no NFC, no cellular — the Pi Zero 1.3 board doesn't physically contain a network chip. The only channel into or out of Faraday is the camera reading QR codes and the screen displaying them. There is no remote attack surface because there is no remote.
+The Pi Zero 1.3 signer has **no antennas** — no WiFi, no Bluetooth, no NFC, no cellular. The board doesn't physically contain a network chip. (The ESP32-S3 signer has WiFi/BT on-die but links no radio drivers, verified by a CI `nm` symbol audit — a firmware-enforced air gap; for a physical air gap, choose the Pi.) The only channel into or out of Faraday is the camera reading QR codes and the screen displaying them. There is no remote attack surface because there is no remote.
 
 Faraday isn't just a device. It's a suite:
 
@@ -74,7 +74,7 @@ If you have a wallet that's already been online and you want to move to Faraday:
 
 ## Hardware
 
-Faraday supports two hardware platforms. Both are fully air-gapped — no WiFi, no Bluetooth, no network.
+Faraday supports two hardware platforms. The Pi Zero 1.3 has no radio silicon at all — a physical air gap. The ESP32-S3 has WiFi/BT on the die; Faraday links no radio drivers into the firmware and a CI `nm` symbol audit verifies none are present. For a physical air gap, choose the Pi.
 
 ### Raspberry Pi Zero 1.3
 
@@ -336,7 +336,7 @@ For payloads that exceed a single QR's capacity, Faraday uses [UR](https://githu
 
 ## Security model
 
-1. **No network hardware.** Pi Zero 1.3 has no WiFi/Bluetooth chip — not "disabled", physically absent.
+1. **No network hardware (Pi).** The Pi Zero 1.3 has no WiFi/Bluetooth chip — not "disabled", physically absent. The ESP32-S3 has radios on-die but Faraday links no radio drivers, verified by a CI `nm` symbol audit — a firmware-enforced air gap, not a physical one. For a physical air gap, choose the Pi.
 2. **RAM-only keys.** Seeds never touch persistent storage. Power off = keys gone. The OS rootfs is read-only.
 3. **Verifiable transactions.** Full decoded details shown on-screen before signing. The user is the final approval.
 4. **Open source, reproducible.** All firmware, OS recipe, and companion apps are auditable. Cross-compile + Buildroot make the build deterministic given the same toolchain.

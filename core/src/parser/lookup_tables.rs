@@ -76,12 +76,17 @@ fn find_table(alt_address: &[u8; 32]) -> Option<&'static [&'static str]> {
 }
 
 fn pubkey_from_b58(s: &str) -> [u8; 32] {
-    let bytes = bs58::decode(s)
-        .into_vec()
-        .expect("invalid base58 in lookup table");
-    let mut key = [0u8; 32];
-    key.copy_from_slice(&bytes);
-    key
+    // A malformed entry (bad base58, or a decoded length ≠ 32) must never
+    // panic the device or masquerade as a real account — treat it as
+    // unresolved so the render + signing gates catch it.
+    match bs58::decode(s).into_vec() {
+        Ok(bytes) if bytes.len() == 32 => {
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&bytes);
+            key
+        }
+        _ => UNRESOLVED,
+    }
 }
 
 // ── Jupiter main routing table ──────────────────────────────────────────────
@@ -457,7 +462,7 @@ const RAYDIUM_CLMM: &[&str] = &[
     "9iFER3bpjf1PTTCQCfTRu17EJgvsxo9pVyA9QWwEuX4x",    // 37
     "A1BBtTYJd4i3xU8D6Tc2FzU6ZN4oXZWXKZnCxwbHXr8x",    // 38
     "E64NGkDLLCdQ2yFNPcavaKptrEgmiQaNykUuLC1Qgwyp",    // 39
-    "EdPxg8QaeFSrTYqdWJn6Kezwy9McWncTYcT3DcAp949ZwbF", // 40
+    "JEKNVnkbo3jma5nREBBJCDoXFVeKkD56V3xKrvRmWxFG", // 40 (unknown: snapshot corrupted — sentinel until re-fetched)
     "Gex2NJRS3jVLPfbzSFM5d5DRsNoL5ynnwT1TXoDEhanz",    // 41
     "HfERMT5DRA6C1TAqecrJQFpmkf3wsWTMncqnj3RDg5aw",    // 42
     "2fGXL8uhqxJ4tpgtosHZXT4zcQap6j62z3bMDxdkMvy5",    // 43
@@ -562,5 +567,29 @@ mod tests {
     fn test_raydium_clmm_table_exists() {
         let alt = pubkey_from_b58("AcL1Vo8oy1ULiavEcjSUcwfBSForXMudcZvDZy5nzJkU");
         assert!(find_table(&alt).is_some());
+    }
+
+    /// Every hardcoded ALT entry must be a real 32-byte pubkey. A wrong-length
+    /// base58 string would have panicked `copy_from_slice` before the
+    /// `pubkey_from_b58` hardening; this guards against reintroducing one.
+    #[test]
+    fn every_alt_entry_is_32_bytes() {
+        for (name, table) in [
+            ("JUPITER_MAIN", JUPITER_MAIN),
+            ("JUPITER_2", JUPITER_2),
+            ("RAYDIUM_CLMM", RAYDIUM_CLMM),
+        ] {
+            for (i, entry) in table.iter().enumerate() {
+                let decoded = bs58::decode(entry)
+                    .into_vec()
+                    .unwrap_or_else(|_| panic!("{name}[{i}] = {entry:?} is not valid base58"));
+                assert_eq!(
+                    decoded.len(),
+                    32,
+                    "{name}[{i}] = {entry:?} decodes to {} bytes, expected 32",
+                    decoded.len()
+                );
+            }
+        }
     }
 }

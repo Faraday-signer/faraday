@@ -3,6 +3,7 @@
 use crate::crypto::derivation;
 use crate::crypto::slip0010::SolanaKeypair;
 use crate::gui::flows;
+use crate::ui::screens::list_screen::DESC_BAND_H;
 use crate::ui::widgets::list::visible_start;
 use crate::ui::Theme;
 use zeroize::Zeroizing;
@@ -266,6 +267,17 @@ pub enum Screen {
         word_count: usize,
         shown_at: std::time::Instant,
     },
+    /// Blocking address confirmation for a CompactSeedQR import. The Compact
+    /// format is raw entropy with no BIP39 checksum, so a substituted (evil-
+    /// maid) QR silently decodes to an attacker's seed. This gate forces the
+    /// user to confirm the derived address is theirs before the wallet can be
+    /// finalized. Only reached on the CompactSeedQR path — the digit SeedQR
+    /// path validates the checksum and skips straight to LoadFinalize.
+    LoadAddressConfirm {
+        mnemonic: Zeroizing<String>,
+        preview_address: String,
+        keypair: SolanaKeypair,
+    },
     /// Passphrase decision: Done (no passphrase) / Add passphrase. Short
     /// address shown in the header chip so users keep visual continuity
     /// with the preceding confirmation.
@@ -341,6 +353,9 @@ pub enum Screen {
     SignMessageResult {
         signature_hex: String,
     },
+    /// Shown when the off-chain message signer refuses a payload that parses as
+    /// a Solana transaction (#79) — an outcome, never a signature.
+    SignMessageRefused,
 
     // Settings
     SettingsMenu {
@@ -880,6 +895,22 @@ pub struct App {
     pub input_model: InputModel,
 }
 
+/// Outcome of routing a body tap through `tap_list_row`. The caller must
+/// distinguish "no row was hit on a list screen" (absorb the tap — do NOT
+/// fall through to a catch-all `Confirm`, which would commit the currently
+/// highlighted row) from "this isn't a list screen at all" (try other routes).
+#[derive(Debug, PartialEq, Eq)]
+pub enum ListTap {
+    /// A real row was hit (or a tap above the list on a commit-on-tap screen);
+    /// the caller should fire `Confirm`.
+    Committed,
+    /// List screen, but the tap landed in a dead zone (empty slot below the
+    /// last drawn row). Absorb it: do nothing.
+    Absorbed,
+    /// Not a list screen; the caller handles the tap via its other routes.
+    NotAList,
+}
+
 impl App {
     pub fn new(theme: Theme) -> Self {
         App {
@@ -909,6 +940,17 @@ impl App {
     /// every build.
     pub fn touch_input(&self) -> bool {
         self.input_model == InputModel::Touch
+    }
+
+    /// True when the current screen is a security gate that a stray body tap
+    /// must NOT dismiss — only an explicit footer Check (K1) commits and footer
+    /// Cross/Back (K3) cancels, matching the intent a physical key press
+    /// already carries. Card screens get none of the list dead-zone absorption,
+    /// so without this a reflexive double-tap could dismiss the gate and load
+    /// the wallet. Currently the checksum-less CompactSeedQR address confirm
+    /// (#89), where the whole point is forcing the user to read the address.
+    pub fn requires_explicit_confirm(&self) -> bool {
+        matches!(self.screen, Screen::LoadAddressConfirm { .. })
     }
 
     /// True when the current screen uses the middle footer cell (`k2`) for a
@@ -1097,9 +1139,12 @@ impl App {
     }
 
     /// Map a body tap at height `y` to a row on the current screen's
-    /// selectable list, move the selection there, and return `true` so the
-    /// caller commits with `Confirm`. Returns `false` for screens without a
-    /// tappable list (the caller then tries its other tap routes).
+    /// selectable list, move the selection there, and return
+    /// `ListTap::Committed` so the caller commits with `Confirm`. Returns
+    /// `ListTap::Absorbed` when the screen is a list but the tap hit no row
+    /// (the caller must do nothing — NOT fall through to a catch-all commit),
+    /// and `ListTap::NotAList` for screens without a tappable list (the caller
+    /// then tries its other tap routes).
     ///
     /// `footer_h` is the platform's bottom action-bar reserve in pixels; the
     /// list occupies the body between the header and that bar. This is the
@@ -1108,7 +1153,7 @@ impl App {
     /// `set_selected` (mutation), which could silently drift when a screen was
     /// registered in one but not the other. One match now yields the row count
     /// and a mutable handle to the screen's `selected`.
-    pub fn tap_list_row(&mut self, y: u16, footer_h: u16) -> bool {
+    pub fn tap_list_row(&mut self, y: u16, footer_h: u16) -> ListTap {
         let header_h = self.theme.header_h as u16;
         let height = self.theme.height as u16;
         // Resolve the main-menu length before the mutable borrow of the screen.
@@ -1131,8 +1176,16 @@ impl App {
                     (4, options.len(), header_h, selected)
                 }
                 Screen::ExportSeedQrMenu { selected, .. } => (3, 3, header_h, selected),
-                Screen::ExportSeedWarning { selected, .. } => (3, 2, header_h, selected),
-                Screen::ShowWordsWarning { selected, .. } => (3, 2, header_h, selected),
+                // These carry a `description`, so the draw carves a
+                // DESC_BAND_H band off the body top; the tappable list begins
+                // below it. Offset list_top to match, or a tap on the drawn
+                // CANCEL row maps onto SHOW.
+                Screen::ExportSeedWarning { selected, .. } => {
+                    (3, 2, header_h + DESC_BAND_H as u16, selected)
+                }
+                Screen::ShowWordsWarning { selected, .. } => {
+                    (3, 2, header_h + DESC_BAND_H as u16, selected)
+                }
                 Screen::SettingsMenu { selected } => (3, 4, header_h, selected),
                 Screen::SettingsPowerOff { selected } => (3, 2, header_h, selected),
                 // Custom layout: top third is instruction text, bottom
@@ -1144,7 +1197,7 @@ impl App {
                     let body_h = height - header_h - footer_h;
                     (2, 2, header_h + body_h / 3, selected)
                 }
-                _ => return false,
+                _ => return ListTap::NotAList,
             };
 
         // Taps in the list area move the selection to that row; taps above it
@@ -1160,10 +1213,17 @@ impl App {
                 0
             };
             let start = visible_start(total, max_visible, *selected);
-            let row = (start + slot).min(total.saturating_sub(1));
+            let row = start + slot;
+            // A tap in an unfilled slot below the last drawn row must not
+            // commit that row (previously clamped to the last row, so blank
+            // space below e.g. SettingsPowerOff fired YES → wipe). Absorb it
+            // so the caller does not fall through to a catch-all Confirm.
+            if row >= total {
+                return ListTap::Absorbed;
+            }
             *selected = row;
         }
-        true
+        ListTap::Committed
     }
 
     /// True when a body tap on the current screen should page forward through
@@ -1481,6 +1541,7 @@ impl App {
                 | Screen::LoadWordCount { .. }
                 | Screen::LoadEnterWords { .. }
                 | Screen::LoadWordCommitted { .. }
+                | Screen::LoadAddressConfirm { .. }
                 | Screen::LoadFinalize { .. }
                 | Screen::LoadPassphrasePrompt { .. }
                 | Screen::LoadPassphraseInput { .. }
@@ -1495,7 +1556,8 @@ impl App {
             | Screen::SignShowQr { .. }
             | Screen::SignMessageInput { .. }
             | Screen::SignMessageReview { .. }
-            | Screen::SignMessageResult { .. }) => flows::sign::handle(self, s, event),
+            | Screen::SignMessageResult { .. }
+            | Screen::SignMessageRefused) => flows::sign::handle(self, s, event),
 
             s @ (Screen::SettingsMenu { .. }
             | Screen::SettingsShowAddress
@@ -1724,11 +1786,24 @@ mod tap_list_tests {
         App::new(Theme::faraday_240())
     }
 
+    /// Mirror the list-tap routing in `esp32-common/src/run.rs`: a `Committed`
+    /// tap fires `Confirm`; an `Absorbed` tap does nothing; `NotAList` falls
+    /// through to the catch-all, which on these (non-picker, non-word-picker)
+    /// screens also fires `Confirm`. Lets a test exercise the *integrated*
+    /// path, where the residual seed-reveal / wipe hole lived.
+    fn route_body_tap(a: &mut App, y: u16, footer_h: u16) {
+        match a.tap_list_row(y, footer_h) {
+            ListTap::Committed => a.handle_input(InputEvent::Confirm),
+            ListTap::Absorbed => {}
+            ListTap::NotAList => a.handle_input(InputEvent::Confirm),
+        }
+    }
+
     #[test]
     fn non_list_screen_is_not_a_list_tap() {
         let mut a = app();
         a.screen = Screen::Splash;
-        assert!(!a.tap_list_row(100, 44));
+        assert_eq!(a.tap_list_row(100, 44), ListTap::NotAList);
     }
 
     #[test]
@@ -1740,12 +1815,12 @@ mod tap_list_tests {
         let list_h = a.theme.height as u16 - footer_h - header_h;
 
         // Tap in the top slot -> row 0.
-        assert!(a.tap_list_row(header_h + 1, footer_h));
+        assert_eq!(a.tap_list_row(header_h + 1, footer_h), ListTap::Committed);
         assert!(matches!(a.screen, Screen::SettingsMenu { selected: 0 }));
 
         // Tap deep in the third slot -> row 2 (4 items, 3 visible, start 0).
         let y = header_h + list_h * 5 / 6;
-        assert!(a.tap_list_row(y, footer_h));
+        assert_eq!(a.tap_list_row(y, footer_h), ListTap::Committed);
         assert!(matches!(a.screen, Screen::SettingsMenu { selected: 2 }));
     }
 
@@ -1753,7 +1828,7 @@ mod tap_list_tests {
     fn tap_in_instruction_band_commits_without_moving_selection() {
         // CreateBackupWarning draws an instruction third above its 2-item list;
         // its list_top sits below the header. A tap in that band still commits
-        // (returns true) but must not change the selection.
+        // but must not change the selection.
         let mut a = app();
         a.screen = Screen::CreateBackupWarning {
             mnemonic: Zeroizing::new(String::new()),
@@ -1761,10 +1836,100 @@ mod tap_list_tests {
             selected: 1,
         };
         let header_h = a.theme.header_h as u16;
-        assert!(a.tap_list_row(header_h + 1, 44));
+        assert_eq!(a.tap_list_row(header_h + 1, 44), ListTap::Committed);
         assert!(matches!(
             a.screen,
             Screen::CreateBackupWarning { selected: 1, .. }
         ));
+    }
+
+    // Finding #82: seed-reveal / wipe on mis-mapped taps.
+    //
+    // ExportSeedWarning draws a DESC_BAND_H danger band, then CANCEL (row 0)
+    // above SHOW (row 1). On the 320 theme, footer_h = 44:
+    //   band  29..71  |  CANCEL 71..139  |  SHOW 139..207  |  blank 207..276
+    // Before the fix, tap_list_row used list_top = header_h (no band), so the
+    // lower half of the drawn CANCEL row mapped to SHOW, and any tap in the
+    // blank space below the last row clamped onto SHOW.
+    #[test]
+    fn tap_on_cancel_row_selects_cancel_not_show() {
+        let mut a = App::new(Theme::faraday_320());
+        a.screen = Screen::ExportSeedWarning {
+            selected: 0,
+            from_settings: false,
+        };
+        // y=135 is inside the drawn CANCEL row (71..139).
+        assert_eq!(a.tap_list_row(135, 44), ListTap::Committed);
+        assert!(
+            matches!(a.screen, Screen::ExportSeedWarning { selected: 0, .. }),
+            "tap on CANCEL must select CANCEL (0), never SHOW (1)"
+        );
+    }
+
+    #[test]
+    fn deadzone_tap_below_seed_list_is_absorbed() {
+        // Unit-level: the dead-zone tap absorbs (no row committed). The
+        // no-reveal guarantee itself is proven by the integrated test below.
+        let mut a = App::new(Theme::faraday_320());
+        a.screen = Screen::ExportSeedWarning {
+            selected: 0,
+            from_settings: false,
+        };
+        // y=240 is blank space below the SHOW row (139..207).
+        assert_eq!(a.tap_list_row(240, 44), ListTap::Absorbed);
+        assert!(matches!(
+            a.screen,
+            Screen::ExportSeedWarning { selected: 0, .. }
+        ));
+    }
+
+    #[test]
+    fn deadzone_tap_below_poweroff_list_is_absorbed() {
+        // No description band here: NO (0) 29..111, YES (1) 111..193, blank
+        // below. y=240 lands in the blank space and absorbs.
+        let mut a = App::new(Theme::faraday_320());
+        a.screen = Screen::SettingsPowerOff { selected: 0 };
+        assert_eq!(a.tap_list_row(240, 44), ListTap::Absorbed);
+        assert!(matches!(a.screen, Screen::SettingsPowerOff { selected: 0 }));
+    }
+
+    // Integrated path: swiping moves the highlight to the dangerous row WITHOUT
+    // committing, so a subsequent dead-zone tap must not fire Confirm on it.
+    // These drive `route_body_tap`, mirroring run.rs, to prove the whole route
+    // is safe — not just `tap_list_row` in isolation.
+    #[test]
+    fn swipe_to_show_then_deadzone_tap_does_not_reveal_seed() {
+        let mut a = App::new(Theme::faraday_320());
+        a.screen = Screen::ExportSeedWarning {
+            selected: 0,
+            from_settings: false,
+        };
+        // Swipe down to highlight SHOW (row 1) without committing.
+        a.handle_input(InputEvent::Down);
+        assert!(matches!(
+            a.screen,
+            Screen::ExportSeedWarning { selected: 1, .. }
+        ));
+        // Dead-zone tap must be absorbed: no Confirm, still on the warning.
+        route_body_tap(&mut a, 240, 44);
+        assert!(
+            matches!(a.screen, Screen::ExportSeedWarning { .. }),
+            "dead-zone tap after swiping to SHOW must not reveal the seed"
+        );
+    }
+
+    #[test]
+    fn swipe_to_yes_then_deadzone_tap_does_not_wipe_wallet() {
+        let mut a = App::new(Theme::faraday_320());
+        a.screen = Screen::SettingsPowerOff { selected: 0 };
+        // Swipe down to highlight YES (row 1) without committing.
+        a.handle_input(InputEvent::Down);
+        assert!(matches!(a.screen, Screen::SettingsPowerOff { selected: 1 }));
+        // Dead-zone tap must be absorbed: no Confirm, still on the confirm gate.
+        route_body_tap(&mut a, 240, 44);
+        assert!(
+            matches!(a.screen, Screen::SettingsPowerOff { .. }),
+            "dead-zone tap after swiping to YES must not wipe the wallet"
+        );
     }
 }
