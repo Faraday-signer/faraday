@@ -121,6 +121,9 @@ jobs:
       # firmware. We look for the driver *entrypoints* (type T — present only if
       # the driver object is linked), NOT the always-present silicon-ROM radio
       # routines (type A, absolute). If any resolve, the air-gap claim is void.
+      # These 5 symbols are the mandatory driver-init CHOKEPOINTS — any use of
+      # the WiFi/BT stack must route through them — so this is a chokepoint
+      # gate, not an exhaustive radio-symbol list a maintainer must keep complete.
       - name: nm radio-symbol audit (fail if WiFi/BT driver linked)
         working-directory: esp32-touch2
         run: |

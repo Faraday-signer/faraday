@@ -535,6 +535,21 @@ describe("looksLikeTransaction", () => {
     expect(looksLikeTransaction(txMessageWithInstruction())).toBe(true);
   });
 
+  it("rejects a canonical zero-instruction transaction message", () => {
+    // A 0-instruction message still lands on-chain and charges the fee payer.
+    const signer = makeAccount(10);
+    const program = makeAccount(0);
+    const zeroIx = concat([
+      new Uint8Array([1, 0, 1]), // header
+      new Uint8Array([2]), // account key count
+      signer.bytes,
+      program.bytes,
+      new Uint8Array(32), // recent blockhash
+      new Uint8Array([0]) // instruction count = 0
+    ]);
+    expect(looksLikeTransaction(zeroIx)).toBe(true);
+  });
+
   it("rejects a v0 versioned-message prefix (0x80)", () => {
     const versioned = concat([new Uint8Array([0x80]), txMessageWithInstruction()]);
     expect(looksLikeTransaction(versioned)).toBe(true);
