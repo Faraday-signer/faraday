@@ -37,6 +37,31 @@ pub fn run<'d, D, T, B>(
         "BIP39 seed self-test failed — hardware SHA512 path diverges from spec"
     );
 
+    // Turn on the SAR-ADC entropy source so `esp_random` is hardware-conditioned
+    // rather than pseudo-random. It draws on ADC voltage noise, needs no radio,
+    // and must stay enabled for the app's lifetime — never call the matching
+    // bootloader_random_disable() while running.
+    //
+    // The SAR-ADC entropy source and the ADC driver are mutually exclusive: a
+    // future board wiring a real ADC-based `BoardBattery` here must not drive
+    // ADC1 concurrently, or it will both corrupt battery reads and silently
+    // degrade the RNG mid-session. The current touch2 board passes `None`, so
+    // this is safe today.
+    extern "C" {
+        fn bootloader_random_enable();
+    }
+    unsafe { bootloader_random_enable() };
+
+    // Fail-closed RNG liveness check, mirroring the seed self-test above: two
+    // samples must differ and not both be zero, catching a dead or stuck RNG at
+    // boot before any entropy is drawn for a wallet.
+    let r1 = unsafe { esp_idf_sys::esp_random() };
+    let r2 = unsafe { esp_idf_sys::esp_random() };
+    assert!(
+        r1 != r2 && !(r1 == 0 && r2 == 0),
+        "esp_random self-test failed — hardware RNG entropy source not live"
+    );
+
     // Back-date so the first loop iteration samples immediately. `checked_sub`
     // guards against underflow early in boot (the monotonic clock is still near
     // zero), in which case the first sample just lands one interval later.
