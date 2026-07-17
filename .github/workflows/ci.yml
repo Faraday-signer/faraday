@@ -97,6 +97,46 @@ jobs:
         working-directory: core
         run: cargo test --features touch-ui
 
+  esp32-build:
+    name: Rust (ESP32-S3 build + radio-symbol audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: esp-rs/xtensa-toolchain@v1.5.3
+        with:
+          default: true
+          buildtargets: esp32s3
+          ldproxy: true
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: esp32-touch2
+          key: esp32s3
+      # This is the first CI job to compile the ESP32 firmware at all. Building
+      # (not just `cargo check`) is required so the nm audit below has a linked
+      # ELF to inspect.
+      - name: cargo build (ESP32-S3-Touch-LCD-2)
+        working-directory: esp32-touch2
+        run: cargo build --release
+      # Air-gap invariant: the WiFi/BT driver stack must NOT be linked into the
+      # firmware. We look for the driver *entrypoints* (type T — present only if
+      # the driver object is linked), NOT the always-present silicon-ROM radio
+      # routines (type A, absolute). If any resolve, the air-gap claim is void.
+      - name: nm radio-symbol audit (fail if WiFi/BT driver linked)
+        working-directory: esp32-touch2
+        run: |
+          NM=$(ls "$HOME"/.rustup/toolchains/esp/xtensa-esp-elf/*/xtensa-esp-elf/bin/xtensa-esp32s3-elf-nm | head -1)
+          ELF=target/xtensa-esp32s3-espidf/release/faraday-esp32-touch2
+          echo "Auditing $ELF"
+          HITS=$("$NM" --defined-only "$ELF" \
+            | grep -E ' [Tt] .*(esp_wifi_init|esp_wifi_start|esp_wifi_set_mode|esp_bt_controller_init|esp_bt_controller_enable)$' \
+            || true)
+          if [ -n "$HITS" ]; then
+            echo "::error::WiFi/BT driver symbols linked into the air-gapped firmware:"
+            echo "$HITS"
+            exit 1
+          fi
+          echo "OK: no WiFi/BT driver entrypoints linked."
+
   extension:
     name: Extension typecheck
     runs-on: ubuntu-latest
