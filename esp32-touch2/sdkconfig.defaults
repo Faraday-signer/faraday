@@ -24,10 +24,13 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
 # intentionally runs long crypto operations, so suppress the IDLE0 check.
 CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
 
-# The QR decoder thread runs on CPU1 and a single rqrr decode can occupy the
-# core for more than the watchdog period, starving IDLE1. Suppress the IDLE1
-# check too so a long decode never reboots the device.
-CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n
+# The QR decoder thread is pinned to CPU1 and is the only CPU-bound task there
+# (PBKDF2 runs on the main task on CPU0, exempted above). With rxing TryHarder
+# forced off a single decode is bounded and the loop sleeps between attempts, so
+# IDLE1 runs normally. Keep this check ENABLED: if a decode ever wedges (spins
+# without yielding) IDLE1 starves and the watchdog reboots deterministically
+# instead of hanging on the only input.
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=y
 
 # Camera (espressif/esp32-camera component): use I2C port 1 for SCCB so it
 # doesn't conflict with the touch sensor on I2C port 0 (SDA=GPIO48, SCL=GPIO47).

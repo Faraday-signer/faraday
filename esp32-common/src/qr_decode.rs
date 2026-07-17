@@ -1,11 +1,14 @@
 //! QR decode backend for ESP32 — rxing (zxing port), the most tolerant decoder,
 //! same as the Pi. rxing builds for xtensa. Pipeline mirrors the Pi: center-crop
-//! + 2×2 box-average, Otsu binarize, then rxing with TryHarder. rxing's
-//! robustness lets it read Faraday's dense ~61-module fragments at the lower,
-//! faster resolution where quircs/rqrr failed.
+//! + 2×2 box-average, Otsu binarize, then rxing (TryHarder off — see below).
+//! rxing's robustness lets it read Faraday's dense ~61-module fragments at the
+//! lower, faster resolution where quircs/rqrr failed.
 
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
+
+use rxing::Reader;
 
 use faraday_core::camera::{Frame, ScanMode};
 
@@ -43,18 +46,23 @@ pub fn try_decode_qr(frame: &Frame, mode: ScanMode) -> Option<Vec<u8>> {
         faraday_core::qr::threshold::binarize_in_place(&mut luma, t);
     }
 
-    // NOTE: TryHarder is intentionally NOT enabled. It makes rxing try many
-    // binarizations/rotations and on some noisy camera frames it spins for a
-    // very long time (the decoder thread froze mid-scan). rxing's single-pass
-    // base decoder is still far more tolerant than quircs (it read the dense
-    // 61-module fragment at 280 px) and is bounded in time.
+    // TryHarder is force-OFF on the ESP32. rxing has no time/iteration budget;
+    // with TryHarder it retries many binarizations/rotations and on a noisy
+    // camera frame it can wedge the CPU1 decode thread indefinitely. The
+    // `helpers::detect_in_luma_with_hints` wrapper silently re-enables it
+    // (`TryHarder = TryHarder.or(Some(true))`), so decode through
+    // MultiFormatReader directly with a hints object we own, keeping TryHarder
+    // Some(false). The single-pass base decoder is still far more tolerant than
+    // quircs (it read the dense 61-module fragment at 280 px) and is bounded.
     let mut hints = rxing::DecodeHints::default();
-    let result = rxing::helpers::detect_in_luma_with_hints(
-        luma,
-        w as u32,
-        h as u32,
-        Some(rxing::BarcodeFormat::QR_CODE),
-        &mut hints,
+    hints.PossibleFormats = Some(HashSet::from([rxing::BarcodeFormat::QR_CODE]));
+    hints.TryHarder = Some(false);
+    let mut reader = rxing::MultiFormatReader::default();
+    let result = reader.decode_with_hints(
+        &mut rxing::BinaryBitmap::new(rxing::common::HybridBinarizer::new(
+            rxing::Luma8LuminanceSource::new(luma, w as u32, h as u32),
+        )),
+        &hints,
     );
 
     let payload = result
