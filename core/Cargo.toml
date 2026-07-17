@@ -36,6 +36,10 @@ getrandom = "0.2"
 # QR encoding
 qrcode = "0.14"
 
+# QR decode-result byte extraction, shared by the Pi + ESP32 rxing backends.
+# default-features off to match esp32-common and stay light on xtensa.
+rxing = { version = "0.7", default-features = false }
+
 # UR (Uniform Resource) animated QR streams
 ur = { version = "0.4", default-features = false }
 # Inspect a UR fountain part's CBOR header (already linked transitively via ur)

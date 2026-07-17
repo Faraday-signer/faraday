@@ -30,14 +30,9 @@ pub fn try_decode_qr(frame: &Frame, mode: ScanMode) -> Option<Vec<u8>> {
         Some(rxing::BarcodeFormat::QR_CODE),
         &mut hints,
     ) {
-        Ok(result) => Some(decode_result_to_bytes(&result)),
+        Ok(result) => Some(faraday_core::qr::result_bytes::payload_bytes(&result)),
         Err(_) => None,
     }
-}
-
-fn decode_result_to_bytes(result: &rxing::RXingResult) -> Vec<u8> {
-    let text = result.getText();
-    text.chars().map(|c| (c as u32) as u8).collect()
 }
 
 /// UR-aware decode wrapper. Delegates to `faraday_core::camera::try_decode_qr_ur_diag`
