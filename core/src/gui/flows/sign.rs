@@ -375,6 +375,7 @@ mod input_model_tests {
                 instructions: Vec::new(),
                 fee_lamports: 0,
                 size: 0,
+                has_unresolved_accounts: false,
             }),
             page,
             scroll: 0,

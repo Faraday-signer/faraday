@@ -312,7 +312,9 @@ fn resolve_ix_account(
 ) -> Option<String> {
     let account_index = *ix.account_indices.get(ix_account_position)? as usize;
     let account = all_accounts.get(account_index)?;
-    Some(bs58::encode(account).into_string())
+    // Full-length form (leg strings are compared against a full-base58 focal),
+    // but never the raw sentinel — that would leak as a plausible address.
+    Some(crate::parser::bytes::render_account(account))
 }
 
 fn leg_direction(source: &str, destination: &str, focal: &str) -> LegDirection {
