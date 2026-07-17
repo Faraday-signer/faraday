@@ -118,14 +118,38 @@ pub fn sign_transaction_base64(
     sign_transaction_bytes(&tx_bytes, private_key, public_key)
 }
 
-/// Sign an arbitrary message with Ed25519.
+/// Upper bound on off-chain message length (Solana packet MTU). Longer
+/// payloads are rejected before signing.
+const MAX_OFFCHAIN_MSG: usize = 1232;
+
+/// Sign an arbitrary message under the Solana off-chain-message domain.
+///
+/// WHY the domain prefix: signing the bare bytes lets an attacker submit a
+/// transaction message through the "sign message" channel and receive a valid
+/// *transaction* signature, bypassing the tx-review UI. Signing a
+/// domain-separated preimage guarantees the result can never validate as
+/// `ed25519(pubkey, tx_message)`.
 pub fn sign_message(
     message: &[u8],
     private_key: &[u8; 32],
-) -> [u8; 64] {
+) -> Result<[u8; 64], &'static str> {
+    if message.len() > MAX_OFFCHAIN_MSG {
+        return Err("Message too long");
+    }
     let signing_key = SigningKey::from_bytes(private_key);
-    let signature = signing_key.sign(message);
-    signature.to_bytes()
+    let signature = signing_key.sign(&offchain_preimage(message));
+    Ok(signature.to_bytes())
+}
+
+/// Build the Solana off-chain-message preimage:
+/// `b"\xffsolana offchain" || version(0u8) || len(u16 le) || message`.
+fn offchain_preimage(message: &[u8]) -> Vec<u8> {
+    let mut preimage = Vec::with_capacity(16 + 1 + 2 + message.len());
+    preimage.extend_from_slice(b"\xffsolana offchain");
+    preimage.push(0u8); // version
+    preimage.extend_from_slice(&(message.len() as u16).to_le_bytes());
+    preimage.extend_from_slice(message);
+    preimage
 }
 
 /// Strict ed25519 verification of (message, signature, public_key).
@@ -242,9 +266,31 @@ mod tests {
     fn test_sign_message() {
         let kp = test_keypair(0);
         let message = b"hello solana";
-        let sig = sign_message(message, &kp.private_key);
+        let sig = sign_message(message, &kp.private_key).unwrap();
         assert_eq!(sig.len(), 64);
-        assert!(verify_signature(message, &sig, &kp.public_key).is_ok());
+        // Verifies against the domain-separated preimage, not the bare message.
+        assert!(verify_signature(&offchain_preimage(message), &sig, &kp.public_key).is_ok());
+        assert!(verify_signature(message, &sig, &kp.public_key).is_err());
+    }
+
+    /// Crown-jewel regression (#79): a message-channel signature must never
+    /// validate as a transaction signature over the same bytes. Domain
+    /// separation is what breaks the forge.
+    #[test]
+    fn sign_message_cannot_forge_tx_signature() {
+        let kp = test_keypair(0);
+        let tx = build_unsigned_tx(&kp.public_key);
+        let sigs_end = 1 + 1 * 64;
+        let tx_message = &tx[sigs_end..]; // the bytes a relayer verifies as a tx sig
+        let sig = sign_message(tx_message, &kp.private_key).unwrap();
+        assert!(verify_signature(tx_message, &sig, &kp.public_key).is_err());
+    }
+
+    #[test]
+    fn sign_message_rejects_over_length() {
+        let kp = test_keypair(0);
+        let too_long = vec![0u8; MAX_OFFCHAIN_MSG + 1];
+        assert!(sign_message(&too_long, &kp.private_key).is_err());
     }
 
     #[test]
@@ -259,26 +305,26 @@ mod tests {
     fn verify_accepts_valid_signature() {
         let kp = test_keypair(0);
         let msg = b"canonical input";
-        let sig = sign_message(msg, &kp.private_key);
-        assert!(verify_signature(msg, &sig, &kp.public_key).is_ok());
+        let sig = sign_message(msg, &kp.private_key).unwrap();
+        assert!(verify_signature(&offchain_preimage(msg), &sig, &kp.public_key).is_ok());
     }
 
     #[test]
     fn verify_rejects_tampered_message() {
         let kp = test_keypair(0);
         let msg = b"original message";
-        let sig = sign_message(msg, &kp.private_key);
+        let sig = sign_message(msg, &kp.private_key).unwrap();
         let tampered = b"tampered message";
-        assert!(verify_signature(tampered, &sig, &kp.public_key).is_err());
+        assert!(verify_signature(&offchain_preimage(tampered), &sig, &kp.public_key).is_err());
     }
 
     #[test]
     fn verify_rejects_corrupted_signature() {
         let kp = test_keypair(0);
         let msg = b"hello";
-        let mut sig = sign_message(msg, &kp.private_key);
+        let mut sig = sign_message(msg, &kp.private_key).unwrap();
         sig[0] ^= 0x01; // flip one bit
-        assert!(verify_signature(msg, &sig, &kp.public_key).is_err());
+        assert!(verify_signature(&offchain_preimage(msg), &sig, &kp.public_key).is_err());
     }
 
     #[test]
@@ -286,8 +332,8 @@ mod tests {
         let kp_a = test_keypair(0);
         let kp_b = test_keypair(1); // different account → different keypair
         let msg = b"hello";
-        let sig = sign_message(msg, &kp_a.private_key);
-        assert!(verify_signature(msg, &sig, &kp_b.public_key).is_err());
+        let sig = sign_message(msg, &kp_a.private_key).unwrap();
+        assert!(verify_signature(&offchain_preimage(msg), &sig, &kp_b.public_key).is_err());
     }
 
     #[test]

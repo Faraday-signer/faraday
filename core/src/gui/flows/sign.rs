@@ -31,6 +31,12 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         // decodes to message_bytes. Route to the dedicated
                         // review screen before falling through to tx parsing.
                         if let Some(message_bytes) = decoded.message_bytes.clone() {
+                            // Defense-in-depth on top of the domain separation in
+                            // sign_message: refuse a "message" that is actually a
+                            // transaction so it can't be smuggled past tx review.
+                            if looks_like_solana_tx(&message_bytes) {
+                                return Screen::SignScanTx;
+                            }
                             return Screen::SignMessageReview {
                                 message_bytes,
                                 scroll: 0,
@@ -224,12 +230,13 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 }
                 InputEvent::Confirm => {
                     if let Some(wallet) = &app.wallet {
-                        let sig = crate::signer::sign_message(
+                        if let Ok(sig) = crate::signer::sign_message(
                             &message_bytes,
                             &wallet.keypair.private_key,
-                        );
-                        let signature_hex = hex::encode(&sig);
-                        return Screen::SignMessageResult { signature_hex };
+                        ) {
+                            let signature_hex = hex::encode(&sig);
+                            return Screen::SignMessageResult { signature_hex };
+                        }
                     }
                     return Screen::MainMenu { selected: app.menu_index_of(2) };
                 }
@@ -249,12 +256,13 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     return Screen::SignScanTx;
                 }
                 if let Some(wallet) = &app.wallet {
-                    let sig = crate::signer::sign_message(
+                    if let Ok(sig) = crate::signer::sign_message(
                         grid.text.as_bytes(),
                         &wallet.keypair.private_key,
-                    );
-                    let signature_hex = hex::encode(&sig);
-                    return Screen::SignMessageResult { signature_hex };
+                    ) {
+                        let signature_hex = hex::encode(&sig);
+                        return Screen::SignMessageResult { signature_hex };
+                    }
                 }
             }
             Screen::SignMessageInput { grid }
