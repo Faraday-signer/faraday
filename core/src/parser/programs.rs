@@ -13,6 +13,7 @@ pub fn identify(program_id: &[u8; 32]) -> Option<KnownProgram> {
         "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" => "AssocToken",
         "Stake11111111111111111111111111111111111111" => "Stake",
         "Vote111111111111111111111111111111111111111" => "Vote",
+        "BPFLoaderUpgradeab1e11111111111111111111111" => "BPF Upgradeable Loader",
         "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr" => "Memo",
         "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo" => "Memo",
         "ComputeBudget111111111111111111111111111111" => "ComputeBudget",
@@ -72,6 +73,12 @@ mod tests {
     fn test_vote_program() {
         let id = pubkey_from_b58("Vote111111111111111111111111111111111111111");
         assert_eq!(identify(&id).unwrap().name, "Vote");
+    }
+
+    #[test]
+    fn test_bpf_upgradeable_loader() {
+        let id = pubkey_from_b58("BPFLoaderUpgradeab1e11111111111111111111111");
+        assert_eq!(identify(&id).unwrap().name, "BPF Upgradeable Loader");
     }
 
     #[test]

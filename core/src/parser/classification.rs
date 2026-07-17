@@ -228,13 +228,20 @@ fn is_swap_program(program_name: &str) -> bool {
 }
 
 fn is_authority_change(program_name: &str, data: &[u8]) -> bool {
-    if matches!(program_name, "Token" | "Token-2022") {
-        if matches!(data.first(), Some(6)) {
-            return true;
-        }
+    match program_name {
+        // SPL-Token / Token-2022 SetAuthority (u8 discriminant 6).
+        "Token" | "Token-2022" => matches!(data.first(), Some(6)),
+        // Stake Authorize (1) / AuthorizeWithSeed (7) and their checked
+        // variants AuthorizeChecked (9) / AuthorizeCheckedWithSeed (10)
+        // reassign staker or withdraw authority; no transfer leg, so flag
+        // them explicitly. The checked co-sign requirement is no barrier to
+        // an attacker whose new authority is their own key.
+        "Stake" => matches!(stake_discriminant(data), Some(1) | Some(7) | Some(9) | Some(10)),
+        // BPF Upgradeable Loader Upgrade (3) swaps program code; SetAuthority
+        // (4) / SetAuthorityChecked (6) swap the upgrade authority (u32-LE).
+        "BPF Upgradeable Loader" => matches!(read_u32_le(data, 0), Ok(3) | Ok(4) | Ok(6)),
+        _ => false,
     }
-
-    false
 }
 
 fn stake_discriminant(data: &[u8]) -> Option<u32> {
@@ -381,6 +388,100 @@ mod tests {
         };
         let out = classify_features(&features);
         assert_eq!(out.category, "other");
+    }
+
+    fn pubkey_from_b58(s: &str) -> [u8; 32] {
+        let bytes = bs58::decode(s).into_vec().unwrap();
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&bytes);
+        key
+    }
+
+    /// Minimal legacy tx: 1 signer + 1 program account, single instruction
+    /// with the given program id and data bytes.
+    fn legacy_program_tx(program_id: &[u8; 32], data: &[u8]) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.push(1u8); // num_signatures
+        tx.extend_from_slice(&[0u8; 64]); // signature placeholder
+
+        tx.push(1); // num_required_signers
+        tx.push(0); // num_readonly_signed
+        tx.push(1); // num_readonly_unsigned
+
+        tx.push(2); // num_accounts
+        tx.extend_from_slice(&[0x01u8; 32]); // signer
+        tx.extend_from_slice(program_id); // program
+
+        tx.extend_from_slice(&[0xABu8; 32]); // recent blockhash
+
+        tx.push(1); // num_instructions
+        tx.push(1); // program_id_index = 1
+        tx.push(1); // 1 account index
+        tx.push(0); // account_indices[0] = 0
+        tx.push(data.len() as u8); // data_len (compact-u16, <0x80)
+        tx.extend_from_slice(data);
+        tx
+    }
+
+    #[test]
+    fn stake_authorize_is_high_risk() {
+        let stake = pubkey_from_b58("Stake11111111111111111111111111111111111111");
+        // Authorize discriminant = 1 (u32-LE).
+        let tx = legacy_program_tx(&stake, &[1, 0, 0, 0]);
+        let out = classify(&tx, &[0x01u8; 32]).unwrap();
+        assert_eq!(out.category, "security_authority_change");
+        assert!(out.high_risk);
+    }
+
+    #[test]
+    fn stake_authorize_with_seed_is_high_risk() {
+        let stake = pubkey_from_b58("Stake11111111111111111111111111111111111111");
+        // AuthorizeWithSeed discriminant = 7 (u32-LE).
+        let tx = legacy_program_tx(&stake, &[7, 0, 0, 0]);
+        let out = classify(&tx, &[0x01u8; 32]).unwrap();
+        assert_eq!(out.category, "security_authority_change");
+        assert!(out.high_risk);
+    }
+
+    #[test]
+    fn stake_authorize_checked_is_high_risk() {
+        let stake = pubkey_from_b58("Stake11111111111111111111111111111111111111");
+        // AuthorizeChecked discriminant = 9 (u32-LE); the co-sign requirement
+        // is no barrier when the attacker's own key is the new authority.
+        let tx = legacy_program_tx(&stake, &[9, 0, 0, 0]);
+        let out = classify(&tx, &[0x01u8; 32]).unwrap();
+        assert_eq!(out.category, "security_authority_change");
+        assert!(out.high_risk);
+    }
+
+    #[test]
+    fn stake_delegate_is_not_high_risk() {
+        let stake = pubkey_from_b58("Stake11111111111111111111111111111111111111");
+        // DelegateStake discriminant = 2 (u32-LE) must not trip the guard.
+        let tx = legacy_program_tx(&stake, &[2, 0, 0, 0]);
+        let out = classify(&tx, &[0x01u8; 32]).unwrap();
+        assert_ne!(out.category, "security_authority_change");
+        assert!(!out.high_risk);
+    }
+
+    #[test]
+    fn loader_set_authority_is_high_risk() {
+        let loader = pubkey_from_b58("BPFLoaderUpgradeab1e11111111111111111111111");
+        // SetAuthority discriminant = 4 (u32-LE).
+        let tx = legacy_program_tx(&loader, &[4, 0, 0, 0]);
+        let out = classify(&tx, &[0x01u8; 32]).unwrap();
+        assert_eq!(out.category, "security_authority_change");
+        assert!(out.high_risk);
+    }
+
+    #[test]
+    fn loader_upgrade_is_high_risk() {
+        let loader = pubkey_from_b58("BPFLoaderUpgradeab1e11111111111111111111111");
+        // Upgrade discriminant = 3 (u32-LE): a program code swap.
+        let tx = legacy_program_tx(&loader, &[3, 0, 0, 0]);
+        let out = classify(&tx, &[0x01u8; 32]).unwrap();
+        assert_eq!(out.category, "security_authority_change");
+        assert!(out.high_risk);
     }
 
     #[test]
