@@ -14,7 +14,7 @@ AI is getting smarter every day, and **anything online will eventually be hacked
 
 Faraday flips that. The whole stack is open: signer firmware, OS image recipe, browser extension, mobile companion. You can read the code, build it yourself, and verify that the binary you run is the one you compiled.
 
-The signer device itself has **no antennas**. No WiFi, no Bluetooth, no NFC, no cellular — the Pi Zero 1.3 board doesn't physically contain a network chip. The only channel into or out of Faraday is the camera reading QR codes and the screen displaying them. There is no remote attack surface because there is no remote.
+The Pi Zero 1.3 signer has **no antennas** — no WiFi, no Bluetooth, no NFC, no cellular. The board doesn't physically contain a network chip. (The ESP32-S3 signer has WiFi/BT on-die but links no radio drivers, verified by a CI `nm` symbol audit — a firmware-enforced air gap; for a physical air gap, choose the Pi.) The only channel into or out of Faraday is the camera reading QR codes and the screen displaying them. There is no remote attack surface because there is no remote.
 
 Faraday isn't just a device. It's a suite:
 
