@@ -5,7 +5,7 @@
 //! rely on the full decoded transaction details.
 
 use crate::parser::bytes::{read_u32_le, read_u64_le};
-use crate::parser::{lookup_tables, message, programs};
+use crate::parser::{lookup_tables, message, programs, token_registry};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LegDirection {
@@ -108,6 +108,122 @@ pub fn classify(tx_bytes: &[u8], wallet_pubkey: &[u8; 32]) -> Option<Classificat
     }
 
     Some(classify_features(&features))
+}
+
+/// A single fund-moving leg the signing wallet authorizes to leave its
+/// control — SOL (System.Transfer from the wallet) or an SPL token transfer
+/// whose authority is the wallet. Carries a grouping `key` (same key ⇒ same
+/// asset, so amounts are summable) plus the info needed to format a total.
+pub struct OutflowLeg {
+    /// Index into the transaction's instruction list (aligns 1:1 with the
+    /// parsed instructions), so the hero can match its primary leg to a group.
+    pub ix_index: usize,
+    /// Asset identity: `"sol"` for native SOL, else the source token account
+    /// (one token account holds exactly one mint, so it is a safe mint proxy
+    /// even for plain `Transfer` where the mint isn't in the instruction).
+    pub key: String,
+    pub amount: u64,
+    pub decimals: Option<u8>,
+    pub symbol: Option<&'static str>,
+}
+
+/// Collect the outflow legs the signing wallet authorizes. Used by the review
+/// hero to detect multi-transfer batches and never under-represent the largest
+/// outflow behind a small primary leg. Swaps are excluded so their spend legs
+/// don't read as a raw transfer batch, mirroring the `token_transfer_batch`
+/// guard in `classify_features`.
+pub fn wallet_outflow_legs(tx_bytes: &[u8], wallet_pubkey: &[u8; 32]) -> Vec<OutflowLeg> {
+    let Ok(msg) = message::deserialize(tx_bytes) else {
+        return Vec::new();
+    };
+    let all_accounts = lookup_tables::expand_accounts(&msg.accounts, &msg.address_table_lookups);
+    let focal = bs58::encode(wallet_pubkey).into_string();
+
+    let mut legs = Vec::new();
+    for (i, ix) in msg.instructions.iter().enumerate() {
+        let Some(program_id) = all_accounts.get(ix.program_id_index) else {
+            continue;
+        };
+        let program_name = programs::identify(program_id).map(|p| p.name).unwrap_or("Unknown");
+        if is_swap_program(program_name) {
+            return Vec::new();
+        }
+        if let Some(leg) = extract_outflow_leg(i, ix, &all_accounts, &focal, program_name) {
+            legs.push(leg);
+        }
+    }
+    legs
+}
+
+/// Extract an outflow leg only when the signing wallet is the party moving the
+/// funds: the source for a System transfer, or the transfer authority for an
+/// SPL token transfer (the account that must sign).
+fn extract_outflow_leg(
+    ix_index: usize,
+    ix: &message::RawInstruction,
+    all_accounts: &[[u8; 32]],
+    focal: &str,
+    program_name: &str,
+) -> Option<OutflowLeg> {
+    match program_name {
+        "System" => {
+            let disc = read_u32_le(&ix.data, 0).ok()?;
+            if disc != 2 {
+                return None;
+            }
+            let source = resolve_ix_account(ix, 0, all_accounts)?;
+            if source != focal {
+                return None;
+            }
+            let amount = read_u64_le(&ix.data, 4).ok()?;
+            Some(OutflowLeg {
+                ix_index,
+                key: "sol".into(),
+                amount,
+                decimals: Some(9),
+                symbol: Some("SOL"),
+            })
+        }
+        "Token" | "Token-2022" => {
+            // Transfer accounts: [source, dest, authority]; TransferChecked:
+            // [source, mint, dest, authority]. The authority must be the
+            // wallet for this to be the wallet's outflow.
+            let (amount, decimals, mint_pos, authority_pos) = match *ix.data.first()? {
+                3 => (read_u64_le(&ix.data, 1).ok()?, None, None, 2usize),
+                12 => (read_u64_le(&ix.data, 1).ok()?, Some(*ix.data.get(9)?), Some(1usize), 3usize),
+                _ => return None,
+            };
+            if resolve_ix_account(ix, authority_pos, all_accounts)? != focal {
+                return None;
+            }
+            // Prefer the registry's trusted decimals/symbol for a known mint;
+            // the on-wire decimals byte is attacker-controlled.
+            let (decimals, symbol) = match mint_pos
+                .and_then(|p| ix_account_bytes(ix, p, all_accounts))
+                .and_then(token_registry::lookup)
+            {
+                Some(info) => (Some(info.decimals), Some(info.symbol)),
+                None => (decimals, None),
+            };
+            Some(OutflowLeg {
+                ix_index,
+                key: resolve_ix_account(ix, 0, all_accounts)?,
+                amount,
+                decimals,
+                symbol,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn ix_account_bytes<'a>(
+    ix: &message::RawInstruction,
+    pos: usize,
+    all_accounts: &'a [[u8; 32]],
+) -> Option<&'a [u8; 32]> {
+    let idx = *ix.account_indices.get(pos)? as usize;
+    all_accounts.get(idx)
 }
 
 fn classify_features(features: &Features) -> Classification {
