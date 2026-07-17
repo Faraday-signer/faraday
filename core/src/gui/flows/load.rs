@@ -51,6 +51,18 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             Some(pair) => pair,
                             None => return Screen::DerivationError,
                         };
+                        // CompactSeedQR has no BIP39 checksum — any 16/32 bytes
+                        // decode to a valid seed, so a substituted QR imports an
+                        // attacker's wallet undetected. Gate it behind a blocking
+                        // address confirm. The digit SeedQR path (checksum-checked)
+                        // goes straight to LoadFinalize.
+                        if decoded.qr_type == decode_qr::QrType::CompactSeedQr {
+                            return Screen::LoadAddressConfirm {
+                                mnemonic,
+                                preview_address,
+                                keypair,
+                            };
+                        }
                         return Screen::LoadFinalize {
                             mnemonic,
                             preview_address,
@@ -165,6 +177,26 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 _ => {}
             }
             Screen::LoadInvalidMnemonic { word_count }
+        }
+
+        Screen::LoadAddressConfirm { mnemonic, preview_address, keypair } => {
+            match event {
+                InputEvent::Confirm => {
+                    return Screen::LoadFinalize {
+                        mnemonic,
+                        preview_address,
+                        keypair,
+                        selected: 0,
+                    };
+                }
+                InputEvent::Back => return Screen::LoadMethod { selected: 0 },
+                _ => {}
+            }
+            Screen::LoadAddressConfirm {
+                mnemonic,
+                preview_address,
+                keypair,
+            }
         }
 
         Screen::LoadFinalize { mnemonic, preview_address, keypair, mut selected } => {
@@ -331,5 +363,84 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         }
 
         _ => unreachable!("load::handle called with non-load screen"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::gui::app::{App, InputEvent, Screen};
+    use crate::qr::encode_qr;
+    use crate::ui::Theme;
+
+    const MNEMONIC: &str =
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+    fn scan(app: &mut App, data: Vec<u8>) {
+        app.screen = Screen::LoadScanQr;
+        app.scanned_qr = Some(data);
+        app.handle_input(InputEvent::Confirm);
+    }
+
+    #[test]
+    fn compact_seed_qr_routes_through_blocking_address_confirm() {
+        let mut app = App::new(Theme::faraday_240());
+        let compact = encode_qr::encode_compact_seed_qr(MNEMONIC).unwrap();
+        scan(&mut app, compact);
+        // Checksum-less import must land on the blocking confirm — never
+        // straight into finalize — and the wallet must NOT be set yet.
+        assert!(matches!(app.screen, Screen::LoadAddressConfirm { .. }));
+        assert!(app.wallet.is_none());
+    }
+
+    #[test]
+    fn compact_confirm_reaches_finalize_then_sets_wallet() {
+        let mut app = App::new(Theme::faraday_240());
+        let compact = encode_qr::encode_compact_seed_qr(MNEMONIC).unwrap();
+        scan(&mut app, compact);
+        assert!(matches!(app.screen, Screen::LoadAddressConfirm { .. }));
+        // Confirm the address → finalize; wallet still not set.
+        app.handle_input(InputEvent::Confirm);
+        assert!(matches!(app.screen, Screen::LoadFinalize { .. }));
+        assert!(app.wallet.is_none());
+        // DONE (selected 0) is the first thing that commits the wallet.
+        app.handle_input(InputEvent::Confirm);
+        assert!(app.wallet.is_some());
+    }
+
+    #[test]
+    fn address_confirm_requires_explicit_confirm_finalize_does_not() {
+        // The touch router (esp32) consults this predicate to make body taps
+        // inert on the security gate — only a footer Check commits. It must be
+        // true on the gate and false once past it, so a stray tap on the
+        // ordinary finalize screen still advances.
+        let mut app = App::new(Theme::faraday_240());
+        let compact = encode_qr::encode_compact_seed_qr(MNEMONIC).unwrap();
+        scan(&mut app, compact);
+        assert!(matches!(app.screen, Screen::LoadAddressConfirm { .. }));
+        assert!(app.requires_explicit_confirm());
+        app.handle_input(InputEvent::Confirm);
+        assert!(matches!(app.screen, Screen::LoadFinalize { .. }));
+        assert!(!app.requires_explicit_confirm());
+    }
+
+    #[test]
+    fn compact_cancel_aborts_without_setting_wallet() {
+        let mut app = App::new(Theme::faraday_240());
+        let compact = encode_qr::encode_compact_seed_qr(MNEMONIC).unwrap();
+        scan(&mut app, compact);
+        app.handle_input(InputEvent::Back);
+        assert!(matches!(app.screen, Screen::LoadMethod { .. }));
+        assert!(app.wallet.is_none());
+    }
+
+    #[test]
+    fn digit_seed_qr_skips_confirm_and_goes_straight_to_finalize() {
+        let mut app = App::new(Theme::faraday_240());
+        let digits = encode_qr::encode_seed_qr(MNEMONIC).unwrap();
+        scan(&mut app, digits.into_bytes());
+        // The digit SeedQR path validates the BIP39 checksum, so it is
+        // unchanged: straight to finalize, no extra address gate.
+        assert!(matches!(app.screen, Screen::LoadFinalize { .. }));
+        assert!(app.wallet.is_none());
     }
 }

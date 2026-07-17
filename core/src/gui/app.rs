@@ -267,6 +267,17 @@ pub enum Screen {
         word_count: usize,
         shown_at: std::time::Instant,
     },
+    /// Blocking address confirmation for a CompactSeedQR import. The Compact
+    /// format is raw entropy with no BIP39 checksum, so a substituted (evil-
+    /// maid) QR silently decodes to an attacker's seed. This gate forces the
+    /// user to confirm the derived address is theirs before the wallet can be
+    /// finalized. Only reached on the CompactSeedQR path — the digit SeedQR
+    /// path validates the checksum and skips straight to LoadFinalize.
+    LoadAddressConfirm {
+        mnemonic: Zeroizing<String>,
+        preview_address: String,
+        keypair: SolanaKeypair,
+    },
     /// Passphrase decision: Done (no passphrase) / Add passphrase. Short
     /// address shown in the header chip so users keep visual continuity
     /// with the preceding confirmation.
@@ -931,6 +942,17 @@ impl App {
         self.input_model == InputModel::Touch
     }
 
+    /// True when the current screen is a security gate that a stray body tap
+    /// must NOT dismiss — only an explicit footer Check (K1) commits and footer
+    /// Cross/Back (K3) cancels, matching the intent a physical key press
+    /// already carries. Card screens get none of the list dead-zone absorption,
+    /// so without this a reflexive double-tap could dismiss the gate and load
+    /// the wallet. Currently the checksum-less CompactSeedQR address confirm
+    /// (#89), where the whole point is forcing the user to read the address.
+    pub fn requires_explicit_confirm(&self) -> bool {
+        matches!(self.screen, Screen::LoadAddressConfirm { .. })
+    }
+
     /// True when the current screen uses the middle footer cell (`k2`) for a
     /// Secondary action — keyboard/word-entry delete, or TX-review paging. The
     /// battery icon lives in that same cell, so it must yield when a control is
@@ -1519,6 +1541,7 @@ impl App {
                 | Screen::LoadWordCount { .. }
                 | Screen::LoadEnterWords { .. }
                 | Screen::LoadWordCommitted { .. }
+                | Screen::LoadAddressConfirm { .. }
                 | Screen::LoadFinalize { .. }
                 | Screen::LoadPassphrasePrompt { .. }
                 | Screen::LoadPassphraseInput { .. }

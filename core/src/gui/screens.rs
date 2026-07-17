@@ -209,6 +209,9 @@ impl App {
             Screen::LoadInvalidMnemonic { word_count } => {
                 draw_invalid_mnemonic(display, &self.theme, *word_count)
             }
+            Screen::LoadAddressConfirm { preview_address, .. } => {
+                draw_compact_address_confirm(display, &self.theme, preview_address)
+            }
             Screen::LoadFinalize { preview_address, selected, .. } => {
                 draw_load_finalize(display, &self.theme, preview_address, *selected)
             }
@@ -1173,6 +1176,40 @@ fn draw_wallet_confirm<D: DrawTarget<Color = Rgb565>>(
         body_lines: &body,
         rows: &rows,
         title_danger: false,
+        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::Cross),
+    }
+    .draw(display, &theme)
+}
+
+/// Blocking address confirm for a checksum-less CompactSeedQR import. Danger
+/// register — the Compact format has no checksum, so a swapped QR would import
+/// a stranger's seed silently. The user must confirm the derived address is
+/// theirs (K1) or cancel (K3).
+fn draw_compact_address_confirm<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    theme: &Theme,
+    address: &str,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{CardRow, EdgeHints, EdgeIcon, HeaderKind};
+    use crate::ui::screens::CardScreen;
+
+    // Split the address into two halves so it wraps inside the card body.
+    let mid = address.len() / 2;
+    let first = &address[..mid];
+    let second = &address[mid..];
+    let body = [first, second];
+
+    let rows: [CardRow; 1] = [CardRow::new("QR:", "NO CHECKSUM")];
+
+    CardScreen {
+        header: HeaderKind::Title("YOUR ADDRESS?"),
+        counter: None,
+        right_label: None,
+        title: Some("CONFIRM"),
+        subtitle: Some("Not yours? Cancel"),
+        body_lines: &body,
+        rows: &rows,
+        title_danger: true,
         edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::Cross),
     }
     .draw(display, &theme)
