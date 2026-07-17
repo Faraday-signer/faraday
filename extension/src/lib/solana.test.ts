@@ -3,6 +3,7 @@ import bs58 from "bs58";
 import nacl from "tweetnacl";
 
 import {
+  buildOffchainPreimage,
   buildSignMessageQrPayload,
   decodeHexSignature,
   decodeBase64,
@@ -501,12 +502,27 @@ describe("buildSignMessageQrPayload", () => {
   });
 });
 
+describe("buildOffchainPreimage", () => {
+  it("prepends the offchain domain, version, and u16-le length", () => {
+    const message = new Uint8Array([0xaa, 0xbb, 0xcc]);
+    const preimage = buildOffchainPreimage(message);
+    const tag = new Uint8Array([0xff, ...new TextEncoder().encode("solana offchain")]);
+    expect(tag.length).toBe(16);
+    expect(preimage.slice(0, 16)).toEqual(tag);
+    expect(preimage[16]).toBe(0x00); // version
+    expect(preimage[17]).toBe(3); // length low byte
+    expect(preimage[18]).toBe(0); // length high byte
+    expect(preimage.slice(19)).toEqual(message);
+  });
+});
+
 describe("message signature helpers", () => {
   const seed = new Uint8Array(32).fill(7);
   const keypair = nacl.sign.keyPair.fromSeed(seed);
   const signer = bs58.encode(keypair.publicKey);
   const message = new TextEncoder().encode("faraday message signing fixture");
-  const signature = nacl.sign.detached(message, keypair.secretKey);
+  // The signer signs the off-chain preimage, never the raw message.
+  const signature = nacl.sign.detached(buildOffchainPreimage(message), keypair.secretKey);
   const signatureHex = Buffer.from(signature).toString("hex");
 
   it("decodes a 64-byte hex signature", () => {
@@ -515,9 +531,15 @@ describe("message signature helpers", () => {
     expect(decoded).toEqual(signature);
   });
 
-  it("accepts a valid signature for the expected signer", () => {
+  it("accepts a signature made over the offchain preimage", () => {
     const verified = validateSignedMessage(message, signatureHex, signer);
     expect(verified).toEqual(signature);
+  });
+
+  it("rejects a signature made over the raw message", () => {
+    const rawSig = nacl.sign.detached(message, keypair.secretKey);
+    const rawSigHex = Buffer.from(rawSig).toString("hex");
+    expect(() => validateSignedMessage(message, rawSigHex, signer)).toThrow(/does not match/i);
   });
 
   it("rejects malformed signature hex", () => {

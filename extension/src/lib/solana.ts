@@ -3,6 +3,16 @@ import nacl from "tweetnacl";
 
 const BASE58_RE = /^[1-9A-HJ-NP-Za-km-z]+$/;
 const SIGN_MESSAGE_QR_PREFIX = 0xff;
+
+// Solana off-chain-message signing domain. The signer prepends this to the
+// raw message before signing so a signed message can never validate as an
+// ed25519 transaction signature. Byte-for-byte identical to the signer's
+// preimage: b"\xffsolana offchain" (0xFF + 15 ASCII bytes) then version 0x00.
+const OFFCHAIN_DOMAIN_TAG = new Uint8Array([
+  0xff,
+  ...new TextEncoder().encode("solana offchain")
+]);
+const OFFCHAIN_VERSION = 0x00;
 const MIN_SIGN_MESSAGE_QR_BASE64_LENGTH = 51;
 
 export const FARADAY_SIG_PREFIX = "faraday:sig:";
@@ -97,6 +107,23 @@ export function decodeHexSignature(signatureHex: string): Uint8Array {
   return out;
 }
 
+/**
+ * Reconstruct the Solana off-chain-message signing preimage:
+ * `b"\xffsolana offchain" || version(0u8) || len(u16 le) || message`.
+ * The signer signs this preimage, never the raw message, so verification
+ * must run over the same bytes.
+ */
+export function buildOffchainPreimage(message: Uint8Array): Uint8Array {
+  const lenOffset = OFFCHAIN_DOMAIN_TAG.length + 1;
+  const preimage = new Uint8Array(lenOffset + 2 + message.length);
+  preimage.set(OFFCHAIN_DOMAIN_TAG, 0);
+  preimage[OFFCHAIN_DOMAIN_TAG.length] = OFFCHAIN_VERSION;
+  preimage[lenOffset] = message.length & 0xff;
+  preimage[lenOffset + 1] = (message.length >> 8) & 0xff;
+  preimage.set(message, lenOffset + 2);
+  return preimage;
+}
+
 export function validateSignedMessage(
   messageBytes: Uint8Array,
   signatureHex: string,
@@ -104,7 +131,8 @@ export function validateSignedMessage(
 ): Uint8Array {
   const signatureBytes = decodeHexSignature(signatureHex);
   const pubkey = pubkeyToBytes(expectedSigner);
-  const verified = nacl.sign.detached.verify(messageBytes, signatureBytes, pubkey);
+  const preimage = buildOffchainPreimage(messageBytes);
+  const verified = nacl.sign.detached.verify(preimage, signatureBytes, pubkey);
   if (!verified) {
     throw new Error("Message signature does not match the paired signer account.");
   }

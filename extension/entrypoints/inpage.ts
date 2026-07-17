@@ -2,6 +2,7 @@ import bs58 from "bs58";
 import { registerWallet } from "@wallet-standard/wallet";
 
 import {
+  buildOffchainPreimage,
   decodeHexSignature,
   decodeBase64,
   encodeBase64,
@@ -496,9 +497,12 @@ class FaradayWallet {
       throw new Error(done.error || "Message signing was not completed.");
     }
 
+    // The signer signs the off-chain preimage, not the raw message. Return the
+    // preimage as signedMessage so dApps that nacl.verify(signedMessage,
+    // signature, pubkey) succeed. Wallet-Standard permits a modified signedMessage.
     return [
       {
-        signedMessage: messageBytes,
+        signedMessage: buildOffchainPreimage(messageBytes),
         signature: decodeHexSignature(done.signatureHex)
       }
     ];
@@ -601,10 +605,12 @@ class FaradayWallet {
       throw new Error(done.error || "SIWS signing was not completed.");
     }
 
+    // Same off-chain preimage domain as signMessage: the signer signs the
+    // preimage, so return it as signedMessage for dApp-side verification.
     return [
       {
         account: this.account,
-        signedMessage: messageBytes,
+        signedMessage: buildOffchainPreimage(messageBytes),
         signature: decodeHexSignature(done.signatureHex),
         signatureType: "ed25519" as const
       }
