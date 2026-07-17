@@ -28,7 +28,7 @@ mod jupiter_rfq;
 mod jupiter_ultra;
 mod raydium;
 
-use bytes::pubkey_short;
+use bytes::{pubkey_short, render_account};
 use sha2::Digest;
 
 // === Public types ===
@@ -40,6 +40,10 @@ pub struct ParsedTransaction {
     pub instructions: Vec<ParsedInstruction>,
     pub fee_lamports: u64,
     pub size: usize,
+    /// True when the expanded account list contains an ALT entry we couldn't
+    /// resolve offline. Such a tx must never be signed: the user sees a
+    /// sentinel, not the account the validator will actually use.
+    pub has_unresolved_accounts: bool,
 }
 
 pub enum TransactionVersion {
@@ -442,10 +446,8 @@ fn detect_swap_shape(tx_bytes: &[u8], fee_lamports: u64) -> Option<ZonedAction> 
         // Empty `buy_amount` is the explicit "device cannot verify this
         // number offline" signal. The renderer surfaces it as a dash.
         buy_amount: String::new(),
-        buy_symbol: token_registry::lookup(&receive_entry.mint).map_or_else(
-            || bs58::encode(receive_entry.mint).into_string(),
-            |i| i.symbol.to_string(),
-        ),
+        buy_symbol: token_registry::lookup(&receive_entry.mint)
+            .map_or_else(|| render_account(&receive_entry.mint), |i| i.symbol.to_string()),
         fee_lamports,
         fee_payer,
         dex_name: String::new(),
@@ -659,6 +661,7 @@ pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
                 }],
                 fee_lamports: 0,
                 size: tx_bytes.len(),
+                has_unresolved_accounts: false,
             }
         }
     };
@@ -672,6 +675,7 @@ pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
 
     // Expand account list with resolved ALT entries (v0 transactions)
     let all_accounts = lookup_tables::expand_accounts(&msg.accounts, &msg.address_table_lookups);
+    let has_unresolved_accounts = all_accounts.iter().any(lookup_tables::is_unresolved);
 
     let n_signers = (msg.num_required_signers as usize).min(all_accounts.len());
     let signers = all_accounts[..n_signers].to_vec();
@@ -723,6 +727,7 @@ pub fn parse(tx_bytes: &[u8]) -> ParsedTransaction {
         instructions,
         fee_lamports,
         size: tx_bytes.len(),
+        has_unresolved_accounts,
     }
 }
 
@@ -802,7 +807,8 @@ pub fn build_review_lines(
     wallet_pubkey: &[u8; 32],
 ) -> (Vec<String>, bool, ParsedTransaction) {
     let parsed = parse(tx_bytes);
-    let can_sign = parsed.signers.iter().any(|s| s == wallet_pubkey);
+    let has_signer = parsed.signers.iter().any(|s| s == wallet_pubkey);
+    let can_sign = has_signer && !parsed.has_unresolved_accounts;
     let mut lines = Vec::new();
     let classification = classification::classify(tx_bytes, wallet_pubkey);
     let primary = primary_instruction(&parsed);
@@ -813,6 +819,10 @@ pub fn build_review_lines(
             lines.push(format!("! {}", classification.headline()));
             lines.push(format!("! {}", classification.summary));
         }
+    }
+
+    if parsed.has_unresolved_accounts {
+        lines.push("! Unresolved lookup-table account — cannot sign".to_string());
     }
 
     add_hero_action_lines(&mut lines, primary, classification.as_ref());
@@ -1458,6 +1468,140 @@ mod tests {
         tx
     }
 
+    /// v0 tx whose transfer destination (account index 2) resolves from an
+    /// ALT we don't have — so it expands to the UNRESOLVED sentinel.
+    fn v0_unresolved_alt_tx(from: [u8; 32], lamports: u64) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.push(1u8);
+        tx.extend_from_slice(&[0u8; 64]);
+        tx.push(0x80); // v0 prefix
+        tx.push(1);
+        tx.push(0);
+        tx.push(1);
+        tx.push(2); // 2 static accounts: signer + system program
+        tx.extend_from_slice(&from);
+        tx.extend_from_slice(&[0u8; 32]);
+        tx.extend_from_slice(&[0xABu8; 32]); // blockhash
+        tx.push(1); // 1 instruction
+        tx.push(1); // program_id_index = 1 (system)
+        tx.push(2); // 2 accounts
+        tx.push(0); // from = index 0
+        tx.push(2); // to = index 2 (ALT-resolved → unresolved)
+        tx.push(12);
+        tx.extend_from_slice(&[2u8, 0, 0, 0]); // Transfer
+        tx.extend_from_slice(&lamports.to_le_bytes());
+        // 1 address table lookup against an unknown table
+        tx.push(1);
+        tx.extend_from_slice(&[0x42u8; 32]); // unknown ALT account_key
+        tx.push(0); // 0 writable indices
+        tx.push(1); // 1 readonly index
+        tx.push(7); // index into the (unknown) table → UNRESOLVED
+        tx
+    }
+
+    #[test]
+    fn v0_unresolved_alt_account_blocks_signing_and_hides_sentinel() {
+        let from = [0x01u8; 32];
+        let tx = v0_unresolved_alt_tx(from, 1_000_000_000);
+
+        // Must not panic on the 35-byte / unknown-table path.
+        let parsed = parse(&tx);
+        assert!(parsed.has_unresolved_accounts);
+
+        let (lines, can_sign, _) = build_review_lines(&tx, &from);
+        assert!(!can_sign, "unresolved ALT account must not be signable");
+
+        // The destination renders as the marker, never the sentinel address.
+        assert!(
+            lines.iter().any(|l| l.contains("<ALT unresolved>")),
+            "expected the unresolved marker in review lines"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("JEKN")),
+            "sentinel must never render as a base58 address"
+        );
+    }
+
+    /// The zoned hero (page-0 SEND screen) reads its TO account from
+    /// `extract_zoned`, then `screens.rs` renders it. An unresolved ALT index
+    /// must reach that zone as the marker, never the sentinel's base58 form.
+    #[test]
+    fn zoned_send_to_unresolved_alt_renders_marker_not_sentinel() {
+        let from = [0x01u8; 32];
+        let tx = v0_unresolved_alt_tx(from, 1_000_000_000);
+        let parsed = parse(&tx);
+
+        // The sentinel must actually reach the zoned SEND `to` — this is the
+        // value the hero's TO zone renders, and the previously-open leak.
+        let action = extract_zoned(&tx, &parsed).expect("send-shaped tx yields a zoned action");
+        let to = match action {
+            ZonedAction::Send { to, .. } => to,
+            _ => panic!("expected a Send action"),
+        };
+        assert!(
+            lookup_tables::is_unresolved(&to),
+            "unresolved ALT account must reach the zoned SEND `to`"
+        );
+
+        // `screens.rs` renders the TO zone via `render_account`; it must
+        // collapse the sentinel to the marker, never emit the base58 address.
+        let rendered = crate::parser::bytes::render_account(&to);
+        assert_eq!(rendered, "<ALT unresolved>");
+        assert!(!rendered.contains("JEKN"), "sentinel base58 must not leak");
+        assert_ne!(rendered, bs58::encode(to).into_string());
+    }
+
+    /// v0 tx whose instruction targets an UNRECOGNIZED program, so the
+    /// unresolved ALT account routes through `unknown::parse` (a render path
+    /// that does NOT go via `pubkey_short`). Guards the previously-open leak.
+    fn v0_unresolved_alt_unknown_program_tx(from: [u8; 32]) -> Vec<u8> {
+        let mut tx = Vec::new();
+        tx.push(1u8);
+        tx.extend_from_slice(&[0u8; 64]);
+        tx.push(0x80); // v0 prefix
+        tx.push(1);
+        tx.push(0);
+        tx.push(1);
+        tx.push(2); // 2 static accounts: signer + unknown program
+        tx.extend_from_slice(&from);
+        tx.extend_from_slice(&[0x42u8; 32]); // unrecognized program id
+        tx.extend_from_slice(&[0xABu8; 32]); // blockhash
+        tx.push(1); // 1 instruction
+        tx.push(1); // program_id_index = 1 (the unknown program)
+        tx.push(1); // 1 account
+        tx.push(2); // account = index 2 (ALT-resolved → unresolved)
+        tx.push(0); // 0 data bytes
+        // 1 address table lookup against an unknown table
+        tx.push(1);
+        tx.extend_from_slice(&[0x77u8; 32]); // unknown ALT account_key
+        tx.push(0); // 0 writable indices
+        tx.push(1); // 1 readonly index
+        tx.push(3); // index into the (unknown) table → UNRESOLVED
+        tx
+    }
+
+    #[test]
+    fn v0_unresolved_alt_via_unknown_program_hides_sentinel() {
+        let from = [0x01u8; 32];
+        let tx = v0_unresolved_alt_unknown_program_tx(from);
+
+        let parsed = parse(&tx);
+        assert!(parsed.has_unresolved_accounts);
+
+        let (lines, can_sign, _) = build_review_lines(&tx, &from);
+        assert!(!can_sign, "unresolved ALT account must not be signable");
+
+        // unknown::parse renders the account — as the marker, never the sentinel.
+        assert!(
+            lines.iter().any(|l| l.contains("<ALT unresolved>")),
+            "expected the unresolved marker via the unknown-program path"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("JEKN")),
+            "sentinel must never leak through the unknown-program render path"
+        );
+    }
+
     // --- parse() ---
 
     #[test]
@@ -1707,6 +1851,7 @@ mod tests {
             ],
             fee_lamports: 5000,
             size: 123,
+            has_unresolved_accounts: false,
         };
 
         let primary = primary_instruction(&parsed).expect("primary instruction exists");
@@ -1742,6 +1887,7 @@ mod tests {
             ],
             fee_lamports: 5000,
             size: 200,
+            has_unresolved_accounts: false,
         };
 
         let primary = primary_instruction(&parsed).expect("primary instruction exists");
@@ -1775,6 +1921,7 @@ mod tests {
                 ],
                 fee_lamports: 5000,
                 size: 200,
+                has_unresolved_accounts: false,
             };
             let primary = primary_instruction(&parsed)
                 .unwrap_or_else(|| panic!("no primary chosen for {}", dex));
@@ -1798,6 +1945,7 @@ mod tests {
             }],
             fee_lamports: 5000,
             size: 200,
+            has_unresolved_accounts: false,
         };
         let primary = primary_instruction(&parsed).expect("primary instruction exists");
         assert_eq!(primary.program, "AssocToken");

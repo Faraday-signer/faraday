@@ -1653,8 +1653,10 @@ fn draw_tx_review_zoned<D: DrawTarget<Color = Rgb565>>(
             amount_lamports,
             ..
         } => {
-            let from_b58 = bs58::encode(from).into_string();
-            let to_b58 = bs58::encode(to).into_string();
+            // Collapse the unresolved-ALT sentinel to a marker so the hero's
+            // TO zone can never show a fake destination address.
+            let from_b58 = crate::parser::bytes::render_account(from);
+            let to_b58 = crate::parser::bytes::render_account(to);
             let from_is_self = wallet_pubkey.map_or(false, |w| w == from);
 
             // profont17 ≈ 9 px wide on a 240 px panel with 12 px padding +
@@ -1735,7 +1737,7 @@ fn draw_tx_review_zoned<D: DrawTarget<Color = Rgb565>>(
                 &crate::parser::token_registry::format_amount(*fee_lamports, 9),
             );
             let fee_str = alloc::format!("{} SOL", fee_value);
-            let payer_b58 = bs58::encode(fee_payer).into_string();
+            let payer_b58 = crate::parser::bytes::render_account(fee_payer);
             let payer_is_self = wallet_pubkey.map_or(false, |w| w == fee_payer);
             draw_zone_fee(
                 display,
