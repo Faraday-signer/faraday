@@ -67,7 +67,7 @@ pub fn try_decode_qr(frame: &Frame, mode: ScanMode) -> Option<Vec<u8>> {
 
     let payload = result
         .ok()
-        .map(|r| r.getText().chars().map(|c| c as u32 as u8).collect::<Vec<u8>>());
+        .map(|r| faraday_core::qr::result_bytes::payload_bytes(&r));
 
     LAST_LOG.with(|cell| {
         let mut last = cell.borrow_mut();
