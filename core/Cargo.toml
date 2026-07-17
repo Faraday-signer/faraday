@@ -38,3 +38,5 @@ qrcode = "0.14"
 
 # UR (Uniform Resource) animated QR streams
 ur = { version = "0.4", default-features = false }
+# Inspect a UR fountain part's CBOR header (already linked transitively via ur)
+minicbor = { version = "0.19", default-features = false }
