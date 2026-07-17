@@ -7,7 +7,7 @@
 //! behind the traits, so this loop is identical across boards.
 
 use esp_idf_hal::delay::FreeRtos;
-use faraday_core::gui::app::{App, InputEvent};
+use faraday_core::gui::app::{App, InputEvent, ListTap};
 use faraday_core::gui::screens;
 use faraday_core::ui::widgets::FOOTER_H;
 use faraday_core::ui::Theme;
@@ -153,44 +153,62 @@ pub fn run<'d, D, T, B>(
                         }
                         app.handle_input(event);
                     }
-                } else if app.tap_list_row(y, footer_h) {
-                    // List screen: the tapped row is now selected. Commit
-                    // immediately — no highlight flash. The one exception is the
-                    // seed-verification quiz: flash the tapped option for one
-                    // frame (pending_tap_confirm) — green if correct, red if
-                    // wrong — before the Confirm advances or resets the quiz.
-                    pending_tap_confirm = None;
-                    if app.on_verify_quiz() {
-                        app.verify_flash = true;
-                        pending_tap_confirm = Some(std::time::Instant::now());
-                    } else {
-                        if app.confirm_will_derive() {
-                            let _ = screens::draw_computing(&mut display, &app.theme);
-                            display.flush();
+                } else {
+                    match app.tap_list_row(y, footer_h) {
+                        ListTap::Committed => {
+                            // List screen: the tapped row is now selected.
+                            // Commit immediately — no highlight flash. The one
+                            // exception is the seed-verification quiz: flash the
+                            // tapped option for one frame (pending_tap_confirm)
+                            // — green if correct, red if wrong — before the
+                            // Confirm advances or resets the quiz.
+                            pending_tap_confirm = None;
+                            if app.on_verify_quiz() {
+                                app.verify_flash = true;
+                                pending_tap_confirm = Some(std::time::Instant::now());
+                            } else {
+                                if app.confirm_will_derive() {
+                                    let _ = screens::draw_computing(&mut display, &app.theme);
+                                    display.flush();
+                                }
+                                app.handle_input(InputEvent::Confirm);
+                            }
                         }
-                        app.handle_input(InputEvent::Confirm);
+                        ListTap::Absorbed => {
+                            // Dead-zone tap on a list screen (empty slot below
+                            // the last drawn row). Consume it and do nothing:
+                            // must NOT fall through to the catch-all Confirm
+                            // below, which would commit the currently
+                            // highlighted row (e.g. SHOW / YES after a swipe).
+                        }
+                        ListTap::NotAList => {
+                            if app.is_picker_screen() {
+                                // Coin-flip / dice-roll value grid: tapping a
+                                // cell selects that value and commits it
+                                // immediately. Taps off the grid are absorbed so
+                                // a stray tap can't commit the current value.
+                                if app.tap_picker(x, y) {
+                                    app.handle_input(InputEvent::Confirm);
+                                }
+                            } else if app.tap_pages_review() {
+                                // TX review: a body tap pages forward through the
+                                // structured review (same as a down/right swipe).
+                                // The SIGN footer cell (Confirm) signs. Routing
+                                // taps to Secondary keeps Confirm reserved for
+                                // signing.
+                                pending_tap_confirm = None;
+                                app.handle_input(InputEvent::Secondary);
+                            } else if !app.on_word_picker() {
+                                // Read-only / advance-only screen (word display,
+                                // card confirm, QR view, about, errors…): tap
+                                // anywhere fires Confirm so the user can page
+                                // forward. Excludes the word picker, where only a
+                                // tap on a letter cell selects.
+                                pending_tap_confirm = None;
+                                app.handle_input(InputEvent::Confirm);
+                            }
+                        }
                     }
-                } else if app.is_picker_screen() {
-                    // Coin-flip / dice-roll value grid: tapping a cell selects
-                    // that value and commits it immediately. Taps off the grid
-                    // are absorbed so a stray tap can't commit the current value.
-                    if app.tap_picker(x, y) {
-                        app.handle_input(InputEvent::Confirm);
-                    }
-                } else if app.tap_pages_review() {
-                    // TX review: a body tap pages forward through the
-                    // structured review (same as a down/right swipe). The SIGN
-                    // footer cell (Confirm) signs. Routing taps to Secondary
-                    // keeps Confirm reserved for signing.
-                    pending_tap_confirm = None;
-                    app.handle_input(InputEvent::Secondary);
-                } else if !app.on_word_picker() {
-                    // Read-only / advance-only screen (word display, card
-                    // confirm, QR view, about, errors…): tap anywhere fires
-                    // Confirm so the user can page forward. Excludes the word
-                    // picker, where only a tap on a letter cell selects.
-                    pending_tap_confirm = None;
-                    app.handle_input(InputEvent::Confirm);
                 }
             }
             None => {}
