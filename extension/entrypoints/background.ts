@@ -10,6 +10,7 @@ import {
   buildSignMessageQrPayload,
   decodeBase64,
   isValidSolanaAddress,
+  looksLikeTransaction,
   validateSignedMessage,
   validateSignedTransactionMatch,
   validateUnsignedTransactionPayload
@@ -381,6 +382,13 @@ async function handleMessage(
             ? error.message
             : "Message payload is not valid for Faraday sign-message flow.";
         return { ok: false, error: msg };
+      }
+
+      // First-line defense (#79): refuse before the Pi ever sees it if the
+      // "message" actually parses as a Solana transaction. The device enforces
+      // the same guard authoritatively.
+      if (looksLikeTransaction(messageBytes)) {
+        return { ok: false, error: "Refused: message parses as a Solana transaction." };
       }
 
       const sessionId = makeSessionId();

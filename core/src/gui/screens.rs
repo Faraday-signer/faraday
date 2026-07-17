@@ -319,6 +319,7 @@ impl App {
                 crate::qr::encode_qr::QrEcLevel::M,
                 4,
             ),
+            Screen::SignMessageRefused => draw_message_refused(display, &self.theme),
 
             // Settings
             Screen::SettingsMenu { selected } => {
@@ -789,6 +790,41 @@ fn draw_derivation_error<D: DrawTarget<Color = Rgb565>>(
         right_label: None,
         title: Some("DERIVATION"),
         subtitle: Some("Key derivation failed"),
+        body_lines: &body,
+        rows: &rows,
+        title_danger: true,
+        edge_hints: EdgeHints::new().k1(EdgeIcon::Check),
+    }
+    .draw(display, &theme)
+}
+
+/// Refusal outcome for the off-chain message signer (#79): the payload parses
+/// as a Solana transaction, so the device refuses to sign it — never a
+/// signature. The user must route a transaction through the tx flow instead.
+fn draw_message_refused<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    theme: &Theme,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, CardRow, HeaderKind};
+    use crate::ui::screens::CardScreen;
+
+    let rows: [CardRow; 1] = [
+        CardRow::new("REASON", "Looks like a tx"),
+    ];
+    let body = [
+        "Refused to sign.",
+        "",
+        "Parses as a",
+        "transaction.",
+        "Use the tx flow.",
+    ];
+
+    CardScreen {
+        header: HeaderKind::Title("REFUSED"),
+        counter: None,
+        right_label: None,
+        title: Some("SIGN MSG"),
+        subtitle: Some("Looks like a transaction"),
         body_lines: &body,
         rows: &rows,
         title_danger: true,

@@ -342,6 +342,9 @@ pub enum Screen {
     SignMessageResult {
         signature_hex: String,
     },
+    /// Shown when the off-chain message signer refuses a payload that parses as
+    /// a Solana transaction (#79) — an outcome, never a signature.
+    SignMessageRefused,
 
     // Settings
     SettingsMenu {
@@ -1530,7 +1533,8 @@ impl App {
             | Screen::SignShowQr { .. }
             | Screen::SignMessageInput { .. }
             | Screen::SignMessageReview { .. }
-            | Screen::SignMessageResult { .. }) => flows::sign::handle(self, s, event),
+            | Screen::SignMessageResult { .. }
+            | Screen::SignMessageRefused) => flows::sign::handle(self, s, event),
 
             s @ (Screen::SettingsMenu { .. }
             | Screen::SettingsShowAddress

@@ -2,7 +2,6 @@ import bs58 from "bs58";
 import { registerWallet } from "@wallet-standard/wallet";
 
 import {
-  buildOffchainPreimage,
   decodeHexSignature,
   decodeBase64,
   encodeBase64,
@@ -497,12 +496,12 @@ class FaradayWallet {
       throw new Error(done.error || "Message signing was not completed.");
     }
 
-    // The signer signs the off-chain preimage, not the raw message. Return the
-    // preimage as signedMessage so dApps that nacl.verify(signedMessage,
-    // signature, pubkey) succeed. Wallet-Standard permits a modified signedMessage.
+    // Return the RAW message as signedMessage so dApps that
+    // nacl.verify(signedMessage, signature, pubkey) succeed unchanged. The
+    // device already refuses any message that parses as a transaction (#79).
     return [
       {
-        signedMessage: buildOffchainPreimage(messageBytes),
+        signedMessage: messageBytes /*raw*/,
         signature: decodeHexSignature(done.signatureHex)
       }
     ];
@@ -605,12 +604,13 @@ class FaradayWallet {
       throw new Error(done.error || "SIWS signing was not completed.");
     }
 
-    // Same off-chain preimage domain as signMessage: the signer signs the
-    // preimage, so return it as signedMessage for dApp-side verification.
+    // Return the RAW SIWS plaintext as signedMessage so SIWS verifySignIn
+    // validates the exact bytes it built. The device refuses tx-shaped
+    // messages (#79), which SIWS plaintext never is.
     return [
       {
         account: this.account,
-        signedMessage: buildOffchainPreimage(messageBytes),
+        signedMessage: messageBytes /*raw SIWS plaintext*/,
         signature: decodeHexSignature(done.signatureHex),
         signatureType: "ed25519" as const
       }
