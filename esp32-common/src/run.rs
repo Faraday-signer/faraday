@@ -223,6 +223,14 @@ pub fn run<'d, D, T, B>(
                                 // signing.
                                 pending_tap_confirm = None;
                                 app.handle_input(InputEvent::Secondary);
+                            } else if app.requires_explicit_confirm() {
+                                // Security gate (checksum-less CompactSeedQR
+                                // address confirm, #89): a body tap must NOT
+                                // commit. Absorb it — only the footer Check cell
+                                // confirms and Cross/Back cancels, so the user
+                                // can't double-tap past the address without
+                                // reading it.
+                                pending_tap_confirm = None;
                             } else if !app.on_word_picker() {
                                 // Read-only / advance-only screen (word display,
                                 // card confirm, QR view, about, errors…): tap
