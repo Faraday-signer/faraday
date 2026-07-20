@@ -16,3 +16,6 @@ Follow Conventional Commits (https://www.conventionalcommits.org/en/v1.0.0/). Co
 Valid types: feat, fix, refactor, chore, docs, test, style, perf, ci, build.
 
 Every feature, bug fix, or chore gets its own branch off `main` and a PR. Branch naming: `type/short-description` — e.g. `feat/sign-message`, `fix/entropy-handling`, `chore/cleanup-warnings`. Keep PRs small and focused — one concern per PR. Never commit directly to `main`.
+
+6./ Team board sync
+Task claims are mirrored to the private "Faraday Signal" Telegram channel via `scripts/tg-board.sh` (see docs/telegram-board.md). Check the pinned board (`scripts/tg-board.sh read-pin`) alongside `gh pr list` before starting work on a backlog card; post when you claim or finish one and refresh the pin. Requires `.env` (copy `.env.example`); if it's missing, say so and continue — Telegram is a mirror, never a blocker.
