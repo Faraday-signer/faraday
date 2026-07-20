@@ -26,6 +26,15 @@ scripts/tg-board.sh read-pin
 scripts/tg-board.sh update-pin "…new full board text…"
 ```
 
+**Write plain text — the script does the formatting.** It bolds `FA-NN` ids and
+section headers, italicizes the `Updated …` line and the 📖 footer, stamps posts
+with an italic author line, and HTML-escapes everything. Don't send HTML tags
+(they'd be escaped, not rendered). This is also why read-modify-write is safe:
+`read-pin` returns plain text and `update-pin` deterministically re-applies the
+styling, so pin updates never degrade formatting. Pin structure the formatter
+expects: title on line 1, `Updated YYYY-MM-DD` on line 2, `🔨`/`🎯`/`📋` section
+headers, `• FA-NN — title — owner` bullets, `📖` footer.
+
 ## Conventions (what agents do automatically)
 
 - **Before recommending or starting work:** `read-pin` alongside `gh pr list --state open`.
