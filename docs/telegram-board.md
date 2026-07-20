@@ -1,10 +1,18 @@
 # Telegram board — "Faraday Signal"
 
-The team mirrors task claims to a private Telegram **channel** called **Faraday Signal**:
+The team coordinates through a private Telegram **channel** called **Faraday Signal**:
 read-only for humans, posted to only by the bot **@faraday_board_bot**. Its **pinned
-message** is the live "who's working on what" board; a short post announces every claim
-and finish. The authoritative claim is still the draft PR (see `backlog.md`) — the
-channel is the human-visible mirror.
+message** renders the full board — every card, one line — and a short post announces
+every claim and finish.
+
+**Precedence rule — who is the source of truth for what:**
+
+- **The pin wins for status.** Who's working on what, right now. It updates in real
+  time; the board file only syncs on merge. Humans never need to open the file.
+- **`backlog.md` wins for card content.** Descriptions, plans, acceptance criteria —
+  what agents actually build from. Durable, diffable, PR-reviewed.
+- **The draft PR is the claim** (ties the two together): pin says it first, git proves
+  it, the file converges on merge.
 
 ## Join (humans)
 
@@ -37,14 +45,17 @@ headers, `• FA-NN — title — owner` bullets, `📖` footer.
 
 ## Conventions (what agents do automatically)
 
-- **Before recommending or starting work:** `read-pin` alongside `gh pr list --state open`.
+- **Before recommending or starting work:** `read-pin` first — it is the status
+  authority — then `gh pr list --state open` to confirm.
 - **On claiming a card** (branch + draft PR created): `post "🔨 started FA-NN — <title>"`,
-  then regenerate the pin from `docs/backlog.md` (In Progress + top unclaimed To Do cards)
-  and `update-pin`.
+  then refresh the pin.
 - **On finishing** (PR ready for review / merged): `post "✅ FA-NN in review — <PR url>"`
-  and refresh the pin the same way.
-- Pin updates are read-modify-write, last-write-wins — fine, because the draft PR, not
-  the pin, is the claim.
+  and refresh the pin.
+- **Refreshing the pin = full-board render**, every card as one line under
+  🔨 In progress / 🎯 To Do / 📋 Backlog, read-modify-write: start from `read-pin`
+  (it may hold claims newer than your checkout), fold in your change and anything
+  `backlog.md` adds, `update-pin`. Keep one line per card — the pin caps at 4096 chars;
+  specs stay in `backlog.md`.
 - If `.env` is missing, say so and continue — Telegram is a mirror, never a blocker.
 
 ## Bot administrivia
