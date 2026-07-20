@@ -42,8 +42,8 @@ for i, raw in enumerate(sys.stdin.read().splitlines()):
     line = html.escape(raw, quote=False)
     if not raw.strip():
         out.append("")
-    elif mode == "pin" and i == 0:
-        out.append(f"<b>{line}</b>")                 # title
+    elif i == 0:
+        out.append(f"<b>{line}</b>")                 # headline (pin title / post header)
     elif mode == "pin" and raw.startswith(("Updated", "\U0001F4D6")):
         out.append(f"<i>{line}</i>")                 # timestamp + 📖 footer
     elif "FA-" in raw or mode == "post":
@@ -67,8 +67,9 @@ api_call() { # api_call <method> [curl --data-urlencode args...]
 case "${1:-}" in
   post)
     shift
-    [[ $# -gt 0 ]] || { echo "usage: tg-board.sh post \"message\"" >&2; exit 2; }
-    TEXT="$(printf '%s' "$*" | fmt post)"
+    if [[ $# -gt 0 ]]; then TEXT="$*"; else TEXT="$(cat)"; fi
+    [[ -n "$TEXT" ]] || { echo "usage: tg-board.sh post \"message\" (or pipe via stdin)" >&2; exit 2; }
+    TEXT="$(printf '%s' "$TEXT" | fmt post)"
     api_call sendMessage \
       --data-urlencode chat_id="$TG_CHAT_ID" \
       --data-urlencode parse_mode=HTML \

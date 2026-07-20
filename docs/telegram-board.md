@@ -29,10 +29,46 @@ That's it — posts are stamped with your `git config user.name`.
 ## Usage
 
 ```sh
-scripts/tg-board.sh post "🔨 started FA-09 — durable-nonce transactions"
+scripts/tg-board.sh post "…message…"        # also accepts stdin
 scripts/tg-board.sh read-pin
-scripts/tg-board.sh update-pin "…new full board text…"
+scripts/tg-board.sh update-pin "…full board…"   # also accepts stdin
 ```
+
+## Message types
+
+Multiline posts, one shape each. **Line 1 is the headline** (rendered bold):
+`<emoji> FA-NN <verb> — <card title>`. Lines after it carry the useful detail —
+one fact per line, no prose paragraphs. The author stamp is appended automatically.
+
+```
+🔨 FA-09 claimed — durable-nonce transactions
+branch feat/durable-nonce · draft PR #114
+plan: nonce account per relay hop, fixture-first
+```
+
+```
+✅ FA-09 in review — durable-nonce transactions
+PR #114 ready
+verified: cargo test + simulator relay loop
+```
+
+```
+🏁 FA-09 done — merged PR #114
+```
+
+```
+📋 board update
+• FA-19 cut — <title> (P1, To Do)
+• FA-02 rescoped — dual BOM (Pi + ESP32)
+```
+
+```
+⚠️ FA-16 blocked — waiting on design assets
+unblocks when: <what> · needed from: <who>
+```
+
+Emoji vocabulary: 🔨 claimed · ✅ in review · 🏁 done/merged · 📋 board change ·
+⚠️ blocked/flag. One post per event — don't batch unrelated events into one message.
 
 **Write plain text — the script does the formatting.** It bolds `FA-NN` ids and
 section headers, italicizes the `Updated …` line and the 📖 footer, stamps posts
