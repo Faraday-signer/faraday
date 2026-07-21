@@ -29,7 +29,7 @@ These exercise the off-chain message classifier in `gui/screens.rs`.
 | `msg_approve_transfer.png` | **APPROVE TRANSFER** — IKA PROPOSAL 42, AMOUNT 1 SOL, TO HAgk…Kpqk, WALLET treasury |
 | `msg_propose_transfer.png` | **PROPOSE TRANSFER** — IKA PROPOSAL 43, AMOUNT 0.5 SOL |
 | `msg_cancel_transfer.png` | **CANCEL TRANSFER** — IKA PROPOSAL 42 |
-| `msg_approve_spl.png` | **APPROVE SPL TRANSFER** — AMOUNT 1500000, MINT EPjF…Dt1v |
+| `msg_approve_spl.png` | **APPROVE SPL TRANSFER** — AMOUNT 1.5 USDC, MINT EPjF…Dt1v (known-mint symbol + decimals; unknown mints show raw units) |
 | `msg_approve_add_intent.png` | **APPROVE ADD INTENT** — HASH 012345…abcdef |
 | `msg_approve_remove_intent.png` | **APPROVE REMOVE INTENT** — INDEX 3 |
 | `msg_approve_update_intent.png` | **APPROVE UPDATE INTENT** — INDEX 2, HASH deadbe…abcdef |
@@ -41,16 +41,20 @@ These exercise `parser/ika.rs`. Each tx contains exactly one Ika program
 instruction with synthetic account slots (`0x21..0x2c`) so the device
 shows distinct shortened pubkeys for each role.
 
-| File | Disc | Expected device review header |
-|---|---|---|
-| `tx_create_wallet.png` | 0 | **Ika create wallet** — Approval thr. 2, Cancel thr. 1, Timelock 1h |
-| `tx_propose.png` | 1 | **Ika propose** — Proposal # 7, Params 24 bytes |
-| `tx_approve.png` | 2 | **Ika approve** — Approver #3, Expires (unix) 1893456000 |
-| `tx_cancel.png` | 3 | **Ika cancel** — Canceller #5 |
-| `tx_execute.png` | 4 | **Ika execute** — Wallet, Vault, Intent, Proposal |
-| `tx_cleanup.png` | 5 | **Ika cleanup proposal** — Proposal, Rent refund |
-| `tx_bind_dwallet.png` | 6 | **Ika bind dWallet** — Chain Solana, dWallet AAAA…AAAA |
-| `tx_ika_sign.png` | 7 | **Ika sign (MPC)** — dWallet, Hash 1 a1a1a1…a1a1a1, Hash 2 b2b2…, Hash 3 c3c3… |
+The six user-facing instructions render a zoned **hero screen as page 0**;
+the header shown below appears on the **detail pages** (page 2+). `propose`
+and `cleanup` stay on the classic list view (no hero).
+
+| File | Disc | Hero (page 0) | Detail-page header |
+|---|---|---|---|
+| `tx_create_wallet.png` | 0 | **CREATE WALLET** | **Ika create wallet** — Approval thr. 2, Cancel thr. 1, Timelock 1h |
+| `tx_propose.png` | 1 | *(list view)* | **Ika propose** — Proposal # 7, Params 24 bytes |
+| `tx_approve.png` | 2 | **APPROVE** | **Ika approve** — Approver #3, Expires (unix) 1893456000 |
+| `tx_cancel.png` | 3 | **CANCEL** | **Ika cancel** — Canceller #5 |
+| `tx_execute.png` | 4 | **EXECUTE** | **Ika execute** — Wallet, Vault, Intent, Proposal |
+| `tx_cleanup.png` | 5 | *(list view)* | **Ika cleanup proposal** — Proposal, Rent refund |
+| `tx_bind_dwallet.png` | 6 | **BIND dWALLET** | **Ika bind dWallet** — Chain Solana, dWallet AAAA…AAAA |
+| `tx_ika_sign.png` | 7 | **MPC SIGN** | **Ika sign (MPC)** — dWallet, Hash 1 a1a1a1…a1a1a1, Hash 2 b2b2…, Hash 3 c3c3… |
 
 ## What's in the .bin files
 
