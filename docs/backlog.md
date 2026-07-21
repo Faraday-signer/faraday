@@ -50,10 +50,10 @@ _(none)_
 ### 🏗 In Progress
 - **FA-06** `P1` — Ika clear-msig approver demo (branch `feat/ika-approver-demo`, PR #71) — owner: cxalem
 - **FA-18** `P1` — Telegram board sync: mirror task claims to the "Faraday Signal" channel (branch `feat/telegram-board`) — owner: cxalem
+- **FA-09** `P1` — Durable-nonce transactions: signed QR-relayed txs must not expire (branch `feat/durable-nonce`) — owner: cxalem
 
 ### 📋 To Do
 - **FA-08** `P1` — Publish the Chrome extension to the Web Store (permissions rework + listing) — owner: Trskel (Javi Lois)
-- **FA-09** `P1` — Durable-nonce transactions: signed QR-relayed txs must not expire — owner: cxalem
 
 ### 🗂 Backlog
 - **FA-07** `P2` — Decide direction on the verify proposals (`docs/proposals/`)
