@@ -29,6 +29,8 @@ set +a
 
 API="https://api.telegram.org/bot${TG_BOT_TOKEN}"
 AUTHOR="${TG_AUTHOR:-$(git config user.name 2>/dev/null || echo unknown)}"
+# The stamp is sent with parse_mode=HTML like everything else — escape it too.
+AUTHOR="$(python3 -c 'import html, sys; print(html.escape(sys.argv[1], quote=False))' "$AUTHOR")"
 
 # fmt <post|pin> — stdin plain text → stdout Telegram HTML.
 fmt() {
