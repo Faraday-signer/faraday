@@ -37,8 +37,12 @@ scripts/tg-board.sh update-pin "…full board…"   # also accepts stdin
 ## Message types
 
 Multiline posts, one shape each. **Line 1 is the headline** (rendered bold):
-`<emoji> FA-NN <verb> — <card title>`. Lines after it carry the useful detail —
-one fact per line, no prose paragraphs. The author stamp is appended automatically.
+`<emoji> FA-NN <verb> — <card title>`, **max ~60 chars** — a first line longer than
+64 chars is treated as body text, not a headline, so a wall of prose never renders
+all-bold. Lines after it carry the useful detail — one fact per line, never a prose
+paragraph. Prefix a line with `> ` to render it as an indented quote block — use it
+for secondary detail (verification results, review notes) so headlines and bullets
+stay scannable. The author stamp is appended automatically.
 
 ```
 🔨 FA-09 claimed — durable-nonce transactions
@@ -54,6 +58,16 @@ verified: cargo test + simulator relay loop
 
 ```
 🏁 FA-09 done — merged PR #114
+```
+
+```
+🏁 merged to main — FA-06 + FA-18
+• FA-06 Ika clear-msig approver demo — PR #71
+> 278 hw + 73 ext tests green · spoof/envelope defenses verified
+• FA-18 Telegram board sync — PR #111
+> no secrets leaked · live ids blanked from .env.example
+
+🎯 next: FA-09 durable nonces (cxalem)
 ```
 
 ```
