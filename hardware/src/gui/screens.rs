@@ -10,6 +10,10 @@ use embedded_graphics::{
 
 use crate::gui::app::{App, Screen};
 use crate::gui::colors;
+// `draw_status_bar` is only reachable from the `not(simulator)`-and-`not(linux)`
+// fallback `draw_message`. Gating the import the same way avoids an
+// `unused_imports` error under the simulator/Linux feature matrix CI uses.
+#[cfg(not(any(feature = "simulator", target_os = "linux")))]
 use crate::gui::components::draw_status_bar;
 use crate::gui::logo;
 
@@ -1559,6 +1563,202 @@ fn draw_tx_review_zoned<D: DrawTarget<Color = Rgb565>>(
                 dex_name.as_str(),
             )?;
         }
+        crate::parser::ZonedAction::IkaApprove {
+            wallet,
+            proposal,
+            approver_index,
+            fee_lamports,
+            ..
+        } => {
+            draw_ika_vote_zones(
+                display,
+                &theme,
+                wallet_pubkey,
+                zone_rect(zone1_top, zone_h as u32),
+                zone_rect(zone2_top, zone_h as u32),
+                zone_rect(zone3_top, bottom_h as u32),
+                wallet,
+                proposal,
+                "APPROVER",
+                *approver_index,
+                *fee_lamports,
+            )?;
+        }
+        crate::parser::ZonedAction::IkaCancel {
+            wallet,
+            proposal,
+            canceller_index,
+            fee_lamports,
+            ..
+        } => {
+            draw_ika_vote_zones(
+                display,
+                &theme,
+                wallet_pubkey,
+                zone_rect(zone1_top, zone_h as u32),
+                zone_rect(zone2_top, zone_h as u32),
+                zone_rect(zone3_top, bottom_h as u32),
+                wallet,
+                proposal,
+                "CANCELLER",
+                *canceller_index,
+                *fee_lamports,
+            )?;
+        }
+        crate::parser::ZonedAction::IkaExecute {
+            wallet,
+            proposal,
+            vault,
+            fee_lamports,
+            ..
+        } => {
+            const ADDR_WRAP: usize = 22;
+            let wallet_is_self = wallet_pubkey.map_or(false, |w| w == wallet);
+            draw_zone_address(
+                display,
+                &theme,
+                zone_rect(zone1_top, zone_h as u32),
+                "PROPOSAL",
+                &bs58::encode(proposal).into_string(),
+                false,
+                ADDR_WRAP,
+            )?;
+            draw_zone_address(
+                display,
+                &theme,
+                zone_rect(zone2_top, zone_h as u32),
+                "WALLET",
+                &bs58::encode(wallet).into_string(),
+                wallet_is_self,
+                ADDR_WRAP,
+            )?;
+            let fee_str = fee_sol_str(*fee_lamports);
+            let vault_short = pubkey_short(vault);
+            draw_zone_fee_with_secondary(
+                display,
+                &theme,
+                zone_rect(zone3_top, bottom_h as u32),
+                &fee_str,
+                "VAULT",
+                &vault_short,
+            )?;
+        }
+        crate::parser::ZonedAction::IkaSign {
+            dwallet,
+            proposal,
+            hash_count,
+            fee_lamports,
+            ..
+        } => {
+            const ADDR_WRAP: usize = 22;
+            // dWallet is the hero — it's the cross-chain key whose MPC
+            // signature is about to be produced. Show it before the
+            // proposal so the user reads "MPC SIGN — dWALLET … — proposal …".
+            draw_zone_address(
+                display,
+                &theme,
+                zone_rect(zone1_top, zone_h as u32),
+                "dWALLET",
+                &bs58::encode(dwallet).into_string(),
+                false,
+                ADDR_WRAP,
+            )?;
+            draw_zone_address(
+                display,
+                &theme,
+                zone_rect(zone2_top, zone_h as u32),
+                "PROPOSAL",
+                &bs58::encode(proposal).into_string(),
+                false,
+                ADDR_WRAP,
+            )?;
+            let fee_str = fee_sol_str(*fee_lamports);
+            let count_str = alloc::format!("{}", hash_count);
+            draw_zone_fee_with_secondary(
+                display,
+                &theme,
+                zone_rect(zone3_top, bottom_h as u32),
+                &fee_str,
+                "HASHES",
+                &count_str,
+            )?;
+        }
+        crate::parser::ZonedAction::IkaBindDwallet {
+            chain_kind,
+            wallet,
+            dwallet,
+            fee_lamports,
+            ..
+        } => {
+            const ADDR_WRAP: usize = 22;
+            let chain_name = crate::parser::ika::chain_kind_name(*chain_kind);
+            // Reuse the amount zone with empty symbol — gives us a big
+            // right-aligned text value ("SOLANA"/"EVM (1559)"/etc.) with
+            // the muted "CHAIN" label.
+            draw_zone_amount(
+                display,
+                &theme,
+                zone_rect(zone1_top, zone_h as u32),
+                "CHAIN",
+                chain_name,
+                "",
+            )?;
+            draw_zone_address(
+                display,
+                &theme,
+                zone_rect(zone2_top, zone_h as u32),
+                "dWALLET",
+                &bs58::encode(dwallet).into_string(),
+                false,
+                ADDR_WRAP,
+            )?;
+            let fee_str = fee_sol_str(*fee_lamports);
+            let wallet_short = pubkey_short(wallet);
+            draw_zone_fee_with_secondary(
+                display,
+                &theme,
+                zone_rect(zone3_top, bottom_h as u32),
+                &fee_str,
+                "WALLET",
+                &wallet_short,
+            )?;
+        }
+        crate::parser::ZonedAction::IkaCreateWallet {
+            approval_threshold,
+            timelock_seconds,
+            definition_bytes,
+            fee_lamports,
+            ..
+        } => {
+            let threshold_str = alloc::format!("{}", approval_threshold);
+            let timelock_str = crate::parser::ika::format_seconds(*timelock_seconds);
+            draw_zone_amount(
+                display,
+                &theme,
+                zone_rect(zone1_top, zone_h as u32),
+                "THRESHOLD",
+                &threshold_str,
+                "",
+            )?;
+            draw_zone_amount(
+                display,
+                &theme,
+                zone_rect(zone2_top, zone_h as u32),
+                "TIMELOCK",
+                &timelock_str,
+                "",
+            )?;
+            let fee_str = fee_sol_str(*fee_lamports);
+            let def_str = alloc::format!("{} B", definition_bytes);
+            draw_zone_fee_with_secondary(
+                display,
+                &theme,
+                zone_rect(zone3_top, bottom_h as u32),
+                &fee_str,
+                "DEFINITION",
+                &def_str,
+            )?;
+        }
     }
 
     // K1 = sign (dim if can't), K2 = next page, K3 = reject.
@@ -1672,7 +1872,120 @@ fn build_zoned_title(action: &crate::parser::ZonedAction) -> alloc::borrow::Cow<
     match action {
         crate::parser::ZonedAction::Send { .. } => Cow::Borrowed("APPROVE SEND"),
         crate::parser::ZonedAction::Swap { .. } => Cow::Borrowed("APPROVE SWAP"),
+        crate::parser::ZonedAction::IkaApprove { .. } => Cow::Borrowed("APPROVE"),
+        crate::parser::ZonedAction::IkaCancel { .. } => Cow::Borrowed("CANCEL"),
+        crate::parser::ZonedAction::IkaExecute { .. } => Cow::Borrowed("EXECUTE"),
+        crate::parser::ZonedAction::IkaSign { .. } => Cow::Borrowed("MPC SIGN"),
+        crate::parser::ZonedAction::IkaBindDwallet { .. } => Cow::Borrowed("BIND dWALLET"),
+        crate::parser::ZonedAction::IkaCreateWallet { .. } => Cow::Borrowed("CREATE WALLET"),
     }
+}
+
+/// Shared painter for `IkaApprove` / `IkaCancel` — the two have identical
+/// 3-zone layouts (PROPOSAL → WALLET → FEE + voter index), only the
+/// secondary-row label differs (`APPROVER` vs `CANCELLER`).
+fn draw_ika_vote_zones<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    theme: &crate::ui::Theme,
+    wallet_pubkey: Option<&[u8; 32]>,
+    z1: Rectangle,
+    z2: Rectangle,
+    z3: Rectangle,
+    wallet: &[u8; 32],
+    proposal: &[u8; 32],
+    voter_label: &str,
+    voter_index: u8,
+    fee_lamports: u64,
+) -> Result<(), D::Error> {
+    const ADDR_WRAP: usize = 22;
+    let wallet_is_self = wallet_pubkey.map_or(false, |w| w == wallet);
+    draw_zone_address(
+        display,
+        theme,
+        z1,
+        "PROPOSAL",
+        &bs58::encode(proposal).into_string(),
+        false,
+        ADDR_WRAP,
+    )?;
+    draw_zone_address(
+        display,
+        theme,
+        z2,
+        "WALLET",
+        &bs58::encode(wallet).into_string(),
+        wallet_is_self,
+        ADDR_WRAP,
+    )?;
+    let fee_str = fee_sol_str(fee_lamports);
+    let voter_str = alloc::format!("#{}", voter_index);
+    draw_zone_fee_with_secondary(display, theme, z3, &fee_str, voter_label, &voter_str)
+}
+
+/// Format a fee in lamports as "0.000005 SOL" — same compact form the
+/// Send/Swap zoned screens use.
+fn fee_sol_str(fee_lamports: u64) -> String {
+    let v = crate::parser::compact_amount(
+        &crate::parser::token_registry::format_amount(fee_lamports, 9),
+    );
+    alloc::format!("{} SOL", v)
+}
+
+/// Shortened `first4...last4` rendering of a pubkey for secondary-row
+/// values where the full base58 won't fit.
+fn pubkey_short(key: &[u8; 32]) -> String {
+    shorten_address(&bs58::encode(key).into_string())
+}
+
+/// Variant of `draw_zone_fee` that paints `FEE | <value>` on the top row
+/// and an explicit `(label, value)` pair on the second row. The existing
+/// `draw_zone_fee` has Swap-specific priority logic (SLIPPAGE / ROUTE /
+/// PAYER); keeping the Ika cases on a separate path avoids tangling the
+/// two surfaces.
+fn draw_zone_fee_with_secondary<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    theme: &crate::ui::Theme,
+    rect: Rectangle,
+    fee: &str,
+    label2: &str,
+    value2: &str,
+) -> Result<(), D::Error> {
+    let inner_x = rect.top_left.x + theme.space_md;
+    let right_x = rect.top_left.x + rect.size.width as i32 - theme.space_sm;
+
+    let fee_y = rect.top_left.y + 14;
+    Text::with_alignment(
+        "FEE",
+        Point::new(inner_x, fee_y),
+        theme.style_sm(theme.muted),
+        Alignment::Left,
+    )
+    .draw(display)?;
+    Text::with_alignment(
+        fee,
+        Point::new(right_x, fee_y),
+        theme.style_sm(theme.text),
+        Alignment::Right,
+    )
+    .draw(display)?;
+
+    let row2_y = fee_y + 18;
+    Text::with_alignment(
+        label2,
+        Point::new(inner_x, row2_y),
+        theme.style_sm(theme.muted),
+        Alignment::Left,
+    )
+    .draw(display)?;
+    Text::with_alignment(
+        value2,
+        Point::new(right_x, row2_y),
+        theme.style_sm(theme.text),
+        Alignment::Right,
+    )
+    .draw(display)?;
+
+    Ok(())
 }
 
 /// FEE row + secondary row, picked in priority order:
@@ -2571,40 +2884,145 @@ fn draw_message_review<D: DrawTarget<Color = Rgb565>>(
     scroll: usize,
     seed_loaded: bool,
 ) -> Result<(), D::Error> {
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, GUTTER_W};
+    use crate::ui::layout::split_top;
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
     use crate::ui::Theme;
-    use embedded_graphics::geometry::Size;
+    use embedded_graphics::primitives::{Line, PrimitiveStyle};
 
-    display.clear(colors::BG_DARK)?;
-    draw_status_bar(display, "Sign Message", seed_loaded)?;
+    let theme = Theme::faraday_240();
+    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
+    display.fill_solid(&screen, theme.bg)?;
 
-    let label_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_MUTED);
-    let text_style = MonoTextStyle::new(&FONT_6X10, colors::TEXT_SECONDARY);
+    let (header_rect, body_rect) = split_top(screen, theme.header_h as i32);
+    let body_inner = Rectangle::new(
+        body_rect.top_left,
+        Size::new(body_rect.size.width - GUTTER_W, body_rect.size.height),
+    );
 
-    Text::new("Message:", Point::new(5, 35), label_style).draw(display)?;
+    let review = message_review(message_bytes);
+    let line_h: i32 = 14;
+    let label_x = body_inner.top_left.x + theme.space_md;
+    let approx_char_w: i32 = 9;
+    let label_col_w = 9 * approx_char_w;
+    let value_x = label_x + label_col_w;
+    let value_w_px = body_inner.size.width as i32 - label_col_w - theme.space_md - 4;
+    let value_max_chars = (value_w_px / approx_char_w).max(4) as usize;
+    let full_w_px = body_inner.size.width as i32 - 2 * theme.space_md;
+    let full_max_chars = (full_w_px / approx_char_w).max(8) as usize;
+    let detail_rows = build_message_detail_rows(&review, value_max_chars, full_max_chars);
 
-    let text = core::str::from_utf8(message_bytes).unwrap_or("(binary data)");
-    let max_chars_per_line = 38usize;
-    let lines: Vec<&str> = text
-        .as_bytes()
-        .chunks(max_chars_per_line)
-        .map(|chunk| core::str::from_utf8(chunk).unwrap_or(""))
-        .collect();
-    let max_visible = 12usize;
-    let clamped_scroll = scroll.min(lines.len().saturating_sub(max_visible));
-    for (vi, i) in (clamped_scroll..lines.len().min(clamped_scroll + max_visible)).enumerate() {
-        let y = 50 + vi as i32 * 12;
-        Text::new(lines[i], Point::new(5, y), text_style).draw(display)?;
+    let hero_rows = [review.title.as_str(), review.subtitle.as_str()];
+    let hero_line_count = hero_rows.len() + 1;
+    let hero_pad_top = theme.space_sm;
+    let hero_zone_h = hero_pad_top + hero_line_count as i32 * line_h + theme.space_sm;
+    let (hero_rect, below_hero) = split_top(body_inner, hero_zone_h);
+    let (divider_rect, detail_rect) = split_top(below_hero, 1);
+
+    let detail_h = detail_rect.size.height as i32 - theme.space_sm * 2;
+    let visible_lines = (detail_h / line_h).max(1) as usize;
+    let max_scroll = detail_rows.len().saturating_sub(visible_lines);
+    let show_more_hint = scroll < max_scroll;
+    let content_visible = if show_more_hint {
+        visible_lines.saturating_sub(1).max(1)
+    } else {
+        visible_lines
+    };
+    let counter = if detail_rows.len() > visible_lines {
+        Some((scroll.min(max_scroll) + 1, max_scroll + 1))
+    } else {
+        None
+    };
+
+    Header {
+        kind: HeaderKind::Title("REVIEW MSG"),
+        counter,
+        right_label: None,
     }
+    .draw(display, &theme, header_rect)?;
 
-    Text::new(
-        &format!("{} bytes", message_bytes.len()),
-        Point::new(5, 50 + max_visible as i32 * 12 + 5),
-        label_style,
+    let hero_x = hero_rect.top_left.x + theme.space_md;
+    let hero_y = hero_rect.top_left.y + hero_pad_top + 10;
+    Text::with_alignment(
+        hero_rows[0],
+        Point::new(hero_x, hero_y),
+        MonoTextStyle::new(&FONT_9X15, theme.accent),
+        Alignment::Left,
+    )
+    .draw(display)?;
+    Text::with_alignment(
+        hero_rows[1],
+        Point::new(hero_x, hero_y + line_h + 2),
+        theme.style_sm(theme.muted),
+        Alignment::Left,
+    )
+    .draw(display)?;
+    let bytes_label = if seed_loaded {
+        format!("{} B SIGNED", message_bytes.len())
+    } else {
+        format!("{} B - NO KEY", message_bytes.len())
+    };
+    Text::with_alignment(
+        &bytes_label,
+        Point::new(hero_x, hero_y + 2 * line_h + 2),
+        theme.style_sm(theme.muted),
+        Alignment::Left,
     )
     .draw(display)?;
 
-    let theme = Theme::faraday_240();
+    Line::new(
+        Point::new(divider_rect.top_left.x + theme.space_md, divider_rect.top_left.y),
+        Point::new(
+            divider_rect.top_left.x + divider_rect.size.width as i32 - theme.space_sm,
+            divider_rect.top_left.y,
+        ),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(theme.border, 1))
+    .draw(display)?;
+
+    let detail_x = detail_rect.top_left.x + theme.space_md;
+    let detail_start_y = detail_rect.top_left.y + theme.space_sm + 10;
+    let clamped_scroll = scroll.min(max_scroll);
+    let end = detail_rows.len().min(clamped_scroll + content_visible);
+    for (vi, idx) in (clamped_scroll..end).enumerate() {
+        let row = &detail_rows[idx];
+        let y = detail_start_y + vi as i32 * line_h;
+        if row.label.is_empty() {
+            Text::with_alignment(
+                &row.value,
+                Point::new(detail_x, y),
+                theme.style_sm(theme.text),
+                Alignment::Left,
+            )
+            .draw(display)?;
+        } else {
+            Text::with_alignment(
+                row.label,
+                Point::new(label_x, y),
+                theme.style_sm(theme.muted),
+                Alignment::Left,
+            )
+            .draw(display)?;
+            Text::with_alignment(
+                &row.value,
+                Point::new(value_x, y),
+                theme.style_sm(theme.text),
+                Alignment::Left,
+            )
+            .draw(display)?;
+        }
+    }
+
+    if show_more_hint {
+        let hint_y = detail_rect.top_left.y + detail_rect.size.height as i32 - theme.space_sm - 2;
+        Text::with_alignment(
+            "more below ▼",
+            Point::new(detail_x, hint_y),
+            theme.style_sm(theme.muted),
+            Alignment::Left,
+        )
+        .draw(display)?;
+    }
+
     EdgeHints::new()
         .k1(EdgeIcon::Check)
         .k3(EdgeIcon::Cross)
@@ -2618,6 +3036,587 @@ fn draw_message_review<D: DrawTarget<Color = Rgb565>>(
         )?;
 
     Ok(())
+}
+
+struct MessageReview {
+    title: String,
+    subtitle: String,
+    rows: Vec<DetailRow<'static>>,
+    raw_text: Option<String>,
+}
+
+fn message_review(message_bytes: &[u8]) -> MessageReview {
+    if let Some(body) = solana_offchain_message_body(message_bytes) {
+        if let Ok(text) = core::str::from_utf8(body) {
+            if let Some(review) = parse_ika_message(text) {
+                return review;
+            }
+            return MessageReview {
+                title: "SOLANA MESSAGE".to_string(),
+                subtitle: "READ BEFORE SIGNING".to_string(),
+                rows: vec![DetailRow {
+                    label: "TYPE",
+                    value: "Off-chain message".to_string(),
+                }],
+                raw_text: Some(text.to_string()),
+            };
+        }
+    }
+
+    MessageReview {
+        title: "MESSAGE".to_string(),
+        subtitle: "READ BEFORE SIGNING".to_string(),
+        rows: vec![DetailRow {
+            label: "TYPE",
+            value: "Raw Ed25519 message".to_string(),
+        }],
+        raw_text: Some(
+            core::str::from_utf8(message_bytes)
+                .unwrap_or("(binary data)")
+                .to_string(),
+        ),
+    }
+}
+
+fn build_message_detail_rows(
+    review: &MessageReview,
+    value_max_chars: usize,
+    full_max_chars: usize,
+) -> Vec<DetailRow<'static>> {
+    let mut rows = Vec::new();
+    for row in &review.rows {
+        rows.push(DetailRow {
+            label: row.label,
+            value: truncate_with_ellipsis(&row.value, value_max_chars),
+        });
+    }
+    if let Some(text) = &review.raw_text {
+        if !rows.is_empty() {
+            rows.push(DetailRow {
+                label: "",
+                value: "".to_string(),
+            });
+        }
+        for line in wrap_line_for_width(text, full_max_chars) {
+            rows.push(DetailRow {
+                label: "",
+                value: line,
+            });
+        }
+    }
+    rows
+}
+
+/// Recognize a `clear-msig-ika` approval message body and produce a structured
+/// review. Master shape (verified against `programs/clear-wallet/src/utils/
+/// message.rs:109-121` in `Iamknownasfesal/clear-msig-ika`):
+///
+///   expires <YYYY-MM-DD HH:MM:SS>: <action> <content> | wallet: <name> proposal: <idx>
+///
+/// `<action>` ∈ {propose, approve, cancel}. `<content>` depends on the intent
+/// type — Solana transfers, SPL transfers, and the meta-intent (add/remove/
+/// update intent) variants are pretty-printed; anything else falls through to
+/// the raw `<content>` text so other-chain intents (EVM, BTC, Zcash, custom)
+/// still render readably.
+fn parse_ika_message(text: &str) -> Option<MessageReview> {
+    let (expires, rest) = text.strip_prefix("expires ")?.split_once(": ")?;
+    // `rsplit_once` so the canonical trailer always wins: the on-chain
+    // body shape is fixed (`<action> <content> | wallet: <name> proposal: <idx>`),
+    // but `<content>` may carry free-text from cross-chain intents. If an
+    // intent's text contains an extra ` | wallet: spoof proposal: 0`, a
+    // forward `split_once` would peel the SPOOF trailer first and display
+    // it to the user while the signed bytes still bind to the real one.
+    let (action_and_content, metadata) = rest.rsplit_once(" | ")?;
+    let (action, content) = action_and_content.split_once(' ')?;
+
+    let action_label = match action {
+        "approve" => "APPROVE",
+        "propose" => "PROPOSE",
+        "cancel" => "CANCEL",
+        _ => return None,
+    };
+
+    let mut wallet = None;
+    let mut proposal = None;
+    if let Some(meta) = metadata.strip_prefix("wallet: ") {
+        // Same defense-in-depth: take the LAST " proposal: " in case a
+        // wallet name ever carries that substring.
+        if let Some((w, p)) = meta.rsplit_once(" proposal: ") {
+            wallet = Some(w);
+            proposal = Some(p);
+        }
+    }
+    // The wallet/proposal trailer is part of the canonical Ika body shape —
+    // if it isn't there this isn't a clear-msig-ika message, fall back.
+    let wallet = wallet?;
+    let proposal = proposal?;
+
+    let (content_label, content_rows) = classify_ika_content(content);
+
+    let title = format!("{} {}", action_label, content_label);
+    let subtitle = format!("IKA PROPOSAL {}", proposal);
+
+    let mut rows = content_rows;
+    rows.push(DetailRow {
+        label: "WALLET",
+        value: wallet.to_string(),
+    });
+    rows.push(DetailRow {
+        label: "PROPOSAL",
+        value: proposal.to_string(),
+    });
+    rows.push(DetailRow {
+        label: "EXPIRES",
+        value: expires.to_string(),
+    });
+
+    Some(MessageReview {
+        title,
+        subtitle,
+        rows,
+        raw_text: None,
+    })
+}
+
+/// Pretty-print the per-intent content portion of an Ika approval body.
+/// Returns `(action-screen label, structured rows)`. Unknown content shapes
+/// (EVM/BTC/Zcash transfers, custom-template intents) get a single TEXT row
+/// carrying the raw payload so the user still sees what they're approving.
+fn classify_ika_content(content: &str) -> (&'static str, Vec<DetailRow<'static>>) {
+    if let Some(rest) = content.strip_prefix("transfer ") {
+        if let Some((amount, to)) = rest.split_once(" lamports to ") {
+            let amount = amount
+                .parse::<u64>()
+                .map(lamports_to_sol_str)
+                .unwrap_or_else(|_| format!("{} lamports", amount));
+            return (
+                "TRANSFER",
+                vec![
+                    DetailRow {
+                        label: "AMOUNT",
+                        value: amount,
+                    },
+                    DetailRow {
+                        label: "TO",
+                        value: shorten_address(to),
+                    },
+                ],
+            );
+        }
+        if let Some((amount, rest)) = rest.split_once(" of mint ") {
+            if let Some((mint, to)) = rest.split_once(" to ") {
+                return (
+                    "SPL TRANSFER",
+                    vec![
+                        DetailRow {
+                            label: "AMOUNT",
+                            value: format_spl_amount(amount, mint),
+                        },
+                        DetailRow {
+                            label: "MINT",
+                            value: shorten_address(mint),
+                        },
+                        DetailRow {
+                            label: "TO",
+                            value: shorten_address(to),
+                        },
+                    ],
+                );
+            }
+        }
+    }
+
+    if let Some(rest) = content.strip_prefix("add intent definition_hash: ") {
+        return (
+            "ADD INTENT",
+            vec![DetailRow {
+                label: "HASH",
+                value: shorten_hex(rest),
+            }],
+        );
+    }
+    if let Some(rest) = content.strip_prefix("remove intent ") {
+        return (
+            "REMOVE INTENT",
+            vec![DetailRow {
+                label: "INDEX",
+                value: rest.to_string(),
+            }],
+        );
+    }
+    if let Some(rest) = content.strip_prefix("update intent ") {
+        if let Some((index, hash)) = rest.split_once(" definition_hash: ") {
+            return (
+                "UPDATE INTENT",
+                vec![
+                    DetailRow {
+                        label: "INDEX",
+                        value: index.to_string(),
+                    },
+                    DetailRow {
+                        label: "HASH",
+                        value: shorten_hex(hash),
+                    },
+                ],
+            );
+        }
+    }
+
+    (
+        "ACTION",
+        vec![DetailRow {
+            label: "TEXT",
+            value: content.to_string(),
+        }],
+    )
+}
+
+/// Format an SPL transfer amount for the review screen. For mints in the
+/// device's token registry, emit `<decimal-amount> <SYMBOL>` (e.g. "1.5 USDC")
+/// so the user reads the value the same way they would on any block explorer.
+/// Falls back to the raw integer when the mint is unknown or the amount /
+/// mint don't parse — Faraday never invents a symbol it can't verify.
+fn format_spl_amount(amount: &str, mint_b58: &str) -> String {
+    let raw = match amount.parse::<u64>() {
+        Ok(n) => n,
+        Err(_) => return amount.to_string(),
+    };
+    let mint_bytes: [u8; 32] = match bs58::decode(mint_b58).into_vec() {
+        Ok(v) if v.len() == 32 => v.try_into().expect("len checked"),
+        _ => return amount.to_string(),
+    };
+    match crate::parser::token_registry::lookup(&mint_bytes) {
+        Some(info) => format!(
+            "{} {}",
+            crate::parser::token_registry::format_amount(raw, info.decimals),
+            info.symbol
+        ),
+        None => amount.to_string(),
+    }
+}
+
+/// Shorten a hex blob (32+ chars) to `head...tail`. Mirrors `shorten_address`'s
+/// 3-dot separator so both renderings look consistent on the Pi font.
+fn shorten_hex(hex: &str) -> String {
+    if hex.len() <= 16 {
+        return hex.to_string();
+    }
+    format!("{}...{}", &hex[..6], &hex[hex.len() - 6..])
+}
+
+/// Solana off-chain message envelope check.
+///
+///   bytes[0..16]  == 0xff || "solana offchain"
+///   bytes[16]     == version (must be 0)
+///   bytes[17]     == format  (must be 0 — restricted ASCII; what clear-msig-ika emits)
+///   bytes[18..20] == body length (u16 LE)
+///   bytes[20..]   == body
+///
+/// Verified against `programs/clear-wallet/src/utils/message.rs:18-55`.
+fn solana_offchain_message_body(message_bytes: &[u8]) -> Option<&[u8]> {
+    const DOMAIN: &[u8; 16] = b"\xffsolana offchain";
+    const HEADER_LEN: usize = 20;
+
+    if message_bytes.len() < HEADER_LEN || &message_bytes[..DOMAIN.len()] != DOMAIN {
+        return None;
+    }
+    if message_bytes[16] != 0 || message_bytes[17] != 0 {
+        return None;
+    }
+
+    let body_len = u16::from_le_bytes([message_bytes[18], message_bytes[19]]) as usize;
+    if message_bytes.len() != HEADER_LEN + body_len {
+        return None;
+    }
+
+    Some(&message_bytes[HEADER_LEN..])
+}
+
+#[cfg(test)]
+mod message_review_tests {
+    use super::{message_review, solana_offchain_message_body};
+
+    fn wrapped(body: &str) -> Vec<u8> {
+        wrapped_with(0, 0, body)
+    }
+
+    fn wrapped_with(version: u8, format: u8, body: &str) -> Vec<u8> {
+        let mut out = Vec::with_capacity(20 + body.len());
+        out.extend_from_slice(b"\xffsolana offchain");
+        out.push(version);
+        out.push(format);
+        out.extend_from_slice(&(body.len() as u16).to_le_bytes());
+        out.extend_from_slice(body.as_bytes());
+        out
+    }
+
+    fn row_value<'a>(review: &'a super::MessageReview, label: &str) -> Option<&'a str> {
+        review
+            .rows
+            .iter()
+            .find(|r| r.label == label)
+            .map(|r| r.value.as_str())
+    }
+
+    #[test]
+    fn extracts_solana_offchain_body() {
+        let msg = wrapped("expires 2030-01-01 00:00:00: approve transfer");
+        assert_eq!(
+            solana_offchain_message_body(&msg),
+            Some("expires 2030-01-01 00:00:00: approve transfer".as_bytes())
+        );
+    }
+
+    #[test]
+    fn rejects_wrong_offchain_length() {
+        let mut msg = wrapped("approve");
+        msg.pop();
+        assert!(solana_offchain_message_body(&msg).is_none());
+    }
+
+    #[test]
+    fn rejects_unknown_offchain_version_or_format() {
+        // version != 0
+        assert!(solana_offchain_message_body(&wrapped_with(1, 0, "approve")).is_none());
+        // format != 0 (UTF-8 / extended bodies aren't what clear-msig-ika emits)
+        assert!(solana_offchain_message_body(&wrapped_with(0, 1, "approve")).is_none());
+    }
+
+    #[test]
+    fn labels_lamport_transfer_approval() {
+        let msg = wrapped(
+            "expires 2030-01-01 00:00:00: approve transfer 1000000000 lamports to \
+             9abcDEFghijKLMnopQRstuvWXyz12345678ABCDefgh | wallet: treasury proposal: 42",
+        );
+        let review = message_review(&msg);
+        assert_eq!(review.title, "APPROVE TRANSFER");
+        assert_eq!(review.subtitle, "IKA PROPOSAL 42");
+        assert_eq!(row_value(&review, "AMOUNT"), Some("1 SOL"));
+        assert_eq!(row_value(&review, "TO"), Some("9abc...efgh"));
+        assert_eq!(row_value(&review, "WALLET"), Some("treasury"));
+        assert_eq!(row_value(&review, "EXPIRES"), Some("2030-01-01 00:00:00"));
+    }
+
+    #[test]
+    fn labels_propose_action() {
+        let msg = wrapped(
+            "expires 2030-01-01 00:00:00: propose transfer 500000000 lamports to \
+             9abcDEFghijKLMnopQRstuvWXyz12345678ABCDefgh | wallet: treasury proposal: 7",
+        );
+        let review = message_review(&msg);
+        assert_eq!(review.title, "PROPOSE TRANSFER");
+        assert_eq!(row_value(&review, "AMOUNT"), Some("0.5 SOL"));
+    }
+
+    #[test]
+    fn labels_cancel_action() {
+        let msg = wrapped(
+            "expires 2030-01-01 00:00:00: cancel transfer 1000000000 lamports to \
+             9abcDEFghijKLMnopQRstuvWXyz12345678ABCDefgh | wallet: treasury proposal: 9",
+        );
+        let review = message_review(&msg);
+        assert_eq!(review.title, "CANCEL TRANSFER");
+    }
+
+    #[test]
+    fn labels_spl_transfer() {
+        let msg = wrapped(
+            "expires 2030-01-01 00:00:00: approve transfer 1500000 of mint \
+             EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v to \
+             9abcDEFghijKLMnopQRstuvWXyz12345678ABCDefgh | wallet: treasury proposal: 12",
+        );
+        let review = message_review(&msg);
+        assert_eq!(review.title, "APPROVE SPL TRANSFER");
+        assert_eq!(row_value(&review, "AMOUNT"), Some("1.5 USDC"));
+        assert_eq!(row_value(&review, "MINT"), Some("EPjF...Dt1v"));
+        assert_eq!(row_value(&review, "TO"), Some("9abc...efgh"));
+    }
+
+    #[test]
+    fn spl_transfer_unknown_mint_keeps_raw_amount() {
+        // 32-byte all-ones mint (`4vJ9JU…`) isn't in the token registry — we
+        // must not invent a symbol; show the raw integer instead.
+        let unknown_mint = bs58::encode([1u8; 32]).into_string();
+        let body = format!(
+            "expires 2030-01-01 00:00:00: approve transfer 1500000 of mint {} to \
+             9abcDEFghijKLMnopQRstuvWXyz12345678ABCDefgh | wallet: treasury proposal: 99",
+            unknown_mint,
+        );
+        let msg = wrapped(&body);
+        let review = message_review(&msg);
+        assert_eq!(review.title, "APPROVE SPL TRANSFER");
+        assert_eq!(row_value(&review, "AMOUNT"), Some("1500000"));
+    }
+
+    #[test]
+    fn labels_meta_add_intent() {
+        let msg = wrapped(
+            "expires 2030-01-01 00:00:00: approve add intent definition_hash: \
+             0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
+             | wallet: treasury proposal: 1",
+        );
+        let review = message_review(&msg);
+        assert_eq!(review.title, "APPROVE ADD INTENT");
+        assert!(matches!(row_value(&review, "HASH"), Some(v) if v.starts_with("012345") && v.ends_with("abcdef")));
+    }
+
+    #[test]
+    fn labels_meta_remove_intent() {
+        let msg = wrapped(
+            "expires 2030-01-01 00:00:00: approve remove intent 3 | wallet: treasury proposal: 2",
+        );
+        let review = message_review(&msg);
+        assert_eq!(review.title, "APPROVE REMOVE INTENT");
+        assert_eq!(row_value(&review, "INDEX"), Some("3"));
+    }
+
+    #[test]
+    fn falls_back_for_other_chain_intents() {
+        // BTC content shape — not pretty-printed but still readable.
+        let msg = wrapped(
+            "expires 2030-01-01 00:00:00: approve send 12345 sats to bc1q-pkh:0xdeadbeef \
+             from utxo 0xabcd:0 | wallet: treasury proposal: 5",
+        );
+        let review = message_review(&msg);
+        assert_eq!(review.title, "APPROVE ACTION");
+        assert!(matches!(row_value(&review, "TEXT"), Some(v) if v.contains("sats")));
+    }
+
+    #[test]
+    fn rejects_unknown_action_verb() {
+        // Verb other than propose/approve/cancel — fall back to raw view.
+        let msg = wrapped(
+            "expires 2030-01-01 00:00:00: revoke transfer 1 lamports to addr | wallet: w proposal: 1",
+        );
+        let review = message_review(&msg);
+        assert_eq!(review.title, "SOLANA MESSAGE");
+    }
+
+    #[test]
+    fn falls_back_to_utf8_message() {
+        let review = message_review(b"ordinary message");
+        assert_eq!(review.title, "MESSAGE");
+        assert_eq!(review.raw_text.as_deref(), Some("ordinary message"));
+    }
+
+    // ── Edge cases ──────────────────────────────────────────────────────
+
+    /// An injected ` | wallet: spoof proposal: 0` embedded inside the
+    /// content portion must NOT win over the canonical trailer at the
+    /// end. The display has to agree with what the on-chain program
+    /// validates against — otherwise an approver could be tricked into
+    /// signing for one wallet while the bytes bind to another.
+    #[test]
+    fn trailer_uses_last_pipe_against_content_injection() {
+        let msg = wrapped(
+            "expires 2030-01-01 00:00:00: approve send free-text-payload \
+             | wallet: SPOOF proposal: 0 | wallet: REAL proposal: 99",
+        );
+        let review = message_review(&msg);
+        assert_eq!(row_value(&review, "WALLET"), Some("REAL"));
+        assert_eq!(row_value(&review, "PROPOSAL"), Some("99"));
+        assert_eq!(review.subtitle, "IKA PROPOSAL 99");
+    }
+
+    /// Same defense for an injected ` proposal: ` inside a wallet name.
+    /// The on-chain trailer always emits ` proposal: ` last, so we
+    /// `rsplit` to keep the displayed proposal index canonical.
+    #[test]
+    fn proposal_uses_last_separator_against_wallet_name_injection() {
+        let msg = wrapped(
+            "expires 2030-01-01 00:00:00: approve transfer 1 lamports to \
+             9abcDEFghijKLMnopQRstuvWXyz12345678ABCDefgh \
+             | wallet: weird name proposal: 7 proposal: 42",
+        );
+        let review = message_review(&msg);
+        assert_eq!(row_value(&review, "WALLET"), Some("weird name proposal: 7"));
+        assert_eq!(row_value(&review, "PROPOSAL"), Some("42"));
+    }
+
+    /// Header says 0-length body — valid per the off-chain spec but the
+    /// Ika classifier has nothing to parse. Must fall through to the
+    /// generic Solana off-chain review without panicking.
+    #[test]
+    fn handles_zero_length_offchain_body() {
+        let msg = wrapped("");
+        let review = message_review(&msg);
+        assert_eq!(review.title, "SOLANA MESSAGE");
+    }
+
+    /// Max-size body the off-chain envelope allows (u16 length field).
+    /// Has to parse without OOM or panic — Pi has plenty of headroom,
+    /// but this guards against accidental quadratic scans.
+    #[test]
+    fn handles_max_length_offchain_body() {
+        let body = "A".repeat(0xffff);
+        let msg = wrapped(&body);
+        let review = message_review(&msg);
+        // Not a recognized Ika body → generic fallback path. The point
+        // is to confirm we don't blow up handling 64 KiB of input.
+        assert_eq!(review.title, "SOLANA MESSAGE");
+    }
+
+    /// A truncated message (header says N bytes, fewer bytes follow)
+    /// must reject cleanly so the device never reads past the buffer.
+    #[test]
+    fn rejects_truncated_body_under_announced_length() {
+        let mut msg = wrapped("expires 2030-01-01 00:00:00: approve x | wallet: w proposal: 1");
+        msg.pop(); // header still says full length
+        assert!(solana_offchain_message_body(&msg).is_none());
+    }
+
+    /// Header smaller than the 20-byte off-chain prefix — rejected
+    /// without indexing into bytes we don't have.
+    #[test]
+    fn rejects_under_header_length() {
+        assert!(solana_offchain_message_body(&[]).is_none());
+        assert!(solana_offchain_message_body(b"\xffsolana offchain\x00\x00\x00").is_none());
+    }
+
+    /// Non-UTF8 body. `message_review` reads via `from_utf8`, so a body
+    /// with invalid sequences must not crash — it falls through to the
+    /// generic "Off-chain message" header with raw-text omitted.
+    #[test]
+    fn handles_non_utf8_body() {
+        let body = [0xc3, 0x28]; // invalid UTF-8 (lone continuation)
+        let mut msg = Vec::with_capacity(20 + body.len());
+        msg.extend_from_slice(b"\xffsolana offchain");
+        msg.push(0);
+        msg.push(0);
+        msg.extend_from_slice(&(body.len() as u16).to_le_bytes());
+        msg.extend_from_slice(&body);
+        let review = message_review(&msg);
+        // Falls through to the binary fallback — title is the raw
+        // wrapper, not "SOLANA MESSAGE", because the body never
+        // decoded as UTF-8 in the first place.
+        assert_eq!(review.title, "MESSAGE");
+    }
+
+    /// Proposal index at u64 boundary — Ika stores it as u64, the
+    /// device renders the string straight from the body. No
+    /// parse/overflow path touches it.
+    #[test]
+    fn handles_u64_max_proposal_index() {
+        let msg = wrapped(
+            "expires 2030-01-01 00:00:00: approve transfer 1 lamports to \
+             9abcDEFghijKLMnopQRstuvWXyz12345678ABCDefgh \
+             | wallet: t proposal: 18446744073709551615",
+        );
+        let review = message_review(&msg);
+        assert_eq!(row_value(&review, "PROPOSAL"), Some("18446744073709551615"));
+    }
+
+    /// Body that LOOKS Ika-shaped but has no content after the verb.
+    /// The classifier requires `<verb> <content>`, so a verb-only body
+    /// has to fall back rather than crash on the empty content split.
+    #[test]
+    fn rejects_verb_only_body() {
+        let msg = wrapped("expires 2030-01-01 00:00:00: approve | wallet: t proposal: 1");
+        let review = message_review(&msg);
+        // No space between verb and content → split_once fails →
+        // fall through.
+        assert_eq!(review.title, "SOLANA MESSAGE");
+    }
 }
 
 /// Show the wallet's public address as wrapped text — for users who need to

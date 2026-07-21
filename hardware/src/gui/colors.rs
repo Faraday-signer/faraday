@@ -20,6 +20,7 @@ pub const TEXT_SECONDARY: Rgb565 = Rgb565::new(16, 33, 16); // #848884
 pub const TEXT_MUTED: Rgb565 = Rgb565::new(8, 16, 8); // #404040
 
 // Accent / semantic
+#[allow(dead_code)]
 pub const SUCCESS: Rgb565 = SOLANA_GREEN;
 
 /// Faraday brand cyan (#1AF8FF). Used for locator / "you-are-here" overlays

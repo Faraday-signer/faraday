@@ -231,6 +231,8 @@ QR codes carry base64-encoded payloads. A single prefix byte determines the type
 
 Transactions use no prefix — the first byte is `num_signatures` (typically `0x01`), which is always a valid transaction header. The `0xFF` prefix is reserved for messages because no valid transaction can have 255 signatures.
 
+For Solana off-chain messages (`\xffsolana offchain...`), Faraday signs the full wrapped bytes but displays the human-readable body on the Pi. This is the path used by the Ika `clear-msig-ika` approver demo in `demos/ika-clear-msig-approver.md`.
+
 For payloads that exceed a single QR's capacity, Faraday uses [UR](https://github.com/BlockchainCommons/Research/blob/master/papers/bcr-2020-005-ur.md) (Uniform Resource) animated QR streams.
 
 ## Security model

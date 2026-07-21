@@ -11,6 +11,11 @@ use embedded_graphics::{
 use crate::gui::colors;
 
 /// Status bar at top of screen.
+///
+/// Only reachable from the `not(simulator)`-and-`not(linux)` fallback
+/// `draw_message` in `screens.rs`. Marked `dead_code` so the simulator/
+/// Linux feature matrix CI uses doesn't complain.
+#[allow(dead_code)]
 pub fn draw_status_bar<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     title: &str,
