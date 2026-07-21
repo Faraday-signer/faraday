@@ -40,18 +40,29 @@ import html, re, sys
 mode = sys.argv[1]
 bold_ids = lambda s: re.sub(r"\bFA-(\d+)\b", r"<b>FA-\1</b>", s)
 out = []
+in_quote = False
 for i, raw in enumerate(sys.stdin.read().splitlines()):
     line = html.escape(raw, quote=False)
-    if not raw.strip():
+    quoted = raw == ">" or raw.startswith("> ")
+    if in_quote and not quoted:                      # close an open blockquote
+        out[-1] += "</blockquote>"
+        in_quote = False
+    if quoted:                                       # "> detail" → blockquote block
+        body = bold_ids(html.escape(raw[2:], quote=False))
+        out.append(body if in_quote else "<blockquote>" + body)
+        in_quote = True
+    elif not raw.strip():
         out.append("")
-    elif i == 0:
-        out.append(f"<b>{line}</b>")                 # headline (pin title / post header)
+    elif i == 0 and len(raw) <= 64:
+        out.append(f"<b>{line}</b>")                 # headline (short first line only)
     elif mode == "pin" and raw.startswith(("Updated", "\U0001F4D6")):
         out.append(f"<i>{line}</i>")                 # timestamp + 📖 footer
     elif "FA-" in raw or mode == "post":
         out.append(bold_ids(line))                   # bullets / body text
     else:
         out.append(f"<b>{line}</b>")                 # section headers
+if in_quote:
+    out[-1] += "</blockquote>"
 print("\n".join(out), end="")
 ' "$1"
 }
