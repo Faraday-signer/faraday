@@ -4,26 +4,38 @@
 //! serialized in legacy wire format (1 signature slot, all-zero) so the
 //! Faraday firmware parses it the same way dapp-originated txs do.
 //!
+//! Every transfer Faraday builds uses a **durable nonce** (owner decision,
+//! cxalem): the tx leads with `AdvanceNonceAccount` and pins its lifetime to
+//! the wallet's nonce account, so the signature can't expire during a slow QR
+//! relay. The nonce account is provisioned once per wallet (see `nonce.ts`);
+//! until then `buildSolTransfer` throws `NonceAccountNotProvisionedError` and
+//! the send flow provisions before continuing.
+//!
 //! Flow on the sidepanel side:
-//!   buildSolTransfer  → base64 unsigned tx
+//!   buildSolTransfer  → base64 unsigned durable-nonce tx
 //!   (user scans with Faraday → firmware signs → user scans back in sign window)
 //!   broadcastSignedTx → { signature, explorerUrl }
 
-import {
-  address,
-  appendTransactionMessageInstruction,
-  compileTransaction,
-  createTransactionMessage,
-  getBase64EncodedWireTransaction,
-  pipe,
-  setTransactionMessageFeePayer,
-  setTransactionMessageLifetimeUsingBlockhash,
-} from "@solana/kit";
-import { getTransferSolInstruction } from "@solana-program/system";
-
 import { CLUSTER_ID, solanaRpc } from "./sol-client";
+import {
+  buildDurableNonceTransferTx,
+  fetchNonceValue,
+} from "./nonce";
+import { getNonceAccount } from "./storage";
 
 export const LAMPORTS_PER_SOL = 1_000_000_000n;
+
+/**
+ * Thrown by `buildSolTransfer` when the wallet has no durable-nonce account
+ * yet. The send flow catches this to run the one-time provisioning step
+ * before building the transfer.
+ */
+export class NonceAccountNotProvisionedError extends Error {
+  constructor() {
+    super("No durable-nonce account provisioned for this wallet.");
+    this.name = "NonceAccountNotProvisionedError";
+  }
+}
 
 export interface BuildSolTransferInput {
   /** Paired pubkey (fee payer + source). */
@@ -62,38 +74,34 @@ export function amountToLamports(amountSol: string): bigint {
 }
 
 /**
- * Build an unsigned SOL transfer as a base64 legacy transaction. The fee
- * payer is the source (standard single-signer case), so there's one sig
- * slot to fill. Returns both the base64 (for the sign session payload)
- * and the raw lamports figure (for the review screen).
+ * Build an unsigned durable-nonce SOL transfer as a base64 legacy transaction.
+ * Resolves the wallet's nonce account (persisted at provisioning time) and
+ * reads its current nonce value, then builds a transfer that leads with
+ * `AdvanceNonceAccount`. One signer slot — the wallet. Returns the base64 (for
+ * the sign session payload) and the raw lamports figure (for the review
+ * screen).
+ *
+ * Throws `NonceAccountNotProvisionedError` if the wallet has no nonce account
+ * yet, so the caller can provision one first.
  */
 export async function buildSolTransfer(
   input: BuildSolTransferInput
 ): Promise<{ txBase64: string; lamports: bigint }> {
   const lamports = amountToLamports(input.amountSol);
 
-  const from = address(input.from);
-  const to = address(input.to);
+  const nonceAccountAddress = await getNonceAccount(input.from);
+  if (!nonceAccountAddress) {
+    throw new NonceAccountNotProvisionedError();
+  }
+  const nonceValue = await fetchNonceValue(nonceAccountAddress);
 
-  const { value: latestBlockhash } = await solanaRpc
-    .getLatestBlockhash({ commitment: "finalized" })
-    .send();
-
-  const transferIx = getTransferSolInstruction({
-    source: { address: from, role: 3 } as any,
-    destination: to,
-    amount: lamports,
+  const txBase64 = buildDurableNonceTransferTx({
+    from: input.from,
+    to: input.to,
+    lamports,
+    nonceAccountAddress,
+    nonceValue,
   });
-
-  const message = pipe(
-    createTransactionMessage({ version: "legacy" }),
-    (m) => setTransactionMessageFeePayer(from, m),
-    (m) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, m),
-    (m) => appendTransactionMessageInstruction(transferIx, m)
-  );
-
-  const compiled = compileTransaction(message);
-  const txBase64 = getBase64EncodedWireTransaction(compiled);
 
   return { txBase64, lamports };
 }
