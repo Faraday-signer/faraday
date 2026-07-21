@@ -34,6 +34,10 @@ ext-install:
 ika-fixtures:
     cd hardware && cargo run --features simulator --bin gen-ika-fixtures
 
+# Generate durable-nonce tx fixtures (legacy + v0) into testdata/examples/nonce/.
+nonce-fixtures:
+    cd hardware && cargo run --features simulator --bin gen-nonce-fixtures
+
 # Run cargo tests.
 test:
     cd hardware && cargo test

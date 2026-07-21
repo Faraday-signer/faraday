@@ -26,6 +26,8 @@ fn decode(data: &[u8], accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'stati
         0 => parse_create_account(&data[4..], accounts),
         2 => parse_transfer(&data[4..], accounts),
         3 => parse_create_account_with_seed(&data[4..], accounts),
+        4 => parse_advance_nonce_account(accounts),
+        6 => parse_initialize_nonce_account(&data[4..], accounts),
         8 => parse_allocate(&data[4..], accounts),
         11 => parse_transfer_with_seed(&data[4..], accounts),
         _ => Ok(vec![
@@ -200,6 +202,66 @@ fn parse_transfer_with_seed(
     ])
 }
 
+/// `AdvanceNonceAccount` (SystemInstruction disc 4). This is the leading
+/// instruction on every Faraday-built durable-nonce transaction: it consumes
+/// the nonce so the signature stays valid until the nonce next advances,
+/// however long the QR relay takes. Account layout per the SDK:
+///   [nonce account, RecentBlockhashes sysvar, nonce authority].
+/// The instruction carries no data past the discriminant.
+fn parse_advance_nonce_account(accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
+    let nonce_account = accounts
+        .first()
+        .map(pubkey_short)
+        .unwrap_or_else(|| "?".into());
+    let authority = accounts
+        .get(2)
+        .map(pubkey_short)
+        .unwrap_or_else(|| "?".into());
+
+    Ok(vec![
+        ReviewItem::Header("Advance Nonce".into()),
+        ReviewItem::Field {
+            label: "Nonce account".into(),
+            value: nonce_account,
+        },
+        ReviewItem::Field {
+            label: "Authority".into(),
+            value: authority,
+        },
+    ])
+}
+
+/// `InitializeNonceAccount` (SystemInstruction disc 6). Emitted once, when
+/// Faraday sets up the wallet's nonce account. The instruction data is the
+/// 32-byte nonce authority pubkey; account layout is
+///   [nonce account, RecentBlockhashes sysvar, Rent sysvar].
+fn parse_initialize_nonce_account(
+    data: &[u8],
+    accounts: &[[u8; 32]],
+) -> Result<Vec<ReviewItem>, &'static str> {
+    let authority_bytes: [u8; 32] = data
+        .get(0..32)
+        .and_then(|s| s.try_into().ok())
+        .ok_or("InitializeNonceAccount authority truncated")?;
+
+    let nonce_account = accounts
+        .first()
+        .map(pubkey_short)
+        .unwrap_or_else(|| "?".into());
+
+    Ok(vec![
+        ReviewItem::Header("Initialize Nonce".into()),
+        ReviewItem::Field {
+            label: "Nonce account".into(),
+            value: nonce_account,
+        },
+        ReviewItem::Field {
+            label: "Authority".into(),
+            value: pubkey_short(&authority_bytes),
+        },
+    ])
+}
+
 pub(crate) fn lamports_to_sol(lamports: u64) -> String {
     let sol = lamports / 1_000_000_000;
     let frac = lamports % 1_000_000_000;
@@ -329,5 +391,97 @@ mod tests {
             .iter()
             .any(|item| matches!(item, ReviewItem::Warning(_)));
         assert!(has_warning);
+    }
+
+    // --- AdvanceNonceAccount (disc 4) ---
+
+    #[test]
+    fn test_advance_nonce_is_labeled() {
+        let data = vec![4u8, 0, 0, 0]; // AdvanceNonceAccount, no trailing data
+        let accounts = [key(0xAA), key(0xBB), key(0xCC)]; // nonce, sysvar, authority
+        let ix = parse(&data, &accounts);
+        assert_eq!(ix.program, "System");
+        let has_header = ix
+            .items
+            .iter()
+            .any(|item| matches!(item, ReviewItem::Header(h) if h == "Advance Nonce"));
+        assert!(has_header, "Expected 'Advance Nonce' header");
+        // No unknown-instruction fallback and no warning.
+        let has_warning = ix
+            .items
+            .iter()
+            .any(|item| matches!(item, ReviewItem::Warning(_)));
+        assert!(!has_warning, "Advance Nonce must not warn");
+    }
+
+    #[test]
+    fn test_advance_nonce_shows_account_and_authority() {
+        let data = vec![4u8, 0, 0, 0];
+        let accounts = [key(0xAA), key(0xBB), key(0xCC)];
+        let ix = parse(&data, &accounts);
+        let labels: Vec<&str> = ix
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                ReviewItem::Field { label, .. } => Some(label.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(labels.contains(&"Nonce account"));
+        assert!(labels.contains(&"Authority"));
+    }
+
+    #[test]
+    fn test_advance_nonce_missing_authority_slot_does_not_panic() {
+        // Only the nonce account present — authority slot renders as "?",
+        // never a panic or a guessed value.
+        let data = vec![4u8, 0, 0, 0];
+        let accounts = [key(0xAA)];
+        let ix = parse(&data, &accounts);
+        let has_header = ix
+            .items
+            .iter()
+            .any(|item| matches!(item, ReviewItem::Header(h) if h == "Advance Nonce"));
+        assert!(has_header);
+    }
+
+    // --- InitializeNonceAccount (disc 6) ---
+
+    #[test]
+    fn test_initialize_nonce_is_labeled() {
+        let mut data = vec![6u8, 0, 0, 0]; // InitializeNonceAccount
+        data.extend_from_slice(&[0xDD; 32]); // authority pubkey in data
+        let accounts = [key(0xAA), key(0xBB), key(0xCC)]; // nonce, sysvar, rent
+        let ix = parse(&data, &accounts);
+        assert_eq!(ix.program, "System");
+        let has_header = ix
+            .items
+            .iter()
+            .any(|item| matches!(item, ReviewItem::Header(h) if h == "Initialize Nonce"));
+        assert!(has_header, "Expected 'Initialize Nonce' header");
+        let labels: Vec<&str> = ix
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                ReviewItem::Field { label, .. } => Some(label.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(labels.contains(&"Nonce account"));
+        assert!(labels.contains(&"Authority"));
+    }
+
+    #[test]
+    fn test_initialize_nonce_truncated_authority_warns() {
+        // Discriminant present but the 32-byte authority is cut short — must
+        // fail safe with a warning, never pretty-print a partial key.
+        let mut data = vec![6u8, 0, 0, 0];
+        data.extend_from_slice(&[0xDD; 16]); // only half an authority pubkey
+        let ix = parse(&data, &[key(0xAA)]);
+        let has_warning = ix
+            .items
+            .iter()
+            .any(|item| matches!(item, ReviewItem::Warning(_)));
+        assert!(has_warning, "Truncated InitializeNonceAccount must warn");
     }
 }
