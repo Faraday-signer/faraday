@@ -6,7 +6,11 @@ import { explainBroadcastError } from "@/lib/broadcast-errors";
 import { sendRuntimeMessage } from "@/lib/runtime";
 import { useNavigation, useRouteOf } from "@/lib/router";
 import { broadcastSignedTx, buildSolTransfer, explorerTxUrl } from "@/lib/sol-transfer";
-import { waitForNonceAccountReady } from "@/lib/nonce";
+import {
+  fetchNonceValue,
+  prepareNonceAccountCreation,
+  waitForNonceAccountReady,
+} from "@/lib/nonce";
 import { setNonceAccount } from "@/lib/storage";
 import { recordRecipient } from "@/lib/recipient-history";
 import { colors, fontFamily, font, letterSpacing, space } from "@/lib/theme";
@@ -206,10 +210,14 @@ export function SendSignScreen() {
   }
 
   /**
-   * After the nonce-account creation tx broadcasts, persist the account, wait
-   * for it to become readable on-chain, then build the durable-nonce transfer
-   * and hand off to a fresh signing session (replacing this route so the
-   * auto-open effect drives the transfer sign).
+   * After the nonce-account creation tx broadcasts, wait for the account to
+   * become readable on-chain, persist it, then build the durable-nonce
+   * transfer and hand off to a fresh signing session (replacing this route so
+   * the auto-open effect drives the transfer sign).
+   *
+   * Readiness comes before persistence: storing an address whose create tx
+   * never lands would wedge every future send for this wallet (the flow sees
+   * a stored account and skips provisioning).
    */
   async function continueAfterProvision(nonceAccountAddress: string) {
     if (!wallet.pairedPubkey) {
@@ -219,8 +227,8 @@ export function SendSignScreen() {
     }
     setPhase("provisioning");
     try {
-      await setNonceAccount(wallet.pairedPubkey, nonceAccountAddress);
       await waitForNonceAccountReady(nonceAccountAddress);
+      await setNonceAccount(wallet.pairedPubkey, nonceAccountAddress);
 
       const { txBase64 } = await buildSolTransfer({
         from: wallet.pairedPubkey,
@@ -259,14 +267,19 @@ export function SendSignScreen() {
   }
 
   /**
-   * Rebuild the unsigned tx with a fresh blockhash, register a new sign
-   * session, and replace the current route so the auto-open effect drives
-   * the rest of the flow with the new session.
+   * Rebuild the unsigned tx, register a new sign session, and replace the
+   * current route so the auto-open effect drives the rest of the flow.
    *
-   * Why we can't just re-broadcast: the original broadcast failure here is
-   * usually a stale blockhash (-32002 with empty logs). The signed bytes
-   * already on hand still reference the expired blockhash, so re-sending
-   * them changes nothing — the device has to sign a fresh tx.
+   * Why we can't just re-broadcast: for a durable-nonce transfer the usual
+   * failure is that the nonce advanced — the signed bytes reference the old
+   * nonce value, so re-sending them changes nothing. Rebuilding re-fetches
+   * the current nonce and the device signs the fresh tx.
+   *
+   * Provisioning sessions are the exception: the create tx is the one tx in
+   * the flow pinned to a perishable blockhash (no nonce exists yet). If its
+   * account made it on-chain anyway, finish provisioning; otherwise rebuild
+   * the create tx with a fresh blockhash — never fall through to the
+   * transfer path, which would dead-end on "no nonce account provisioned".
    */
   async function retry() {
     if (!wallet.pairedPubkey) {
@@ -279,6 +292,39 @@ export function SendSignScreen() {
     setSignature(null);
     setPhase("opening");
     stopPolling();
+
+    if (provision) {
+      try {
+        await fetchNonceValue(provision.nonceAccountAddress);
+        // The create tx landed after all — don't build a second account.
+        await continueAfterProvision(provision.nonceAccountAddress);
+      } catch {
+        try {
+          const { txBase64, nonceAccountAddress } =
+            await prepareNonceAccountCreation(wallet.pairedPubkey);
+          const res = await sendRuntimeMessage<CreateSignSessionResult>({
+            type: "faraday:ext-create-sign-session",
+            txBase64,
+          });
+          if (!res.ok) {
+            setError(res.error);
+            setPhase("error");
+            return;
+          }
+          nav.replace({
+            name: "send-sign",
+            draft,
+            txBase64,
+            sessionId: res.data.sessionId,
+            provision: { nonceAccountAddress },
+          });
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+          setPhase("error");
+        }
+      }
+      return;
+    }
 
     try {
       const { txBase64: newTxBase64 } = await buildSolTransfer({

@@ -208,8 +208,11 @@ export async function prepareNonceAccountCreation(
   payer: string
 ): Promise<CreateNonceAccountResult> {
   const rentLamports = await getNonceAccountRentLamports();
+  // "confirmed", not "finalized": this is the one tx in the flow that rides a
+  // perishable blockhash through the QR relay (no nonce exists yet), so don't
+  // start its ~60-90s validity window 15-30s in the hole.
   const { value: recentBlockhash } = await solanaRpc
-    .getLatestBlockhash({ commitment: "finalized" })
+    .getLatestBlockhash({ commitment: "confirmed" })
     .send();
 
   return buildCreateNonceAccountTx({ payer, rentLamports, recentBlockhash });

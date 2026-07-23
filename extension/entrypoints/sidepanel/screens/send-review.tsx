@@ -61,6 +61,11 @@ const secondaryValueStyle: CSSProperties = {
  *                    is the only risk surface — this screen never renders
  *                    the warnings itself.
  *
+ * First send from a wallet takes a detour: no durable-nonce account exists
+ * yet, so Confirm builds the one-time create+initialize tx instead and
+ * hands send-sign a `provision` route; the transfer signs in a second
+ * session once the account confirms.
+ *
  * On `ext-create-sign-session` failure (analyzer broke, RPC dead, etc.)
  * background returns `{ ok: false, error }` and we surface it here so
  * the user can retry without leaving the review.
