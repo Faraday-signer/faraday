@@ -36,6 +36,11 @@ name = "gen-ika-fixtures"
 path = "src/bin/gen_ika_fixtures.rs"
 required-features = ["simulator"]
 
+[[bin]]
+name = "gen-nonce-fixtures"
+path = "src/bin/gen_nonce_fixtures.rs"
+required-features = ["simulator"]
+
 [dependencies]
 # Display rendering
 embedded-graphics = "0.8"

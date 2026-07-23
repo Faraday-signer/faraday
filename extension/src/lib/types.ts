@@ -5,6 +5,15 @@ export type SignSessionStatus = "pending" | "completed" | "canceled" | "failed";
 export interface ExtensionState {
   pairedPubkey: string | null;
   approvedOrigins: string[];
+  /**
+   * Durable-nonce account for each paired wallet, keyed by wallet base58
+   * address → nonce-account base58 address. One nonce account per wallet:
+   * every Faraday-built transfer leads with `AdvanceNonceAccount` against it
+   * so a slow QR relay can't expire the signature. The nonce account's own
+   * keypair is ephemeral (used once, at creation) and never persisted — only
+   * the resulting address is stored here.
+   */
+  nonceAccounts: Record<string, string>;
 }
 
 export interface SignSession {

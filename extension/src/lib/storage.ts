@@ -4,7 +4,8 @@ const STATE_KEY = "faraday:state:v1";
 
 const DEFAULT_STATE: ExtensionState = {
   pairedPubkey: null,
-  approvedOrigins: []
+  approvedOrigins: [],
+  nonceAccounts: {}
 };
 
 function storageGet<T>(key: string, fallback: T): Promise<T> {
@@ -27,17 +28,40 @@ export async function getExtensionState(): Promise<ExtensionState> {
 
   return {
     pairedPubkey: state.pairedPubkey ?? null,
-    approvedOrigins: Array.isArray(state.approvedOrigins) ? [...new Set(state.approvedOrigins)] : []
+    approvedOrigins: Array.isArray(state.approvedOrigins) ? [...new Set(state.approvedOrigins)] : [],
+    nonceAccounts:
+      state.nonceAccounts && typeof state.nonceAccounts === "object"
+        ? { ...state.nonceAccounts }
+        : {}
   };
 }
 
 async function setExtensionState(next: ExtensionState): Promise<ExtensionState> {
   const normalized: ExtensionState = {
     pairedPubkey: next.pairedPubkey,
-    approvedOrigins: [...new Set(next.approvedOrigins)]
+    approvedOrigins: [...new Set(next.approvedOrigins)],
+    nonceAccounts: { ...next.nonceAccounts }
   };
   await storageSet(STATE_KEY, normalized);
   return normalized;
+}
+
+/** Stored durable-nonce account for a wallet, or null if none provisioned. */
+export async function getNonceAccount(walletPubkey: string): Promise<string | null> {
+  const current = await getExtensionState();
+  return current.nonceAccounts[walletPubkey] ?? null;
+}
+
+/** Record the durable-nonce account provisioned for a wallet. */
+export async function setNonceAccount(
+  walletPubkey: string,
+  nonceAccount: string
+): Promise<ExtensionState> {
+  const current = await getExtensionState();
+  return setExtensionState({
+    ...current,
+    nonceAccounts: { ...current.nonceAccounts, [walletPubkey]: nonceAccount }
+  });
 }
 
 export async function setPairedPubkey(pubkey: string): Promise<ExtensionState> {

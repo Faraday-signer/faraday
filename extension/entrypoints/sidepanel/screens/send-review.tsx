@@ -4,7 +4,8 @@ import { ErrorBanner } from "@/components/error-banner";
 import { LinkButton, PanelShell, PrimaryButton } from "@/components/panel-shell";
 import { sendRuntimeMessage } from "@/lib/runtime";
 import { useNavigation, useRouteOf } from "@/lib/router";
-import { buildSolTransfer } from "@/lib/sol-transfer";
+import { prepareNonceAccountCreation } from "@/lib/nonce";
+import { buildSolTransfer, NonceAccountNotProvisionedError } from "@/lib/sol-transfer";
 import { colors, fontFamily, font, letterSpacing, radius, space } from "@/lib/theme";
 import type { CreateSignSessionResult } from "@/lib/types";
 import { useWallet } from "@/lib/use-wallet";
@@ -60,6 +61,11 @@ const secondaryValueStyle: CSSProperties = {
  *                    is the only risk surface — this screen never renders
  *                    the warnings itself.
  *
+ * First send from a wallet takes a detour: no durable-nonce account exists
+ * yet, so Confirm builds the one-time create+initialize tx instead and
+ * hands send-sign a `provision` route; the transfer signs in a second
+ * session once the account confirms.
+ *
  * On `ext-create-sign-session` failure (analyzer broke, RPC dead, etc.)
  * background returns `{ ok: false, error }` and we surface it here so
  * the user can retry without leaving the review.
@@ -79,11 +85,12 @@ export function SendReviewScreen() {
 
   async function confirm() {
     if (!pairedPubkey || phase !== "idle") return;
+    const wallet = pairedPubkey;
     setError(null);
     setPhase("preparing");
     try {
       const { txBase64 } = await buildSolTransfer({
-        from: pairedPubkey,
+        from: wallet,
         to: draft.recipient,
         amountSol: draft.amountUi,
       });
@@ -103,6 +110,40 @@ export function SendReviewScreen() {
         sessionId: res.data.sessionId,
       });
     } catch (err) {
+      // First send from this wallet: no durable-nonce account exists yet.
+      // Sign the one-time create+initialize tx first; send-sign persists the
+      // account and continues to the transfer once it confirms.
+      if (err instanceof NonceAccountNotProvisionedError) {
+        try {
+          const { txBase64, nonceAccountAddress } =
+            await prepareNonceAccountCreation(wallet);
+          const res = await sendRuntimeMessage<CreateSignSessionResult>({
+            type: "faraday:ext-create-sign-session",
+            txBase64,
+          });
+          if (!res.ok) {
+            setError(res.error);
+            setPhase("idle");
+            return;
+          }
+          nav.push({
+            name: "send-sign",
+            draft,
+            txBase64,
+            sessionId: res.data.sessionId,
+            provision: { nonceAccountAddress },
+          });
+          return;
+        } catch (provisionErr) {
+          setError(
+            provisionErr instanceof Error
+              ? provisionErr.message
+              : String(provisionErr)
+          );
+          setPhase("idle");
+          return;
+        }
+      }
       setError(err instanceof Error ? err.message : String(err));
       setPhase("idle");
     }

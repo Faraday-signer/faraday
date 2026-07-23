@@ -51,9 +51,11 @@ _(none)_
 - **FA-06** `P1` — Ika clear-msig approver demo (branch `feat/ika-approver-demo`, PR #71) — owner: cxalem
 - **FA-18** `P1` — Telegram board sync: mirror task claims to the "Faraday Signal" channel (branch `feat/telegram-board`) — owner: cxalem
 
+### 🔬 In Review
+- **FA-09** `P1` — Durable-nonce transactions: signed QR-relayed txs must not expire (branch `feat/durable-nonce`, PR #112) — owner: cxalem
+
 ### 📋 To Do
 - **FA-08** `P1` — Publish the Chrome extension to the Web Store (permissions rework + listing) — owner: Trskel (Javi Lois)
-- **FA-09** `P1` — Durable-nonce transactions: signed QR-relayed txs must not expire — owner: cxalem
 
 ### 🗂 Backlog
 - **FA-07** `P2` — Decide direction on the verify proposals (`docs/proposals/`)
@@ -62,6 +64,7 @@ _(none)_
 - **FA-13** `P1` — Web-based firmware flasher (ESP32-S3 / ESP Web Tools) — lands within the FA-16 site; depends on FA-16, FA-17, and ESP32 support (PRs #73/#93)
 - **FA-14** `P2` — Optimize CI wall-clock time
 - **FA-15** `P2` — Mobile app **epic** — first child card: scoping spike
+- **FA-19** `P2` — Durable-nonce for the mobile send flow — follow-up to FA-09 (extension only)
 - **FA-12** `P3` — Faraday MCP server *(idea — unshaped; needs a proposal before any build card)*
 
 > **New-work ordering (team direction, 2026-07-20):** FA-16 (landing redesign, with FA-13 inside it; FA-17 unblocks the flasher) → FA-08 (extension publish) → FA-09 (durable nonce) → then FA-10 / FA-14 / FA-11. FA-12 stays iced; FA-15 gets scoped but is not a near-term priority.
@@ -242,6 +245,15 @@ _(none)_
 - [ ] `roadmap.md` gains a mobile-epic milestone stating the end goal above, with explicit in-scope / out-of-scope lists.
 - [ ] 3–6 child cards cut on this board, each sized for one focused PR, with honest priorities and dependencies — together they trace a path from watch-only to extension parity.
 - [ ] Distribution decision recorded (which store(s), and what that implies — review policies, signing, update cadence).
+**Owner:** —
+
+### FA-19 `P2` — Durable-nonce for the mobile send flow
+**Description:** Follow-up to FA-09, which landed durable nonces on the **extension** send flow only (device parser support is shared and already done). The mobile app (`mobile/`, watch-only Solana Seeker wallet, PR #64) has its own QR-relay send path that still pins transactions to a recent blockhash and can expire during the relay. Port the FA-09 approach: one-time nonce-account provisioning per wallet, build transfers with a leading `AdvanceNonceAccount`, stale-nonce rebuild on submit failure. Reuse the device-side classification from FA-09 (no firmware change needed). Kept as its own card per "one concern per PR."
+**Depends on:** FA-09 (the extension implementation + device parser support it reuses).
+**Acceptance criteria:**
+- [ ] Mobile send flow builds durable-nonce transfers (leading `AdvanceNonceAccount`), provisioning a nonce account on first send.
+- [ ] Stale-nonce rebuild handled (re-fetch nonce, rebuild) on submit failure.
+- [ ] A device-signed devnet tx from mobile submits after waiting past normal blockhash expiry (2+ minutes).
 **Owner:** —
 
 ### FA-12 `P3` — Faraday MCP server *(idea — unshaped)*
