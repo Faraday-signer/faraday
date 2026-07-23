@@ -601,9 +601,14 @@ fn extract_send(tx_bytes: &[u8]) -> Option<ZonedAction> {
         let pid = all_accounts.get(ix.program_id_index)?;
         match programs::identify(pid).as_ref().map(|p| p.name) {
             Some("ComputeBudget") => continue,
-            Some("System") if ix.data.len() >= 12 => {
+            Some("System") if ix.data.len() >= 4 => {
                 let ix_type = u32::from_le_bytes([ix.data[0], ix.data[1], ix.data[2], ix.data[3]]);
-                if ix_type == 2 {
+                // AdvanceNonceAccount leads every Faraday-built durable-nonce
+                // transfer; it moves no funds, so it doesn't affect the zone.
+                if ix_type == 4 {
+                    continue;
+                }
+                if ix_type == 2 && ix.data.len() >= 12 {
                     let to_idx = *ix.account_indices.get(1)? as usize;
                     let lamports = u64::from_le_bytes([
                         ix.data[4], ix.data[5], ix.data[6], ix.data[7],
@@ -1746,6 +1751,23 @@ mod tests {
             .collect();
         assert!(labels.contains(&"Nonce account"));
         assert!(labels.contains(&"Authority"));
+    }
+
+    #[test]
+    fn extract_zoned_lifts_nonce_transfer_to_send_hero() {
+        // A leading AdvanceNonceAccount must not knock the transfer off the
+        // zoned SEND hero — it's the shape of every Faraday-built transfer.
+        for tx in [TX_NONCE_LEGACY, TX_NONCE_V0] {
+            let parsed = parse(tx);
+            match extract_zoned(tx, &parsed) {
+                Some(ZonedAction::Send {
+                    amount_lamports, ..
+                }) => {
+                    assert_eq!(amount_lamports, 1_000_000_000);
+                }
+                other => panic!("expected Send, got {:?}", variant_name(&other)),
+            }
+        }
     }
 
     #[test]

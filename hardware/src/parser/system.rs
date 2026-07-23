@@ -209,14 +209,13 @@ fn parse_transfer_with_seed(
 ///   [nonce account, RecentBlockhashes sysvar, nonce authority].
 /// The instruction carries no data past the discriminant.
 fn parse_advance_nonce_account(accounts: &[[u8; 32]]) -> Result<Vec<ReviewItem>, &'static str> {
-    let nonce_account = accounts
-        .first()
-        .map(pubkey_short)
-        .unwrap_or_else(|| "?".into());
-    let authority = accounts
-        .get(2)
-        .map(pubkey_short)
-        .unwrap_or_else(|| "?".into());
+    // Canonical layout is exactly 3 accounts; Faraday always builds it that
+    // way, so anything shorter is malformed and must warn, not render "?".
+    if accounts.len() < 3 {
+        return Err("AdvanceNonceAccount accounts truncated");
+    }
+    let nonce_account = pubkey_short(&accounts[0]);
+    let authority = pubkey_short(&accounts[2]);
 
     Ok(vec![
         ReviewItem::Header("Advance Nonce".into()),
@@ -244,10 +243,12 @@ fn parse_initialize_nonce_account(
         .and_then(|s| s.try_into().ok())
         .ok_or("InitializeNonceAccount authority truncated")?;
 
-    let nonce_account = accounts
-        .first()
-        .map(pubkey_short)
-        .unwrap_or_else(|| "?".into());
+    // Canonical layout is exactly 3 accounts (nonce, RecentBlockhashes, Rent);
+    // Faraday always builds it that way, so shorter is malformed → warn.
+    if accounts.len() < 3 {
+        return Err("InitializeNonceAccount accounts truncated");
+    }
+    let nonce_account = pubkey_short(&accounts[0]);
 
     Ok(vec![
         ReviewItem::Header("Initialize Nonce".into()),
@@ -432,17 +433,23 @@ mod tests {
     }
 
     #[test]
-    fn test_advance_nonce_missing_authority_slot_does_not_panic() {
-        // Only the nonce account present — authority slot renders as "?",
-        // never a panic or a guessed value.
+    fn test_advance_nonce_truncated_accounts_warn() {
+        // Canonical advance carries exactly 3 accounts; a shorter list is
+        // malformed and must fall to the warning path, never a labeled card
+        // with "?" placeholders.
         let data = vec![4u8, 0, 0, 0];
-        let accounts = [key(0xAA)];
-        let ix = parse(&data, &accounts);
-        let has_header = ix
-            .items
-            .iter()
-            .any(|item| matches!(item, ReviewItem::Header(h) if h == "Advance Nonce"));
-        assert!(has_header);
+        for accounts in [vec![], vec![key(0xAA)], vec![key(0xAA), key(0xBB)]] {
+            let ix = parse(&data, &accounts);
+            let has_warning = ix
+                .items
+                .iter()
+                .any(|item| matches!(item, ReviewItem::Warning(_)));
+            assert!(
+                has_warning,
+                "AdvanceNonceAccount with {} accounts must warn",
+                accounts.len()
+            );
+        }
     }
 
     // --- InitializeNonceAccount (disc 6) ---
@@ -483,5 +490,22 @@ mod tests {
             .iter()
             .any(|item| matches!(item, ReviewItem::Warning(_)));
         assert!(has_warning, "Truncated InitializeNonceAccount must warn");
+    }
+
+    #[test]
+    fn test_initialize_nonce_truncated_accounts_warn() {
+        // Full 32-byte authority in data but a short account list (canonical
+        // is 3: nonce, RecentBlockhashes, Rent) — malformed, must warn.
+        let mut data = vec![6u8, 0, 0, 0];
+        data.extend_from_slice(&[0xDD; 32]);
+        let ix = parse(&data, &[key(0xAA), key(0xBB)]);
+        let has_warning = ix
+            .items
+            .iter()
+            .any(|item| matches!(item, ReviewItem::Warning(_)));
+        assert!(
+            has_warning,
+            "InitializeNonceAccount with 2 accounts must warn"
+        );
     }
 }
