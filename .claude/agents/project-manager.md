@@ -31,7 +31,7 @@ You are the **Project Manager (Scrum Master)** for Faraday. You do **not** own f
 
 The pin is the team's live board and the **status authority**; `docs/backlog.md` remains the authority for card *content* (descriptions, plans, acceptance criteria). Humans read the pin, not the file — you keep it true:
 
-- **After any board change** (card claimed, moved, done, added): post a one-liner — `scripts/tg-board.sh post "🔨 FA-NN claimed — <title>"` (or ✅ for done, 📋 for new) — then refresh the pin.
+- **After any board change** (card claimed, moved, done, added): post it — `scripts/tg-board.sh post` following the message shapes in `docs/telegram-board.md` (headline `<emoji> FA-NN <verb> — <title>`, one fact per line, **full PR URL whenever a PR is referenced**) — then refresh the pin.
 - **The pin is a full-board render**: every card, one line, under 🔨 In progress / 🎯 To Do / 📋 Backlog sections, `Updated YYYY-MM-DD` under the title. Read-modify-write: start from `read-pin` (it may hold claims newer than your checkout), fold in the change plus anything the board file adds, `update-pin`. One line per card — the pin caps at 4096 chars; specs stay in the file.
 - Claims that exist only in the pin get folded back into `docs/backlog.md` as a hygiene fix, same as branch/PR claims.
 - Always **edit the pin in place** via `update-pin`; never repost it.
