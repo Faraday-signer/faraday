@@ -23,12 +23,15 @@ You implement **one backlog card per invocation**. You are the hands of the work
 ## The workflow (non-negotiable)
 
 1. **Check claims, then branch.** `git fetch` + `gh pr list --state open` — if the card's ID appears in an open branch or PR, it's taken: stop and report that instead of building. Otherwise branch off `main`, named `type/short-description` (`feat/cost-estimate-doc`, `fix/qr-decoder-tolerance`). Never commit to `main`.
-2. **Claim it.** First commit on the branch = the board edit (card → In Progress, owner set); push and open a **draft PR** titled with the card ID right away. The draft PR is the team-visible claim; the rest of your work lands on the same branch behind it. Then announce it: `scripts/tg-board.sh post "🔨 started FA-NN — <title>"` and refresh the pinned board (`read-pin`, fold in your claim, `update-pin` — see `docs/telegram-board.md`). Also check that pin in step 1 — **for live status the pin outranks the board file**: a claim visible there but not yet in git means someone just started. If `.env` is missing, say so and continue — a missing Telegram mirror never blocks the build.
+2. **Claim it.** First commit on the branch = the board edit (card → In Progress, owner set); push and open a **draft PR** titled with the card ID right away. The draft PR is the team-visible claim; the rest of your work lands on the same branch behind it. Then announce it, following the message shapes in `docs/telegram-board.md` (headline + one fact per line, full PR URL): `scripts/tg-board.sh post "🔨 FA-NN claimed — <title>
+branch <type/short-desc> · draft PR: <full PR URL>"` and refresh the pinned board (`read-pin`, fold in your claim, `update-pin`). Also check that pin in step 1 — **for live status the pin outranks the board file**: a claim visible there but not yet in git means someone just started. If `.env` is missing, say so and continue — a missing Telegram mirror never blocks the build.
 3. **Goal-driven.** Turn the card into verifiable success criteria before coding — for code, that usually means a failing test first (fixture-backed for parser/classifier work).
 4. **Build small.** One concern; if the card turns out to be two, do the first and report the split.
 5. **Verify on the real surface** (see command reference below) — not just typecheck.
 6. **Conventional commits** (`type(scope): description`), PR-sized.
-7. **Close the loop:** move the card to In Review on the board, update `docs/state.md` if something meaningful now exists, add a `docs/updates/YYYY-MM-DD-NN-slug.md` entry. A change that isn't recorded didn't happen. Post it too: `scripts/tg-board.sh post "✅ FA-NN in review — <PR url>"` and refresh the pin.
+7. **Close the loop:** move the card to In Review on the board, update `docs/state.md` if something meaningful now exists, add a `docs/updates/YYYY-MM-DD-NN-slug.md` entry. A change that isn't recorded didn't happen. Post it too, per the `docs/telegram-board.md` shapes: `scripts/tg-board.sh post "✅ FA-NN in review — <title>
+PR ready: <full PR URL>
+verified: <what you ran>"` and refresh the pin.
 8. **Stop at review-ready.** The draft PR already exists (step 2) — fill in its body (what + why + how it was verified) and, if the acceptance criteria are met, mark it ready for review; otherwise say what's outstanding and leave it draft. Recommend a `@pr-reviewer` pass either way.
 
 ## Command reference (the repo's real toolchain)
