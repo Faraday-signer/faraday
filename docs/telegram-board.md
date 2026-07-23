@@ -128,10 +128,12 @@ headers, `• FA-NN — title — owner` bullets, `📖` footer.
 
 - **Before recommending or starting work:** `read-pin` first — it is the status
   authority — then `gh pr list --state open` to confirm.
-- **On claiming a card** (branch + draft PR created): `post "🔨 Started: <plain outcome> (FA-NN)"`
-  with a plain-English line 2, then refresh the pin.
-- **On finishing** (PR ready for review / merged): `post "✅ Ready for review: <plain outcome> (FA-NN, PR #N)"`
-  with a plain-English line 2, and refresh the pin.
+- **On claiming a card** (branch + draft PR created): post the 🔨 shape above —
+  plain headline `🔨 Started: <plain outcome> (FA-NN)`, plain-English line 2,
+  branch/PR-URL detail line — then refresh the pin.
+- **On finishing** (PR ready for review / merged): post the ✅ (or 🏁) shape above —
+  plain headline, plain-English line 2, `PR ready: <full URL>` line, `> verified:` line —
+  and refresh the pin.
 - **Refreshing the pin = full-board render**, every card as one line under
   🔨 In progress / 🎯 To Do / 📋 Backlog, read-modify-write: start from `read-pin`
   (it may hold claims newer than your checkout), fold in your change and anything
