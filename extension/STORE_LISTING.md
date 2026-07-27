@@ -39,7 +39,7 @@ Requires the Faraday hardware signer. The extension is a companion to that devic
 
 ### `storage`
 
-Faraday keeps a small amount of wallet state on the user's own machine. `chrome.storage.local` holds the watch-only Solana public key the user paired from their hardware device, the list of dapp origins the user has explicitly approved for connection, recent recipient addresses used to warn about mistyped destinations, and display preferences such as whether to show unverified tokens. `chrome.storage.session` holds pending signing sessions, which expire after five minutes and are discarded when the browser closes. No private key or seed material is ever written. Approved origins, recipient history, preferences, and signing sessions are never transmitted anywhere; the stored public wallet address is used in the RPC and Jupiter requests disclosed in the data-usage section, since reading balances from the blockchain requires it. The storage exists only to avoid asking the user to re-pair and re-approve on every page load.
+Faraday keeps a small amount of wallet state on the user's own machine. `chrome.storage.local` holds the watch-only Solana public key the user paired from their hardware device, the list of dapp origins the user has explicitly approved for connection, recent recipient addresses used to warn about mistyped destinations, and display preferences such as whether to show unverified tokens. `chrome.storage.session` holds pending signing sessions, which expire after five minutes and are discarded when the browser closes. No private key or seed material is ever written. Approved origins, recipient history, preferences, and signing sessions are never transmitted anywhere; the stored public wallet address is used in the RPC and Jupiter requests disclosed in the data-usage section (reading balances from the blockchain requires it) and is shared with dapp pages the user has explicitly approved for connection. The storage exists only to avoid asking the user to re-pair and re-approve on every page load.
 
 ### `sidePanel`
 
@@ -87,7 +87,7 @@ The extension requests no `host_permissions` and no `tabs` permission. Camera ac
 - [x] I do not sell or transfer user data to third parties, outside of the approved use cases.
 - [x] I do not use or transfer user data for purposes that are unrelated to my item's single purpose.
 - [x] I do not use or transfer user data to determine creditworthiness or for lending purposes.
-- [x] My item complies with the Chrome Web Store **Limited Use** policy. Data leaves the device only for the single disclosed purpose of reading balances and simulating and broadcasting the user's own transactions.
+- [x] My item complies with the Chrome Web Store **Limited Use** policy. Data leaves the device only for the single disclosed wallet purpose: reading balances and token holdings, simulating and broadcasting the user's own transactions, resolving token symbols/prices/verified status via Jupiter APIs, loading token logo images from the hosts in token metadata, and sharing the public address with dapps the user explicitly approves.
 
 ## Privacy policy URL
 

@@ -16,7 +16,7 @@ The extension stores the following data locally in your browser using Chrome's s
 - Display preferences, such as whether to show unverified tokens
 - Pending signing sessions, held in session storage only — they expire after five minutes and are discarded when you close the browser
 
-None of this data is ever sent to Faraday — there are no Faraday servers. Approved origins, recipient history, preferences, and signing sessions never leave your browser at all. The one exception is your public wallet address, which is included in the requests to the Solana RPC endpoint and Jupiter APIs described under "Network requests" below, because that is how balances and token holdings are read from the blockchain.
+None of this data is ever sent to Faraday — there are no Faraday servers. Approved origins, recipient history, preferences, and signing sessions never leave your browser at all. The one exception is your public wallet address: it is included in the requests to the Solana RPC endpoint and Jupiter APIs described under "Network requests" below (that is how balances and token holdings are read from the blockchain), and it is shared with a dapp when — and only when — you explicitly approve that dapp's connection request.
 
 ## What data the extension does not store
 
