@@ -1,6 +1,6 @@
 # Privacy Policy — Faraday Browser Extension
 
-Last updated: May 20, 2026
+Last updated: July 27, 2026
 
 ## Summary
 
@@ -12,6 +12,9 @@ The extension stores the following data locally in your browser using Chrome's s
 
 - Your Solana public key (a watch-only address used to display balances and connect to dapps)
 - A list of dapp origins you have approved for wallet connection
+- Recent recipient addresses, used to warn you about mistyped destinations
+- Display preferences, such as whether to show unverified tokens
+- Pending signing sessions, held in session storage only — they expire after five minutes and are discarded when you close the browser
 
 This data never leaves your browser. It is not sent to Faraday, to any server, or to any third party.
 
@@ -24,10 +27,11 @@ This data never leaves your browser. It is not sent to Faraday, to any server, o
 
 ## Network requests
 
-The extension makes the following network requests, all directed to public Solana infrastructure:
+The extension makes the following network requests:
 
 - Solana RPC nodes — to fetch account balances, simulate transactions, and broadcast signed transactions
-- Jupiter token API (tokens.jup.ag) — to resolve token symbols for display
+- Jupiter APIs (lite-api.jup.ag, tokens.jup.ag) — to resolve token symbols, USD prices, and the verified-token list used to flag airdrop spam
+- Token logo images — loaded from whatever URL a token's own metadata points to, which may be any third-party host
 
 No data is sent to servers owned or operated by Faraday. No cookies, identifiers, or tracking parameters are included in any request.
 
@@ -49,7 +53,7 @@ Faraday does not sell, rent, or share any user data with third parties. There is
 
 ## Data retention
 
-Stored data (public key and approved origins) persists in Chrome's local storage until you remove it by unpairing your wallet or uninstalling the extension. No data is retained elsewhere.
+Stored data persists in Chrome's local storage until you remove it by unpairing your wallet or uninstalling the extension. Pending signing sessions live in session storage and are gone when you close the browser. No data is retained elsewhere.
 
 ## Children's privacy
 
