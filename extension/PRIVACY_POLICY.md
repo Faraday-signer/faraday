@@ -4,7 +4,7 @@ Last updated: July 27, 2026
 
 ## Summary
 
-Faraday does not collect, transmit, or share any personal data. All data stays on your device.
+Faraday collects no personal data and has no servers of its own. Your keys and settings stay on your device; the only data that leaves it is public blockchain data — your public wallet address, transactions, and token mint addresses — sent to the Solana RPC endpoint, Jupiter APIs, and token-logo image hosts described under "Network requests" below.
 
 ## What data the extension stores
 
