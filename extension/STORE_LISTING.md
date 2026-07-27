@@ -39,7 +39,7 @@ Requires the Faraday hardware signer. The extension is a companion to that devic
 
 ### `storage`
 
-Faraday keeps a small amount of wallet state on the user's own machine. `chrome.storage.local` holds the watch-only Solana public key the user paired from their hardware device, the list of dapp origins the user has explicitly approved for connection, recent recipient addresses used to warn about mistyped destinations, and display preferences such as whether to show unverified tokens. `chrome.storage.session` holds pending signing sessions, which expire after five minutes and are discarded when the browser closes. No private key or seed material is ever written, and none of this data is transmitted anywhere — it exists only to avoid asking the user to re-pair and re-approve on every page load.
+Faraday keeps a small amount of wallet state on the user's own machine. `chrome.storage.local` holds the watch-only Solana public key the user paired from their hardware device, the list of dapp origins the user has explicitly approved for connection, recent recipient addresses used to warn about mistyped destinations, and display preferences such as whether to show unverified tokens. `chrome.storage.session` holds pending signing sessions, which expire after five minutes and are discarded when the browser closes. No private key or seed material is ever written. Approved origins, recipient history, preferences, and signing sessions are never transmitted anywhere; the stored public wallet address is used in the RPC and Jupiter requests disclosed in the data-usage section, since reading balances from the blockchain requires it. The storage exists only to avoid asking the user to re-pair and re-approve on every page load.
 
 ### `sidePanel`
 

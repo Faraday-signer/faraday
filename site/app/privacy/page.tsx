@@ -55,7 +55,7 @@ const SECTIONS: { title: string; blocks: Block[] }[] = [
       },
       {
         kind: "p",
-        text: "This data never leaves your browser. It is not sent to Faraday, to any server, or to any third party.",
+        text: "None of this data is ever sent to Faraday — there are no Faraday servers. Approved origins, recipient history, preferences, and signing sessions never leave your browser at all. The one exception is your public wallet address, which is included in the requests to the Solana RPC endpoint and Jupiter APIs described under \"Network requests\" below, because that is how balances and token holdings are read from the blockchain.",
       },
     ],
   },
