@@ -1,3 +1,4 @@
+import { AirGapVisual } from "./air-gap-visual";
 import { SectionLabel } from "./primitives";
 
 const STEPS = [
@@ -31,6 +32,8 @@ export function HowItWorks() {
         <h2 className="mt-5 max-w-2xl font-display text-3xl leading-tight tracking-tight text-foreground sm:text-4xl">
           One round trip across the air gap
         </h2>
+
+        <AirGapVisual className="mt-12" />
 
         <ol className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-sm border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
           {STEPS.map((step) => (

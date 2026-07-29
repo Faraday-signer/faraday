@@ -1,4 +1,4 @@
-import { AirGapVisual } from "./air-gap-visual";
+import { DeviceShowcase } from "./device-showcase";
 import { MeasurementGrid } from "./measurement-grid";
 
 const GITHUB_URL = "https://github.com/Faraday-signer/faraday";
@@ -8,7 +8,8 @@ export function Hero() {
     <section className="relative overflow-hidden border-b border-border">
       <MeasurementGrid className="opacity-70" />
 
-      <div className="relative mx-auto max-w-6xl px-5 pb-16 pt-14 sm:px-8 sm:pb-24 sm:pt-20">
+      <div className="relative mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 px-5 pb-16 pt-14 sm:px-8 sm:pb-24 sm:pt-20 lg:grid-cols-[1fr_auto] lg:gap-16">
+        <div>
         <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground sm:text-xs">
           Air-gapped
           <span className="mx-2 text-brand">·</span>
@@ -52,8 +53,9 @@ export function Hero() {
             Read the code
           </a>
         </div>
+        </div>
 
-        <AirGapVisual className="mt-14 sm:mt-20" />
+        <DeviceShowcase />
       </div>
     </section>
   );

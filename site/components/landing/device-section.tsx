@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { SectionLabel, Tag } from "./primitives";
-import { DeviceStage, useScrollProgress, type DeviceMode } from "./device-explode";
+
+type DeviceMode = "build" | "buy";
 
 const PI_SPECS = [
   { k: "Computer", v: "Raspberry Pi Zero 1.3" },
@@ -23,20 +24,17 @@ const ESP32_SPECS = [
 ];
 
 export function DeviceSection() {
-  const sectionRef = useRef<HTMLElement | null>(null);
-  const { progress } = useScrollProgress(sectionRef);
   const [mode, setMode] = useState<DeviceMode>("build");
 
   const specs = mode === "build" ? PI_SPECS : ESP32_SPECS;
 
   return (
-    <section id="device" ref={sectionRef} className="relative h-[280vh] border-b border-border">
-      <div className="sticky top-0 flex min-h-screen items-center">
-        <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-12 px-5 py-16 sm:px-8 lg:grid-cols-2 lg:gap-16">
-          <div>
+    <section id="device" className="border-b border-border">
+      <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-24">
+        <div className="max-w-2xl">
             <SectionLabel index="03">The device</SectionLabel>
             <h2 className="mt-5 font-display text-3xl leading-tight tracking-tight text-foreground sm:text-4xl">
-              Build it from parts — or buy one and flash it
+              Two devices. One firmware.
             </h2>
 
             <div
@@ -46,8 +44,8 @@ export function DeviceSection() {
             >
               {(
                 [
-                  ["build", "Build it · Pi Zero"],
-                  ["buy", "Buy one · ESP32-S3"],
+                  ["build", "Raspberry Pi Zero"],
+                  ["buy", "ESP32-S3"],
                 ] as const
               ).map(([value, label]) => (
                 <button
@@ -109,9 +107,6 @@ export function DeviceSection() {
                 </div>
               ))}
             </dl>
-          </div>
-
-          <DeviceStage mode={mode} progress={progress} />
         </div>
       </div>
     </section>

@@ -75,3 +75,26 @@ html {
 .pixel-shadow {
   filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, 0.55));
 }
+
+/* Ambient hero device: slow float + a 9s three-screen firmware cycle. */
+.device-float {
+  animation: device-float 7s ease-in-out infinite;
+}
+@keyframes device-float {
+  0%, 100% { transform: translateY(0) rotate(-0.6deg); }
+  50% { transform: translateY(-10px) rotate(0.6deg); }
+}
+.screen-frame {
+  opacity: 0;
+  animation: screen-cycle 9s infinite;
+}
+@keyframes screen-cycle {
+  0%, 31% { opacity: 1; }
+  33.33%, 100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .device-float { animation: none; }
+  .screen-frame { animation: none; }
+  /* show only the first firmware screen */
+  .screen-frame[style*="0s"] { opacity: 1; }
+}
