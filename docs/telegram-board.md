@@ -60,10 +60,14 @@ scripts/tg-board.sh update-pin "…full board…"   # also accepts stdin
 ## Message types
 
 Multiline posts, one shape each. **Line 1 is the headline** (rendered bold), in
-plain words with the card id as a suffix: `<emoji> <plain outcome> (FA-NN)`.
-**Line 2 is the plain-English line** (see Audience & voice). Lines after it
-carry the tech detail — one fact per line, no prose paragraphs. The author
-stamp is appended automatically.
+plain words with the card id as a suffix: `<emoji> <plain outcome> (FA-NN)`,
+**max ~60 chars** — a first line longer than 64 chars is treated as body text,
+not a headline, so a wall of prose never renders all-bold. **Line 2 is the
+plain-English line** (see Audience & voice). Lines after it carry the tech
+detail — one fact per line, never a prose paragraph. Prefix a line with `> `
+to render it as an indented quote block — use it for secondary detail
+(verification results, review notes) so headlines and bullets stay scannable.
+The author stamp is appended automatically.
 
 ```
 🔨 Started: transactions that can't expire mid-handoff (FA-09)
@@ -79,6 +83,15 @@ PR #114 · verified: full test suite + simulator relay loop
 
 ```
 🏁 Shipped: transactions that can't expire (FA-09, PR #114 merged)
+```
+
+```
+🏁 Shipped: two pieces merged to main (FA-06 + FA-18)
+The device now explains multisig transactions before you sign, and team updates mirror to this channel automatically.
+• Ika multisig clear signing (FA-06, PR #71)
+> 278 hw + 73 ext tests green · spoof/envelope defenses verified
+• Telegram board sync (FA-18, PR #111)
+> no secrets leaked · live ids blanked from .env.example
 ```
 
 ```
