@@ -14,6 +14,29 @@ every claim and finish.
 - **The draft PR is the claim** (ties the two together): pin says it first, git proves
   it, the file converges on merge.
 
+## Audience & voice — write for mortals
+
+Faraday Signal doubles as a public dev-log: assume the reader is a curious
+non-developer following the project, not a teammate. Every post must pass the
+**mortal test** — someone who has never opened the repo understands what
+happened and why it matters.
+
+- **Line 2 is the plain-English line.** Right after the headline, one sentence
+  on what this means for someone using Faraday ("Transactions you sign will now
+  go through even if the QR handoff takes a few minutes."). Tech facts (branch,
+  PR, test counts) come after it, one per line.
+- **No unexplained jargon.** Say "the browser extension", not "MV3"; "the
+  signing device", not "the ESP32 target". If a term is unavoidable, gloss it in
+  a few words on first use ("durable nonce — a trick that stops transactions
+  from expiring").
+- **Lead with the outcome, not the activity.** "The device now shows exactly
+  what a multisig transaction does before you sign" beats "implemented
+  clear-msig classifiers".
+- **Card ids stay** — they're the paper trail — but as a suffix in parentheses
+  (`(FA-09, PR #114)`), never as the subject of the sentence.
+- **The pin follows the same rule:** every bullet is a plain description a
+  stranger can parse, with the id in parentheses at the end.
+
 ## Join (humans)
 
 Ask cxalem for the invite link. The channel is private; the link is the only way in.
@@ -36,34 +59,37 @@ scripts/tg-board.sh update-pin "…full board…"   # also accepts stdin
 
 ## Message types
 
-Multiline posts, one shape each. **Line 1 is the headline** (rendered bold):
-`<emoji> FA-NN <verb> — <card title>`. Lines after it carry the useful detail —
-one fact per line, no prose paragraphs. The author stamp is appended automatically.
+Multiline posts, one shape each. **Line 1 is the headline** (rendered bold), in
+plain words with the card id as a suffix: `<emoji> <plain outcome> (FA-NN)`.
+**Line 2 is the plain-English line** (see Audience & voice). Lines after it
+carry the tech detail — one fact per line, no prose paragraphs. The author
+stamp is appended automatically.
 
 ```
-🔨 FA-09 claimed — durable-nonce transactions
+🔨 Started: transactions that can't expire mid-handoff (FA-09)
+Today a signed transaction goes stale if you take too long scanning QR codes — this fix removes that time limit.
 branch feat/durable-nonce · draft PR #114
-plan: nonce account per relay hop, fixture-first
 ```
 
 ```
-✅ FA-09 in review — durable-nonce transactions
-PR #114 ready
-verified: cargo test + simulator relay loop
+✅ Ready for review: transactions that can't expire (FA-09)
+You'll be able to take as long as you like between signing on the device and sending — the transaction still lands.
+PR #114 · verified: full test suite + simulator relay loop
 ```
 
 ```
-🏁 FA-09 done — merged PR #114
+🏁 Shipped: transactions that can't expire (FA-09, PR #114 merged)
 ```
 
 ```
-📋 board update
-• FA-19 cut — <title> (P1, To Do)
-• FA-02 rescoped — dual BOM (Pi + ESP32)
+📋 Plans updated
+• New task: the mobile app gets the same no-expiry fix (FA-19)
+• The device cost estimate now covers both hardware versions (FA-02)
 ```
 
 ```
-⚠️ FA-16 blocked — waiting on design assets
+⚠️ Paused: the new website design (FA-16)
+Waiting on the design assets before building can continue.
 unblocks when: <what> · needed from: <who>
 ```
 
@@ -83,10 +109,10 @@ headers, `• FA-NN — title — owner` bullets, `📖` footer.
 
 - **Before recommending or starting work:** `read-pin` first — it is the status
   authority — then `gh pr list --state open` to confirm.
-- **On claiming a card** (branch + draft PR created): `post "🔨 started FA-NN — <title>"`,
-  then refresh the pin.
-- **On finishing** (PR ready for review / merged): `post "✅ FA-NN in review — <PR url>"`
-  and refresh the pin.
+- **On claiming a card** (branch + draft PR created): `post "🔨 Started: <plain outcome> (FA-NN)"`
+  with a plain-English line 2, then refresh the pin.
+- **On finishing** (PR ready for review / merged): `post "✅ Ready for review: <plain outcome> (FA-NN, PR #N)"`
+  with a plain-English line 2, and refresh the pin.
 - **Refreshing the pin = full-board render**, every card as one line under
   🔨 In progress / 🎯 To Do / 📋 Backlog, read-modify-write: start from `read-pin`
   (it may hold claims newer than your checkout), fold in your change and anything
