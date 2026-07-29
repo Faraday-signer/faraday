@@ -73,7 +73,9 @@ function formatErrorContext(ctx: Record<string, string>): string {
  *      embeds in `-32xxx` messages. That gives `logs`, `unitsConsumed`,
  *      etc. directly.
  *   2. Use those fields to refine the summary:
- *      - empty logs + 0 units → simulation didn't run → blockhash hint
+ *      - empty logs + 0 units → simulation didn't run → lifetime hint
+ *        (stale nonce for durable-nonce transfers, expired blockhash for
+ *        the one-time nonce-account setup tx — same RPC symptom)
  *      - non-empty logs → last log line is usually the failure reason
  *   3. Fall back to keyword matching for errors that don't carry a blob.
  *
@@ -95,7 +97,7 @@ export function explainBroadcastError(raw: string): BroadcastErrorReport {
     if (Array.isArray(logs) && logs.length === 0 && units === 0) {
       return {
         summary:
-          "Blockhash likely expired — the signed transaction sat too long between scan and broadcast. Please retry.",
+          "Transaction lifetime no longer valid — the nonce advanced, or the one-time setup transaction's blockhash expired. Retry rebuilds and re-signs.",
         details: decodedDetails,
       };
     }
@@ -115,7 +117,7 @@ export function explainBroadcastError(raw: string): BroadcastErrorReport {
   if (/Blockhash not found|block height exceeded/i.test(text)) {
     return {
       summary:
-        "Blockhash expired. The signed transaction sat too long between scan and broadcast — please retry.",
+        "Transaction lifetime no longer valid — the nonce advanced, or the one-time setup transaction's blockhash expired. Retry rebuilds and re-signs.",
       details: decodedDetails,
     };
   }

@@ -19,7 +19,18 @@ export type Route =
   | { name: "receive" }
   | { name: "send-compose" }
   | { name: "send-review"; draft: SendDraft }
-  | { name: "send-sign"; draft: SendDraft; txBase64: string; sessionId: string }
+  | {
+      name: "send-sign";
+      draft: SendDraft;
+      txBase64: string;
+      sessionId: string;
+      /**
+       * Present when this session signs the one-time nonce-account creation
+       * tx (not the transfer). On broadcast the flow persists the account,
+       * waits for it to confirm, then continues to the transfer session.
+       */
+      provision?: { nonceAccountAddress: string };
+    }
   | { name: "token-detail"; mint: string }
   | { name: "settings" }
   | { name: "settings-device" }
