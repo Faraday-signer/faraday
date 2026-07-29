@@ -9,15 +9,16 @@
 }
 
 :root {
-  --background: oklch(0.975 0.005 85);
-  --foreground: oklch(0.269 0 0);
-  --muted: oklch(0.94 0.005 85);
-  --muted-foreground: oklch(0.45 0 0);
-  --border: oklch(0.88 0.005 85);
-  --input: oklch(0.92 0.005 85);
-  --ring: oklch(0.269 0 0);
-  --primary: oklch(0.269 0 0);
-  --primary-foreground: oklch(0.975 0.005 85);
+  /* Dark "instrument panel" theme — cyan on deep cool slate. */
+  --background: oklch(0.165 0.012 250);
+  --foreground: oklch(0.965 0.003 250);
+  --muted: oklch(0.225 0.013 250);
+  --muted-foreground: oklch(0.685 0.014 250);
+  --border: oklch(0.31 0.016 250);
+  --input: oklch(0.225 0.013 250);
+  --ring: oklch(0.82 0.13 205);
+  --primary: #1AF8FF;
+  --primary-foreground: oklch(0.17 0.012 250);
   --brand: #1AF8FF;
   --radius: 0.125rem;
 }
@@ -53,4 +54,24 @@ body {
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+::selection {
+  background: var(--brand);
+  color: oklch(0.17 0.012 250);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* Cyan pixel-offset shadow used on emphasized display type (the wordmark look). */
+.pixel-shadow {
+  filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, 0.55));
 }

@@ -32,7 +32,10 @@ Merge conflicts on this file are further defused by `.gitattributes` (`merge=uni
 ## Board — Grant push
 
 ### 🏗 In Progress
-- **FA-16** `P1` — Landing page redesign (faraday.to) — top of the new-work stack (team direction 2026-07-20); the web flasher (FA-13) lands inside it (branch `feat/landing-redesign`) — owner: cxalem
+_(none)_
+
+### 🔬 In Review
+- **FA-16** `P1` — Landing page redesign (faraday.to) — dark instrument-panel rebuild; flasher (FA-13) slot + `/flash` stub and extension-store (FA-08) slot reserved (branch `feat/landing-redesign`, PR #117, **draft — awaiting cxalem design approval on the Vercel preview before merge**) — owner: cxalem
 
 ### 📋 To Do
 - **FA-01** `P0` — Reactivate the @faradaysigner X account

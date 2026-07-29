@@ -15,10 +15,10 @@ export function WaitlistForm() {
     return (
       <div className="flex flex-col gap-1">
         <p className="font-display text-sm uppercase tracking-wider text-foreground">
-          ✓ You're on the list.
+          ✓ You&apos;re on the list.
         </p>
         <p className="text-sm text-muted-foreground">
-          We'll reach out at <span className="font-mono">{state.email}</span> when devices ship.
+          We&apos;ll reach out at <span className="font-mono">{state.email}</span> when devices ship.
         </p>
       </div>
     );
@@ -41,7 +41,7 @@ export function WaitlistForm() {
         </Button>
       </div>
       {state.status === "error" ? (
-        <p className="text-xs text-red-700" role="alert">
+        <p className="text-xs text-red-400" role="alert">
           {state.message}
         </p>
       ) : null}
