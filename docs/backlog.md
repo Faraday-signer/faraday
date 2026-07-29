@@ -32,12 +32,11 @@ Merge conflicts on this file are further defused by `.gitattributes` (`merge=uni
 ## Board — Grant push
 
 ### 🏗 In Progress
-_(none)_
+- **FA-16** `P1` — Landing page redesign (faraday.to) — top of the new-work stack (team direction 2026-07-20); the web flasher (FA-13) lands inside it (branch `feat/landing-redesign`) — owner: cxalem
 
 ### 📋 To Do
 - **FA-01** `P0` — Reactivate the @faradaysigner X account
 - **FA-02** `P0` — Per-device cost estimate, dual BOM: Pi Zero **and** ESP32-S3 (hardware, case, assembly, shipping, import)
-- **FA-16** `P1` — Landing page redesign (faraday.to) — top of the new-work stack (team direction 2026-07-20); the web flasher (FA-13) lands inside it
 
 ### 🗂 Backlog
 - **FA-03** `P0` — Grant application draft (scope + budget) — depends on FA-02
@@ -126,7 +125,7 @@ _(none)_
 - [ ] Email capture still works end-to-end (FA-05's scope is not regressed).
 - [ ] Navigation accommodates the upcoming flasher page (FA-13) and extension listing link (FA-08).
 - [ ] Site build + typecheck green; OpenGraph/meta verified.
-**Owner:** —
+**Owner:** cxalem (branch `feat/landing-redesign`; per the claiming protocol the claim becomes visible when the draft PR titled `FA-16` opens)
 
 ### FA-11 `P2` — X content plan
 **Description:** A sustained content plan for posting about Faraday on X, beyond FA-01's reactivation burst (FA-01 gets the account alive with two weeks queued; this card is the ongoing engine). Define content pillars (air-gapped signing explainers, build-in-public firmware notes, demo clips — the 90-second Ika approver demo doubles as material), formats, and cadence, drawing on the existing drafts in the marketing pipeline (KB, `marketing/x-strategy/post-drafts/`).
