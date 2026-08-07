@@ -68,7 +68,7 @@ function PiAssembly() {
     "/models/pi/buttons.stl",
     "/models/pi/thumbstick.stl",
   ]) as BufferGeometry[];
-  const piScreen = useScreenTexture("/models/screens/pi-review.png");
+  const piScreen = useScreenTexture("/models/screens/pi-boot.png");
 
   const { parts, topY, footprint } = useMemo(() => {
     let y = 0;
@@ -128,7 +128,7 @@ function PiAssembly() {
       </mesh>
       {/* the 240×240 screen, recessed just under the lid aperture; sized to
           the measured ~25mm aperture with a small bleed so no gap shows */}
-      <mesh position={[-0.4, topY - 1.2, -0.3]} rotation={[-Math.PI / 2, 0, -Math.PI / 2]}>
+      <mesh position={[-0.4, topY - 1.2, -0.3]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[26.5, 26]} />
         <meshBasicMaterial map={piScreen} toneMapped={false} />
       </mesh>
@@ -165,7 +165,7 @@ function Esp32Board({ position }: { position: [number, number, number] }) {
  * no re-orientation is needed. */
 function Esp32Assembly({ open }: { open: boolean }) {
   const geo = useLoader(STLLoader, "/models/esp32/touch2.stl") as BufferGeometry;
-  const bootScreen = useScreenTexture("/models/screens/esp32-boot.png");
+  const bootScreen = useScreenTexture("/models/screens/esp32-review.png");
   const boardRef = useRef<Group>(null);
   const wrapRef = useRef<Group>(null);
   const progress = useRef(0);
