@@ -29,10 +29,10 @@ export function Hero() {
         </h1>
 
         <p className="mt-7 max-w-xl text-base leading-relaxed text-foreground/80 sm:text-lg">
-          Faraday is a pocket-sized hardware signer for Solana. Your keys are
-          born on a device with no antennas and never leave it. Transactions
-          cross the air gap as QR codes. No Wi-Fi, Bluetooth, NFC, USB, or
-          Faraday servers anywhere in the loop.
+          Faraday is a pocket-sized hardware signer for Solana. Your keys
+          are born offline and never leave the device. Transactions cross
+          the air gap as QR codes, with no Faraday servers anywhere in the
+          loop. On the Pi, no radio hardware even exists to disable.
         </p>
 
         <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">

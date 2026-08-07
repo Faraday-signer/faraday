@@ -42,7 +42,7 @@ function EntropyReceipt() {
  * section, in the page's light instrument language. */
 function SpecBand() {
   const cells: [string, string][] = [
-    ["Radios", "none on the board"],
+    ["Radios in the loop", "none"],
     ["Flash storage", "none"],
     ["Keys", "RAM only"],
     ["At power-off", "gone"],
@@ -171,7 +171,7 @@ export function SecurityModel() {
             <Claim
               n="02"
               claim="It lives in memory. Nothing can reach it."
-              body="No radios. No flash storage. Power off and it is gone."
+              body="No flash storage, and no radios in the signing loop: on the Pi the radio hardware does not exist, and on the ESP32 it is never linked. Power off and it is gone."
             />
             <div className="mt-8">
               <SpecBand />
