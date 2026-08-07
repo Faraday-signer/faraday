@@ -49,7 +49,7 @@ export function DeviceShowcase() {
       </div>
 
       <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-        two devices · same firmware · drag to rotate
+        two devices · same firmware
       </p>
     </div>
   );
