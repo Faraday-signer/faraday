@@ -2,15 +2,17 @@
 
 import { Suspense, useMemo, useRef } from "react";
 import { Canvas, useFrame, useLoader } from "@react-three/fiber";
-import { Edges, Text, useGLTF } from "@react-three/drei";
+import { Edges, Environment, Lightformer, Text, useGLTF } from "@react-three/drei";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { Box3, MathUtils, Shape, Vector3 } from "three";
 import type { BufferGeometry, Group } from "three";
 
 export type Device3DName = "esp32" | "pi";
 
-const CASE_COLOR = "#15161a";
+const CASE_COLOR = "#17191d";
 const EDGE_COLOR = "#1AF8FF";
+/** Hairline accent, dialed down so cyan reads as a detail, not a paint job. */
+const EDGE_DIM = "#0d5f6b";
 /** How far the lid skirt sinks over the bottom shell's rim (mm). */
 const PI_LID_OVERLAP = 3;
 
@@ -27,8 +29,15 @@ function CaseMesh({
 }) {
   return (
     <mesh geometry={geometry} position={position} castShadow receiveShadow>
-      <meshStandardMaterial color={color} roughness={0.55} metalness={0.15} />
-      {edges && <Edges threshold={28} color={EDGE_COLOR} />}
+      {/* soft-touch shell: matte base under a light clearcoat sheen */}
+      <meshPhysicalMaterial
+        color={color}
+        roughness={0.42}
+        metalness={0.1}
+        clearcoat={0.55}
+        clearcoatRoughness={0.3}
+      />
+      {edges && <Edges threshold={28} color={EDGE_DIM} />}
     </mesh>
   );
 }
@@ -508,10 +517,31 @@ export function Device3D({ device, open = false }: { device: Device3DName; open?
       dpr={[1, 2]}
       className="!h-72 !w-72 sm:!h-80 sm:!w-80"
     >
-      <ambientLight intensity={0.9} />
-      <directionalLight position={[3, 4, 5]} intensity={1.4} />
-      <directionalLight position={[-3, 2, 4]} intensity={0.6} />
-      <directionalLight position={[-4, -2, -3]} intensity={0.4} color={EDGE_COLOR} />
+      <ambientLight intensity={0.35} />
+      <directionalLight position={[3, 4, 5]} intensity={0.9} />
+      <directionalLight position={[-4, -2, -3]} intensity={0.5} color={EDGE_COLOR} />
+      {/* procedural studio: soft top box + two side strips (no HDR download) */}
+      <Environment resolution={256} frames={1}>
+        <Lightformer
+          intensity={1.1}
+          rotation-x={Math.PI / 2}
+          position={[0, 5, 0]}
+          scale={[10, 10, 1]}
+        />
+        <Lightformer
+          intensity={0.9}
+          rotation-y={Math.PI / 2}
+          position={[-5, 1, 2]}
+          scale={[7, 2.5, 1]}
+        />
+        <Lightformer
+          intensity={0.6}
+          rotation-y={-Math.PI / 2}
+          position={[5, 0, 1]}
+          scale={[7, 2.5, 1]}
+          color="#bff4f8"
+        />
+      </Environment>
       <Suspense fallback={null}>
         <DeviceModel key={device} device={device} open={open} />
       </Suspense>
