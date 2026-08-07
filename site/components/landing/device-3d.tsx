@@ -219,7 +219,8 @@ function Esp32Assembly({ open }: { open: boolean }) {
         <Esp32Board position={[fit.cx, fit.cy, fit.cz + 2.5]} />
         <mesh position={[fit.cx, fit.cy, fit.screenZ]}>
           <planeGeometry args={[fit.screenW, fit.screenH]} />
-          <meshBasicMaterial map={bootScreen} toneMapped={false} />
+          {/* texture carries rounded-corner alpha so the panel matches the case */}
+          <meshBasicMaterial map={bootScreen} toneMapped={false} transparent />
         </mesh>
       </group>
       </group>
