@@ -2,10 +2,10 @@
 
 import { Suspense, useMemo, useRef } from "react";
 import { Canvas, useFrame, useLoader } from "@react-three/fiber";
-import { Edges, useGLTF } from "@react-three/drei";
+import { Edges, useGLTF, useTexture } from "@react-three/drei";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-import { Box3, MathUtils, Vector3 } from "three";
-import type { BufferGeometry, Group } from "three";
+import { Box3, MathUtils, SRGBColorSpace, Vector3 } from "three";
+import type { BufferGeometry, Group, Texture } from "three";
 
 export type Device3DName = "esp32" | "pi";
 
@@ -44,6 +44,19 @@ const PI_STICK_XZ: [number, number] = [23.31, -0.93];
 const CONTROL_COLOR = "#e8eaed";
 const CONTROL_EDGES = false;
 
+/** Screen content: real pixels, not a flat glow. The Pi shows an actual
+ * firmware capture (the SPL-transfer review screen); the ESP32 shows a boot
+ * splash built from the brand mark + Departure Mono, matching firmware style. */
+function useScreenTexture(url: string): Texture {
+  const tex = useTexture(url);
+  return useMemo(() => {
+    tex.colorSpace = SRGBColorSpace;
+    tex.anisotropy = 8;
+    tex.needsUpdate = true;
+    return tex;
+  }, [tex]);
+}
+
 /** Pi case: the STLs are a print-bed layout, so assemble by footprint-centering
  * each part and stacking on Y — with the lid overlapping the bottom's rim so
  * the case reads closed, the square 1.3" screen glowing in the aperture, and
@@ -55,6 +68,7 @@ function PiAssembly() {
     "/models/pi/buttons.stl",
     "/models/pi/thumbstick.stl",
   ]) as BufferGeometry[];
+  const piScreen = useScreenTexture("/models/screens/pi-review.png");
 
   const { parts, topY, footprint } = useMemo(() => {
     let y = 0;
@@ -112,15 +126,11 @@ function PiAssembly() {
         <planeGeometry args={[footprint[0] * 0.92, footprint[1] * 0.85]} />
         <meshStandardMaterial color="#0b0c0f" roughness={0.7} />
       </mesh>
-      {/* the lit 240×240 screen, recessed just under the lid aperture */}
-      <mesh position={[0, topY - 1.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[30, 26]} />
-        <meshStandardMaterial
-          color="#08121a"
-          emissive={EDGE_COLOR}
-          emissiveIntensity={0.45}
-          roughness={0.25}
-        />
+      {/* the 240×240 screen, recessed just under the lid aperture; sized to
+          the measured ~25mm aperture with a small bleed so no gap shows */}
+      <mesh position={[-0.4, topY - 1.2, -0.3]} rotation={[-Math.PI / 2, 0, -Math.PI / 2]}>
+        <planeGeometry args={[26.5, 26]} />
+        <meshBasicMaterial map={piScreen} toneMapped={false} />
       </mesh>
     </group>
   );
@@ -155,6 +165,7 @@ function Esp32Board({ position }: { position: [number, number, number] }) {
  * no re-orientation is needed. */
 function Esp32Assembly({ open }: { open: boolean }) {
   const geo = useLoader(STLLoader, "/models/esp32/touch2.stl") as BufferGeometry;
+  const bootScreen = useScreenTexture("/models/screens/esp32-boot.png");
   const boardRef = useRef<Group>(null);
   const wrapRef = useRef<Group>(null);
   const progress = useRef(0);
@@ -208,12 +219,7 @@ function Esp32Assembly({ open }: { open: boolean }) {
         <Esp32Board position={[fit.cx, fit.cy, fit.cz + 2.5]} />
         <mesh position={[fit.cx, fit.cy, fit.screenZ]}>
           <planeGeometry args={[fit.screenW, fit.screenH]} />
-          <meshStandardMaterial
-            color="#08121a"
-            emissive={EDGE_COLOR}
-            emissiveIntensity={0.45}
-            roughness={0.25}
-          />
+          <meshBasicMaterial map={bootScreen} toneMapped={false} />
         </mesh>
       </group>
       </group>
