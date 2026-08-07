@@ -2,9 +2,9 @@
 
 import { Suspense, useMemo, useRef } from "react";
 import { Canvas, useFrame, useLoader } from "@react-three/fiber";
-import { Edges, useGLTF, useTexture } from "@react-three/drei";
+import { Edges, Text, useGLTF, useTexture } from "@react-three/drei";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-import { Box3, MathUtils, SRGBColorSpace, Vector3 } from "three";
+import { Box3, MathUtils, Shape, SRGBColorSpace, Vector3 } from "three";
 import type { BufferGeometry, Group, Texture } from "three";
 
 export type Device3DName = "esp32" | "pi";
@@ -139,6 +139,144 @@ function PiAssembly() {
 /** How far the ESP32 board slides out of the case when exploded (mm). */
 const ESP32_EXPLODE_MM = 34;
 
+/** Firmware UI palette (Theme::faraday_320 verbatim). */
+const FW = {
+  bg: "#001721",
+  text: "#E7E7E7",
+  muted: "#8C9CA8",
+  dim: "#5E7180",
+  accent: EDGE_COLOR,
+  border: "#114358",
+  danger: "#FF6B6B",
+};
+const FW_FONT = "/fonts/DepartureMono-Regular.ttf";
+
+/** One firmware-styled text run, in the screen's logical 240×320 px space. */
+function FwText({
+  x,
+  y,
+  size,
+  color,
+  align = "left",
+  children,
+}: {
+  x: number;
+  y: number;
+  size: number;
+  color: string;
+  align?: "left" | "right" | "center";
+  children: string;
+}) {
+  return (
+    <Text
+      font={FW_FONT}
+      fontSize={size}
+      color={color}
+      anchorX={align}
+      anchorY="middle"
+      letterSpacing={0.02}
+      position={[x - 120, 160 - y, 0.4]}
+    >
+      {children}
+    </Text>
+  );
+}
+
+/** Thin filled rect in logical px (hairlines, dividers, icon strokes). */
+function FwRect({
+  x,
+  y,
+  w,
+  h,
+  color,
+  rotation = 0,
+}: {
+  x: number; // center x, logical px
+  y: number; // center y, logical px
+  w: number;
+  h: number;
+  color: string;
+  rotation?: number;
+}) {
+  return (
+    <mesh position={[x - 120, 160 - y, 0.3]} rotation={[0, 0, rotation]}>
+      <planeGeometry args={[w, h]} />
+      <meshBasicMaterial color={color} toneMapped={false} />
+    </mesh>
+  );
+}
+
+const QP = Math.PI / 4;
+
+/** The ESP32 touch build's zoned APPROVE SEND screen, built as live geometry
+ * (SDF text + rects) instead of a bitmap — crisp at any angle. Layout is the
+ * firmware's own 240×320 grid: 29px header, three body zones at y 29/111/193,
+ * and the 44px bottom touch action bar (reject / next / sign). */
+function Esp32ScreenUI() {
+  const FROM = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
+  const TO = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
+  const roundedScreen = useMemo(() => {
+    const s = new Shape();
+    const w = 120, h = 160, r = 14;
+    s.moveTo(-w + r, -h);
+    s.lineTo(w - r, -h); s.quadraticCurveTo(w, -h, w, -h + r);
+    s.lineTo(w, h - r); s.quadraticCurveTo(w, h, w - r, h);
+    s.lineTo(-w + r, h); s.quadraticCurveTo(-w, h, -w, h - r);
+    s.lineTo(-w, -h + r); s.quadraticCurveTo(-w, -h, -w + r, -h);
+    return s;
+  }, []);
+
+  return (
+    <>
+      {/* panel background */}
+      <mesh>
+        <shapeGeometry args={[roundedScreen]} />
+        <meshBasicMaterial color={FW.bg} toneMapped={false} />
+      </mesh>
+
+      {/* header */}
+      <FwText x={12} y={17} size={14} color={FW.accent}>APPROVE SEND</FwText>
+      <FwText x={228} y={17} size={14} color={FW.dim} align="right">1/3</FwText>
+      <FwRect x={120} y={28.5} w={240} h={1} color={FW.border} />
+
+      {/* zone dividers */}
+      <FwRect x={120} y={111} w={240} h={1} color={FW.border} />
+      <FwRect x={120} y={193} w={240} h={1} color={FW.border} />
+
+      {/* FROM zone */}
+      <FwText x={12} y={45} size={14} color={FW.muted}>FROM</FwText>
+      <FwText x={56} y={45} size={14} color={FW.accent}>(you)</FwText>
+      <FwText x={12} y={66} size={13.5} color={FW.text}>{FROM.slice(0, 22)}</FwText>
+      <FwText x={12} y={84} size={13.5} color={FW.text}>{FROM.slice(22)}</FwText>
+
+      {/* TO zone */}
+      <FwText x={12} y={127} size={14} color={FW.muted}>TO</FwText>
+      <FwText x={12} y={148} size={13.5} color={FW.text}>{TO.slice(0, 22)}</FwText>
+      <FwText x={12} y={166} size={13.5} color={FW.text}>{TO.slice(22)}</FwText>
+
+      {/* AMOUNT zone */}
+      <FwText x={12} y={210} size={17} color={FW.muted}>AMOUNT</FwText>
+      <FwText x={228} y={210} size={17} color={FW.accent} align="right">SOL</FwText>
+      <FwText x={228} y={252} size={26} color={FW.text} align="right">1.5</FwText>
+
+      {/* bottom touch action bar */}
+      <FwRect x={120} y={276} w={240} h={1} color={FW.border} />
+      <FwRect x={80} y={298} w={1} h={44} color={FW.border} />
+      <FwRect x={160} y={298} w={1} h={44} color={FW.border} />
+      {/* reject (danger) */}
+      <FwRect x={40} y={298} w={17} h={3} color={FW.danger} rotation={QP} />
+      <FwRect x={40} y={298} w={17} h={3} color={FW.danger} rotation={-QP} />
+      {/* next page (arrow) */}
+      <FwRect x={118} y={298} w={12} h={3} color={FW.text} />
+      <FwRect x={124} y={295.5} w={9} h={3} color={FW.text} rotation={-QP} />
+      <FwRect x={124} y={300.5} w={9} h={3} color={FW.text} rotation={QP} />
+      {/* sign (accent check) */}
+      <FwRect x={195.5} y={301.5} w={9} h={3} color={FW.accent} rotation={-QP} />
+      <FwRect x={202} y={298.5} w={15} h={3} color={FW.accent} rotation={QP} />
+    </>
+  );
+}
+
 /** The real Waveshare ESP32-S3-Touch-LCD-2 board (manufacturer STEP → GLB,
  * meshopt-compressed). GLB is in meters and shares the case's orientation
  * (front = +Z, portrait Y-up), so it only needs a ×1000 scale into mm space. */
@@ -165,7 +303,6 @@ function Esp32Board({ position }: { position: [number, number, number] }) {
  * no re-orientation is needed. */
 function Esp32Assembly({ open }: { open: boolean }) {
   const geo = useLoader(STLLoader, "/models/esp32/touch2.stl") as BufferGeometry;
-  const bootScreen = useScreenTexture("/models/screens/esp32-review.png");
   const boardRef = useRef<Group>(null);
   const wrapRef = useRef<Group>(null);
   const progress = useRef(0);
@@ -177,16 +314,15 @@ function Esp32Assembly({ open }: { open: boolean }) {
     const center = new Vector3();
     bb.getSize(size);
     bb.getCenter(center);
-    // The display fills most of the front face with a slim ~2mm bezel;
-    // the 240:320 texture stretches slightly to the case's aspect,
-    // which is imperceptible at hero size.
-    const screenH = size.y * 0.9;
+    // Slim side bezel; height follows the panel's true 240:320 aspect so
+    // nothing stretches, leaving the natural larger chin/forehead.
     const screenW = size.x * 0.9;
+    const screenH = (screenW * 320) / 240;
     return {
       cx: center.x,
       cy: center.y,
       cz: center.z,
-      screenW,
+      pxScale: screenW / 240,
       screenH,
       screenZ: bb.max.z + 0.2,
       offset: [-center.x, -center.y, -center.z] as [number, number, number],
@@ -219,11 +355,10 @@ function Esp32Assembly({ open }: { open: boolean }) {
       {/* the board (and its lit screen) slide out together when open */}
       <group ref={boardRef}>
         <Esp32Board position={[fit.cx, fit.cy, fit.cz + 2.5]} />
-        <mesh position={[fit.cx, fit.cy, fit.screenZ]}>
-          <planeGeometry args={[fit.screenW, fit.screenH]} />
-          {/* texture carries rounded-corner alpha so the panel matches the case */}
-          <meshBasicMaterial map={bootScreen} toneMapped={false} transparent />
-        </mesh>
+        {/* live firmware UI in the screen's logical px space (1px = pxScale mm) */}
+        <group position={[fit.cx, fit.cy, fit.screenZ]} scale={fit.pxScale}>
+          <Esp32ScreenUI />
+        </group>
       </group>
       </group>
     </group>
