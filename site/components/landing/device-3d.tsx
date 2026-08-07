@@ -535,6 +535,10 @@ function Esp32Assembly({ open }: { open: boolean }) {
       backShape: roundedRectShape(size.x * 0.97, size.y * 0.97, 6),
       screenZ: bb.max.z - 1.0,
       glassZ: bb.max.z - 0.45,
+      // rear camera hole center (ray-cast) and the case's back face
+      camX: center.x + 0.03,
+      camY: center.y + 5.99,
+      camZ: bb.min.z,
       offset: [-center.x, -center.y, -center.z] as [number, number, number],
     };
   }, [geo]);
@@ -565,6 +569,29 @@ function Esp32Assembly({ open }: { open: boolean }) {
       {/* the board (and its lit screen) slide out together when open */}
       <group ref={boardRef}>
         <Esp32Board position={[fit.cx, fit.cy, fit.cz + 2.5]} />
+        {/* lens cover glass + metal trim ring: glossy physical materials so
+            the camera actually catches the studio light (the CAD's own lens
+            material is matte). Rides with the board through the explode. */}
+        <group position={[fit.camX, fit.camY, fit.camZ - 0.55]}>
+          <mesh rotation={[Math.PI, 0, 0]}>
+            <torusGeometry args={[2.7, 0.5, 12, 32]} />
+            <meshPhysicalMaterial
+              color="#3a3f46"
+              metalness={0.9}
+              roughness={0.18}
+            />
+          </mesh>
+          <mesh rotation={[Math.PI, 0, 0]} position={[0, 0, 0.15]}>
+            <circleGeometry args={[2.45, 28]} />
+            <meshPhysicalMaterial
+              color="#0a1622"
+              metalness={0.4}
+              roughness={0.05}
+              clearcoat={1}
+              clearcoatRoughness={0.08}
+            />
+          </mesh>
+        </group>
         {/* display-module backing fills the whole case opening behind the panel */}
         <mesh position={[fit.cx, fit.cy, fit.screenZ - 0.3]}>
           <shapeGeometry args={[fit.backShape]} />
