@@ -46,13 +46,13 @@ export function HowItWorksScroll() {
           </h2>
         </div>
 
-        <div className="mx-auto mt-8 flex w-full max-w-6xl flex-col items-center px-5 sm:px-8">
+        <div className="mx-auto mt-14 flex w-full max-w-6xl flex-col items-center px-5 sm:px-8">
           <Device3D
             device="esp32"
             holdYaw={POSES[phase]}
             screen={phase === 0 ? "menu" : phase === 3 ? "signed" : "review"}
           />
-          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+          <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
             {phase === 0 && "offline · idle"}
             {phase === 1 && "camera reads the extension's qr"}
             {phase === 2 && "review on the screen"}
@@ -61,7 +61,7 @@ export function HowItWorksScroll() {
         </div>
 
         {/* the controls: four unmistakably clickable step cards */}
-        <div className="mx-auto mt-10 w-full max-w-6xl px-5 sm:px-8">
+        <div className="mx-auto mt-14 w-full max-w-6xl px-5 sm:px-8">
           <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
             {STEPS.map((step, i) => (
               <li key={step.n} aria-current={phase === i ? "step" : undefined}>
