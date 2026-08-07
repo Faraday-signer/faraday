@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import dynamic from "next/dynamic";
 
 import { QrGlyph } from "./qr-glyph";
@@ -209,48 +209,17 @@ function ExtensionPanel({ phase }: { phase: number }) {
   );
 }
 
-const PHASE_MS = 3400;
-
 /**
- * The round-trip story as a normal-height section: once it scrolls into
- * view the four phases auto-advance (hover pauses, clicking a step takes
- * manual control), acting out the real flow between the extension and the
- * 3D device. No pinning — the section only occupies its content height.
+ * The round-trip story, fully reader-paced: four clearly clickable step
+ * cards drive the scene between the extension and the 3D device. No
+ * auto-play, no pinning — the section is a normal block and nothing moves
+ * until the visitor asks it to.
  */
 export function HowItWorksScroll() {
-  const sectionRef = useRef<HTMLElement>(null);
   const [phase, setPhase] = useState(0);
-  const [manual, setManual] = useState(false);
-  const [inView, setInView] = useState(false);
-  const paused = useRef(false);
-
-  useEffect(() => {
-    const el = sectionRef.current;
-    if (!el) return;
-    const obs = new IntersectionObserver(
-      ([entry]) => setInView(entry.isIntersecting),
-      { threshold: 0.35 },
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (manual || !inView) return;
-    const id = setInterval(() => {
-      if (!paused.current) setPhase((p) => (p + 1) % 4);
-    }, PHASE_MS);
-    return () => clearInterval(id);
-  }, [manual, inView]);
 
   return (
-    <section
-      ref={sectionRef}
-      id="how-it-works"
-      className="border-b border-border bg-background"
-      onMouseEnter={() => (paused.current = true)}
-      onMouseLeave={() => (paused.current = false)}
-    >
+    <section id="how-it-works" className="border-b border-border bg-background">
       <div className="flex flex-col py-14 sm:py-16">
         <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">
           <SectionLabel index="01">How it works</SectionLabel>
@@ -295,51 +264,44 @@ export function HowItWorksScroll() {
           </div>
         </div>
 
-        {/* clickable step rail + progress */}
+        {/* the controls: four unmistakably clickable step cards */}
         <div className="mx-auto mt-10 w-full max-w-6xl px-5 sm:px-8">
-          <ol className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+          <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
             {STEPS.map((step, i) => (
               <li key={step.n} aria-current={phase === i ? "step" : undefined}>
                 <button
                   type="button"
-                  onClick={() => {
-                    setManual(true);
-                    setPhase(i);
-                  }}
-                  className="w-full cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => setPhase(i)}
+                  aria-pressed={phase === i}
+                  className={`group h-full w-full cursor-pointer rounded-sm border p-3 text-left transition-[border-color,background-color,transform] duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:p-4 ${
+                    phase === i
+                      ? "border-brand/60 bg-brand/[0.06]"
+                      : "border-border bg-muted/40 hover:border-foreground/25 hover:bg-foreground/[0.04]"
+                  }`}
                 >
                   <span
-                    className={`block h-0.5 w-full rounded-full transition-colors duration-500 ${
-                      phase >= i ? "bg-brand" : "bg-border"
-                    }`}
-                  />
-                  <span
-                    className={`mt-2 block font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-300 ${
-                      phase === i ? "text-foreground" : "text-foreground/40"
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-sm font-mono text-xs transition-colors duration-200 ${
+                      phase === i
+                        ? "bg-primary text-brand"
+                        : "bg-foreground/10 text-foreground/60 group-hover:bg-foreground/15"
                     }`}
                   >
-                    {step.n} · {step.title}
+                    {step.n}
                   </span>
                   <span
-                    className={`mt-0.5 hidden text-xs leading-relaxed text-foreground/60 transition-opacity duration-300 sm:block ${
-                      phase === i ? "opacity-100" : "opacity-0"
+                    className={`mt-2.5 block font-display text-sm tracking-tight sm:text-base ${
+                      phase === i ? "text-foreground" : "text-foreground/70"
                     }`}
                   >
+                    {step.title}
+                  </span>
+                  <span className="mt-1 hidden text-xs leading-relaxed text-foreground/55 sm:block">
                     {step.short}
                   </span>
                 </button>
               </li>
             ))}
           </ol>
-          {manual && (
-            <button
-              type="button"
-              onClick={() => setManual(false)}
-              className="mt-3 cursor-pointer font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-brand"
-            >
-              resume auto-play
-            </button>
-          )}
         </div>
       </div>
     </section>
