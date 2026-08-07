@@ -2,9 +2,9 @@
 
 import { Suspense, useMemo, useRef } from "react";
 import { Canvas, useFrame, useLoader } from "@react-three/fiber";
-import { Edges } from "@react-three/drei";
+import { Edges, useGLTF } from "@react-three/drei";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-import { Vector3 } from "three";
+import { Box3, MathUtils, Vector3 } from "three";
 import type { BufferGeometry, Group } from "three";
 
 export type Device3DName = "esp32" | "pi";
@@ -80,11 +80,38 @@ function PiAssembly() {
   );
 }
 
-/** ESP32 case with the Waveshare ESP32-S3-Touch-LCD-2 up front: a 2" 240×320
- * screen in a dark bezel over a dark interior. The STL's front is already +Z,
- * so no re-orientation is needed. */
-function Esp32Assembly() {
+/** How far the ESP32 board slides out of the case when exploded (mm). */
+const ESP32_EXPLODE_MM = 34;
+
+/** The real Waveshare ESP32-S3-Touch-LCD-2 board (manufacturer STEP → GLB,
+ * meshopt-compressed). GLB is in meters and shares the case's orientation
+ * (front = +Z, portrait Y-up), so it only needs a ×1000 scale into mm space. */
+function Esp32Board({ position }: { position: [number, number, number] }) {
+  const { scene } = useGLTF("/models/esp32/board.glb");
+  const board = useMemo(() => {
+    const s = scene.clone(true);
+    const bb = new Box3().setFromObject(s);
+    const center = bb.getCenter(new Vector3());
+    s.position.sub(center); // center the board on its own origin
+    return s;
+  }, [scene]);
+  return (
+    <group position={position}>
+      {/* 4% under true size so the pin header tucks inside the case walls */}
+      <primitive object={board} scale={960} />
+    </group>
+  );
+}
+
+/** ESP32 case with the real Waveshare ESP32-S3-Touch-LCD-2 board inside: its
+ * bezel fills the front opening, the lit screen plane rides on the board, and
+ * `open` slides the board out of the case. The STL's front is already +Z, so
+ * no re-orientation is needed. */
+function Esp32Assembly({ open }: { open: boolean }) {
   const geo = useLoader(STLLoader, "/models/esp32/touch2.stl") as BufferGeometry;
+  const boardRef = useRef<Group>(null);
+  const wrapRef = useRef<Group>(null);
+  const progress = useRef(0);
   const fit = useMemo(() => {
     geo.computeVertexNormals();
     geo.computeBoundingBox();
@@ -96,42 +123,59 @@ function Esp32Assembly() {
     // Real 2" 240×320 active area, scaled to the case so proportions match.
     const screenH = size.y * 0.66;
     const screenW = screenH * 0.75; // 240:320
-    const frontZ = bb.max.z;
     return {
       cx: center.x,
       cy: center.y,
+      cz: center.z,
       screenW,
       screenH,
-      bezelW: size.x * 0.9,
-      bezelH: size.y * 0.9,
-      bezelZ: frontZ - 0.6,
-      screenZ: frontZ + 0.2,
+      screenZ: bb.max.z + 0.2,
       offset: [-center.x, -center.y, -center.z] as [number, number, number],
     };
   }, [geo]);
 
+  useFrame((_, delta) => {
+    if (!boardRef.current || !wrapRef.current) return;
+    // One damped 0→1 progress drives the slide, the recentering that keeps
+    // the case+board pair in the middle, and a shrink so the longer exploded
+    // assembly still fits the fixed framing.
+    const t = (progress.current = MathUtils.damp(
+      progress.current,
+      open ? 1 : 0,
+      4,
+      delta,
+    ));
+    const s = 1 - 0.28 * t;
+    boardRef.current.position.z = t * ESP32_EXPLODE_MM;
+    wrapRef.current.position.z = (-s * t * ESP32_EXPLODE_MM) / 2;
+    wrapRef.current.scale.setScalar(s);
+  });
+
   return (
-    // Offset the whole group so the case is centered on the origin.
-    <group position={fit.offset}>
+    // Outer group animates the explode (pivot = model center); inner offset
+    // centers the case on the origin.
+    <group ref={wrapRef}>
+      <group position={fit.offset}>
       <CaseMesh geometry={geo} />
-      {/* dark bezel/board filling the front opening (kills the hollow look) */}
-      <mesh position={[fit.cx, fit.cy, fit.bezelZ]}>
-        <planeGeometry args={[fit.bezelW, fit.bezelH]} />
-        <meshStandardMaterial color="#0b0c0f" roughness={0.7} />
-      </mesh>
-      {/* the lit screen */}
-      <mesh position={[fit.cx, fit.cy, fit.screenZ]}>
-        <planeGeometry args={[fit.screenW, fit.screenH]} />
-        <meshStandardMaterial
-          color="#08121a"
-          emissive={EDGE_COLOR}
-          emissiveIntensity={0.45}
-          roughness={0.25}
-        />
-      </mesh>
+      {/* the board (and its lit screen) slide out together when open */}
+      <group ref={boardRef}>
+        <Esp32Board position={[fit.cx, fit.cy, fit.cz + 2.5]} />
+        <mesh position={[fit.cx, fit.cy, fit.screenZ]}>
+          <planeGeometry args={[fit.screenW, fit.screenH]} />
+          <meshStandardMaterial
+            color="#08121a"
+            emissive={EDGE_COLOR}
+            emissiveIntensity={0.45}
+            roughness={0.25}
+          />
+        </mesh>
+      </group>
+      </group>
     </group>
   );
 }
+
+useGLTF.preload("/models/esp32/board.glb");
 
 /** Slow turntable driven on the model (not the camera): framing is fixed by
  * construction, so the device can never drift out of the canvas. Honors
@@ -166,20 +210,20 @@ const PRESENTATION: Record<
   pi: { scale: 2.5 / 73.8, tilt: [Math.PI / 3.2, 0, 0] },
 };
 
-function DeviceModel({ device }: { device: Device3DName }) {
+function DeviceModel({ device, open }: { device: Device3DName; open: boolean }) {
   const p = PRESENTATION[device];
   return (
     <group rotation={p.tilt}>
       <Turntable>
         <group scale={p.scale}>
-          {device === "pi" ? <PiAssembly /> : <Esp32Assembly />}
+          {device === "pi" ? <PiAssembly /> : <Esp32Assembly open={open} />}
         </group>
       </Turntable>
     </group>
   );
 }
 
-export function Device3D({ device }: { device: Device3DName }) {
+export function Device3D({ device, open = false }: { device: Device3DName; open?: boolean }) {
   return (
     <Canvas
       camera={{ position: [0, 0, 4], fov: 40 }}
@@ -188,9 +232,10 @@ export function Device3D({ device }: { device: Device3DName }) {
     >
       <ambientLight intensity={0.9} />
       <directionalLight position={[3, 4, 5]} intensity={1.4} />
+      <directionalLight position={[-3, 2, 4]} intensity={0.6} />
       <directionalLight position={[-4, -2, -3]} intensity={0.4} color={EDGE_COLOR} />
       <Suspense fallback={null}>
-        <DeviceModel key={device} device={device} />
+        <DeviceModel key={device} device={device} open={open} />
       </Suspense>
     </Canvas>
   );

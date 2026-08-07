@@ -17,10 +17,11 @@ const Device3D = dynamic(() => import("./device-3d").then((m) => m.Device3D), {
 
 export function DeviceShowcase() {
   const [device, setDevice] = useState<Device3DName>("esp32");
+  const [open, setOpen] = useState(false);
 
   return (
     <div className="flex flex-col items-center gap-6">
-      <Device3D device={device} />
+      <Device3D device={device} open={open} />
 
       <div
         className="inline-flex rounded-sm border border-border p-1"
@@ -47,6 +48,16 @@ export function DeviceShowcase() {
           </button>
         ))}
       </div>
+
+      {device === "esp32" && (
+        <button
+          aria-pressed={open}
+          onClick={() => setOpen((v) => !v)}
+          className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          {open ? "close it up" : "look inside"}
+        </button>
+      )}
 
       <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
         two devices · same firmware
