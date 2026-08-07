@@ -32,7 +32,9 @@ function PiAssembly() {
   const parts = useMemo(() => {
     let y = 0;
     const out: { geometry: BufferGeometry; position: [number, number, number] }[] = [];
-    for (const g of geos) {
+    geos.forEach((src, i) => {
+      // The top/lid (index 1) is exported upside down; flip it before stacking.
+      const g = i === 1 ? src.clone().rotateX(Math.PI) : src;
       g.computeVertexNormals();
       g.computeBoundingBox();
       const bb = g.boundingBox!;
@@ -43,7 +45,7 @@ function PiAssembly() {
       // Center on X/Z (shared footprint), sit this part's base at the running Y.
       out.push({ geometry: g, position: [-center.x, y - bb.min.y, -center.z] });
       y += size.y;
-    }
+    });
     return out;
   }, [geos]);
 
