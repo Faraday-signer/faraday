@@ -13,6 +13,7 @@ MVP behavior:
 - Extension stores only:
   - paired Solana pubkey (watch-only)
   - approved dapp origins
+  - the wallet's durable-nonce account **address** (public data; the ephemeral keypair that creates it signs once and is never stored)
 - Extension does **not** store seeds or private keys.
 - Signing still happens only on the offline Faraday device.
 - Every transaction is simulated and analyzed for fraud signals before the signing QR is generated.

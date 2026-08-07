@@ -56,10 +56,10 @@ export function SettingsAboutScreen() {
         </p>
 
         <div style={{ display: "flex", gap: space.md, marginTop: space.sm }}>
-          <a href="https://faraday.dev" target="_blank" rel="noreferrer" style={linkStyle}>
-            faraday.dev
+          <a href="https://faraday.to" target="_blank" rel="noreferrer" style={linkStyle}>
+            faraday.to
           </a>
-          <a href="https://github.com/nseguias/faraday" target="_blank" rel="noreferrer" style={linkStyle}>
+          <a href="https://github.com/Faraday-signer/faraday" target="_blank" rel="noreferrer" style={linkStyle}>
             GitHub
           </a>
         </div>
