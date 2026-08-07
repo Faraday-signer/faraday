@@ -61,7 +61,7 @@ Because the STLs are a print-bed layout, `PiAssembly` reconstructs the closed ca
 
 The lid (`top`, index 1) was exported upside down, so it is rotated 180 degrees around X (`clone().rotateX(Math.PI)`) before its box is measured and stacked. The clone avoids mutating the loader-cached geometry (which would double-apply under React strict-mode remounts).
 
-The thumbstick and buttons are deliberately omitted. Their mount positions are not encoded in the print-layout files (each sits at its own arbitrary coordinate), so they cannot be placed accurately without the assembled CAD. A misplaced control looks worse than none, and the closed bottom-plus-top case already reads as a complete device. Adding them back requires either an assembled export or explicit mount coordinates.
+The thumbstick and buttons are seated in their real positions even though the print-layout files don't encode them: the lid's apertures do. Ray-casting a 0.4mm grid down onto the flipped lid (trimesh) finds the holes — three 7×4mm button holes centered at x=-26.15 spaced ~6mm along Z, a ~25mm square screen aperture near center, and a 9.2mm thumbstick hole at (23.31, -0.93). Slice analysis shows both parts print base-down (wide carrier at the bottom), so each is recentered and dropped under the lid top so only its caps poke through (`PI_BUTTONS_XZ` / `PI_STICK_XZ`).
 
 The Pi also gets its screen treatment now: a dark interior plane blocks see-through, and a lit plane recessed just under the lid shows through the screen aperture — the aperture itself masks it, so exact aperture coordinates aren't needed.
 

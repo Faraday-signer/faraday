@@ -23,20 +23,29 @@ function CaseMesh({ geometry, position }: { geometry: BufferGeometry; position?:
   );
 }
 
+/** Aperture centers in the assembled lid's X/Z frame, measured by ray-casting
+ * a grid onto the flipped lid geometry (see docs/device-3d-hero.md): three
+ * 7×4mm button holes around (-26.2, 0) and a 9.2mm thumbstick hole. */
+const PI_BUTTONS_XZ: [number, number] = [-26.15, -0.03];
+const PI_STICK_XZ: [number, number] = [23.31, -0.93];
+
 /** Pi case: the STLs are a print-bed layout, so assemble by footprint-centering
  * each part and stacking on Y — with the lid overlapping the bottom's rim so
- * the case reads closed, plus the square 1.3" screen glowing in the aperture. */
+ * the case reads closed, the square 1.3" screen glowing in the aperture, and
+ * the printed buttons/thumbstick seated in their measured holes. */
 function PiAssembly() {
   const geos = useLoader(STLLoader, [
     "/models/pi/bottom.stl",
     "/models/pi/top.stl",
+    "/models/pi/buttons.stl",
+    "/models/pi/thumbstick.stl",
   ]) as BufferGeometry[];
 
   const { parts, topY, footprint } = useMemo(() => {
     let y = 0;
     const out: { geometry: BufferGeometry; position: [number, number, number] }[] = [];
     let fp: [number, number] = [0, 0];
-    geos.forEach((src, i) => {
+    geos.slice(0, 2).forEach((src, i) => {
       // The top/lid (index 1) is exported upside down; flip it before stacking.
       const g = i === 1 ? src.clone().rotateX(Math.PI) : src;
       g.computeVertexNormals();
@@ -51,6 +60,22 @@ function PiAssembly() {
       out.push({ geometry: g, position: [-center.x, y - bb.min.y, -center.z] });
       y += size.y;
       if (i === 0) fp = [size.x, size.z];
+    });
+    // Buttons and thumbstick print base-down: recenter on X/Z, then drop each
+    // under the lid top so only its caps poke through the holes.
+    ([
+      [geos[2], PI_BUTTONS_XZ, 3.3],
+      [geos[3], PI_STICK_XZ, 3.5],
+    ] as const).forEach(([src, [hx, hz], sink]) => {
+      src.computeVertexNormals();
+      src.computeBoundingBox();
+      const bb = src.boundingBox!;
+      const center = new Vector3();
+      bb.getCenter(center);
+      out.push({
+        geometry: src,
+        position: [hx - center.x, y - sink - bb.min.y, hz - center.z],
+      });
     });
     return { parts: out, topY: y, footprint: fp };
   }, [geos]);
