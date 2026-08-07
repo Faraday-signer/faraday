@@ -8,14 +8,14 @@ const inter = Inter({
 });
 
 const DESCRIPTION =
-  "Faraday is an open-source, air-gapped hardware signer for Solana. Your private keys are generated on a device with no antennas and never leave it — transactions cross the gap as QR codes. No Wi-Fi, no Bluetooth, no Faraday servers.";
+  "Faraday is an open-source, air-gapped hardware signer for Solana. Your private keys are generated on a device with no antennas and never leave it. Transactions cross the gap as QR codes. No Wi-Fi, no Bluetooth, no Faraday servers.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://faraday.to"),
-  title: "Faraday — Air-gapped Solana signer",
+  title: "Faraday · Air-gapped Solana signer",
   description: DESCRIPTION,
   openGraph: {
-    title: "Faraday — Air-gapped Solana signer",
+    title: "Faraday · Air-gapped Solana signer",
     description: DESCRIPTION,
     type: "website",
     siteName: "Faraday",
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Faraday — Air-gapped Solana signer",
+    title: "Faraday · Air-gapped Solana signer",
     description:
       "Sign Solana transactions without trusting your computer. Keys never touch a network; transactions cross the air gap by QR.",
     creator: "@faradaysigner",

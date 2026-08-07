@@ -10,12 +10,12 @@ const STEPS = [
   {
     n: "02",
     title: "Cross the gap",
-    body: "The Faraday extension renders the transaction as a QR code. The device's camera reads it. Nothing electrical connects the two — the only channel is light.",
+    body: "The Faraday extension renders the transaction as a QR code. The device's camera reads it. Nothing electrical connects the two. The only channel is light.",
   },
   {
     n: "03",
     title: "Review on-device",
-    body: "Faraday decodes the raw bytes offline — no RPC, no lookups — and shows exactly what you're about to sign in plain terms. You approve with the buttons.",
+    body: "Faraday decodes the raw bytes offline, with no RPC or lookups, and shows exactly what you're about to sign in plain terms. You approve with the buttons.",
   },
   {
     n: "04",

@@ -12,7 +12,7 @@ export function WaitlistCta() {
           </h2>
           <p className="mt-5 text-base leading-relaxed text-foreground/70">
             Leave an email and we&apos;ll reach out when devices ship. No
-            newsletter, no spam — just a heads-up when there&apos;s something to
+            newsletter, no spam, just a heads-up when there&apos;s something to
             hold.
           </p>
           <div className="mt-8">

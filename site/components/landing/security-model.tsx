@@ -4,7 +4,7 @@ import { SectionLabel } from "./primitives";
 const PILLARS = [
   {
     title: "No antennas, no remote",
-    body: "The signer runs on a Raspberry Pi Zero 1.3 — a board with no Wi-Fi, Bluetooth, NFC, or cellular chip. There is no remote attack surface because there is no radio to reach. The camera and the screen are the only way in or out.",
+    body: "The signer runs on a Raspberry Pi Zero 1.3, a board with no Wi-Fi, Bluetooth, NFC, or cellular chip. There is no remote attack surface because there is no radio to reach. The camera and the screen are the only way in or out.",
   },
   {
     title: "Keys live in RAM only",
@@ -12,11 +12,11 @@ const PILLARS = [
   },
   {
     title: "You sign what you see",
-    body: "Faraday decodes each transaction from its raw bytes — offline, with no RPC — and shows it in plain terms: Jupiter and Raydium swaps, SPL transfers, staking, Anchor calls, Ika multisig approvals. Anything it can't decode is flagged, never guessed.",
+    body: "Faraday decodes each transaction from its raw bytes, offline with no RPC, and shows it in plain terms: Jupiter and Raydium swaps, SPL transfers, staking, Anchor calls, Ika multisig approvals. Anything it can't decode is flagged, never guessed.",
   },
   {
     title: "Open all the way down",
-    body: "Firmware, the OS image recipe, the browser extension, the mobile app — the whole stack is open source. Read it, build it yourself, and verify the binary you run is the one you compiled. No vendor firmware to trust.",
+    body: "Firmware, the OS image recipe, the browser extension, the mobile app: the whole stack is open source. Read it, build it yourself, and verify the binary you run is the one you compiled. No vendor firmware to trust.",
   },
 ];
 

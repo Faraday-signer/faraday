@@ -19,7 +19,7 @@ const ESP32_SPECS = [
   { k: "Display", v: "2\" touch · portrait" },
   { k: "Camera", v: "Onboard" },
   { k: "I/O channel", v: "Camera in · screen out" },
-  { k: "Radios", v: "Never linked — CI-audited" },
+  { k: "Radios", v: "Never linked, CI-audited" },
   { k: "Status", v: "In progress" },
 ];
 
@@ -66,7 +66,7 @@ export function DeviceSection() {
 
             {mode === "build" ? (
               <p className="mt-6 max-w-xl text-base leading-relaxed text-foreground/70">
-                No secure element you have to take on faith — just an open board
+                No secure element you have to take on faith. Just an open board
                 with no network hardware, a screen, and a camera. The Pi Zero 1.3
                 is recommended precisely because the radio chip isn&apos;t
                 physically there, so there is nothing to misconfigure or trust
@@ -77,7 +77,7 @@ export function DeviceSection() {
                 One board, no assembly: an ESP32-S3 with a touch screen and
                 camera, in a 3D-printed Faraday case. You&apos;ll flash the
                 firmware straight from this site when the web flasher ships.
-                This chip does have radio silicon — so the firmware never links
+                This chip does have radio silicon, so the firmware never links
                 the drivers, and the build pipeline fails if they so much as
                 appear in the binary.
               </p>

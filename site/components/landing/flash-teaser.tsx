@@ -17,7 +17,7 @@ export function FlashTeaser() {
               Install Faraday firmware from your browser
             </h2>
             <p className="mt-4 text-base leading-relaxed text-foreground/70">
-              A web flasher for the ESP32-S3 build — plug the board in, click
+              A web flasher for the ESP32-S3 build. Plug the board in, click
               once, and the browser writes the firmware over WebSerial. No
               toolchain, no command line. Pi Zero devices keep using the
               SD-card image.

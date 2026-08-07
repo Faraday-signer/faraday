@@ -16,7 +16,7 @@ export function DemoSection() {
         </h2>
         <p className="mt-5 max-w-xl text-base leading-relaxed text-foreground/70">
           A 90-second run of Faraday acting as an approver on an Ika
-          cross-chain multisig — the device decoding the proposal and showing
+          cross-chain multisig: the device decoding the proposal and showing
           exactly what it will authorize before a signature exists.
         </p>
 

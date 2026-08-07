@@ -14,7 +14,7 @@ import { SiteFooter } from "@/components/landing/site-footer";
 import { SiteNav } from "@/components/landing/site-nav";
 
 export const metadata: Metadata = {
-  title: "Flash your device — Faraday",
+  title: "Flash your device · Faraday",
   description:
     "Install Faraday firmware on an ESP32-S3 from your browser over WebSerial. Coming soon. Pi Zero devices use the SD-card image instead.",
 };
@@ -43,13 +43,13 @@ export default function FlashPage() {
     <div className="min-h-svh bg-background text-foreground">
       <SiteNav />
       <main className="mx-auto max-w-4xl px-5 py-16 sm:px-8 sm:py-24">
-        <SectionLabel index="—">Flash your device</SectionLabel>
+        <SectionLabel index="00">Flash your device</SectionLabel>
         <h1 className="mt-5 font-display text-4xl leading-tight tracking-tight text-foreground sm:text-5xl">
           Install Faraday firmware<span className="text-brand pixel-shadow"> from your browser</span>
         </h1>
         <p className="mt-6 max-w-2xl text-base leading-relaxed text-foreground/75 sm:text-lg">
           Plug an ESP32-S3 into your computer, click once, and the browser
-          writes a verified Faraday firmware image over WebSerial — no
+          writes a verified Faraday firmware image over WebSerial. No
           toolchain, no command line. The image is served versioned from our
           GitHub releases, so you always know exactly what you&apos;re
           installing.
@@ -78,7 +78,7 @@ export default function FlashPage() {
         </dl>
 
         <p className="mt-10 text-sm leading-relaxed text-foreground/60">
-          Running a Raspberry Pi Zero? Browser flashing doesn&apos;t apply — the
+          Running a Raspberry Pi Zero? Browser flashing doesn&apos;t apply. The
           Pi boots a Buildroot SD-card image instead.{" "}
           <Link
             href="/#device"

@@ -6,7 +6,7 @@ const PARTS = [
   {
     title: "The signer",
     kind: "hardware/",
-    body: "Rust firmware for the air-gapped device — the wallet, the transaction parser, and the QR pipeline. Runs on the Pi and, unchanged, as a desktop simulator.",
+    body: "Rust firmware for the air-gapped device: the wallet, the transaction parser, and the QR pipeline. Runs on the Pi and, unchanged, as a desktop simulator.",
     status: <Tag tone="brand">Open source</Tag>,
     action: {
       label: "Read the firmware →",

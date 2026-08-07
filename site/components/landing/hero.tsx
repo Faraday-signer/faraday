@@ -31,7 +31,7 @@ export function Hero() {
         <p className="mt-7 max-w-xl text-base leading-relaxed text-foreground/80 sm:text-lg">
           Faraday is a pocket-sized hardware signer for Solana. Your keys are
           born on a device with no antennas and never leave it. Transactions
-          cross the air gap as QR codes — no Wi-Fi, Bluetooth, NFC, USB, or
+          cross the air gap as QR codes. No Wi-Fi, Bluetooth, NFC, USB, or
           Faraday servers anywhere in the loop.
         </p>
 
