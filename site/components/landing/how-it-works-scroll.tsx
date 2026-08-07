@@ -245,7 +245,7 @@ export function HowItWorksScroll() {
     <section
       ref={sectionRef}
       id="how-it-works"
-      className="relative h-[300svh] border-b border-border bg-background"
+      className="relative h-[240svh] border-b border-border bg-background"
     >
       <div className="sticky top-0 flex h-svh flex-col overflow-hidden pt-16">
         <div className="mx-auto w-full max-w-6xl px-5 pt-6 sm:px-8">
