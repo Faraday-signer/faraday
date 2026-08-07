@@ -16,18 +16,13 @@
 //! are synthetic (0x20, 0x21, …) so the device review shows distinct slots —
 //! none of these txs are submittable to devnet.
 
-// Pulls whole modules via `#[path]` but only uses a subset.
-#![allow(dead_code)]
-
-#[path = "../crypto/mod.rs"]
-mod crypto;
-
-#[path = "../qr/mod.rs"]
-mod qr;
-
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
+use bs58;
 use image::{GrayImage, Luma};
+
+use faraday_core::crypto;
+use faraday_core::qr;
 
 const DEFAULT_MNEMONIC: &str =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";

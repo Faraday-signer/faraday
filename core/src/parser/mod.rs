@@ -2243,14 +2243,14 @@ mod tests {
     // hero variant. They catch (a) extract_ika's dispatch logic, (b) the
     // byte-offset math against the canonical Quasar layouts, and (c) any
     // future fixture-generator drift away from those layouts.
-    const TX_APPROVE: &[u8] = include_bytes!("../../testdata/examples/ika/tx_approve.bin");
-    const TX_CANCEL: &[u8] = include_bytes!("../../testdata/examples/ika/tx_cancel.bin");
-    const TX_EXECUTE: &[u8] = include_bytes!("../../testdata/examples/ika/tx_execute.bin");
-    const TX_BIND: &[u8] = include_bytes!("../../testdata/examples/ika/tx_bind_dwallet.bin");
-    const TX_IKA_SIGN: &[u8] = include_bytes!("../../testdata/examples/ika/tx_ika_sign.bin");
-    const TX_CREATE: &[u8] = include_bytes!("../../testdata/examples/ika/tx_create_wallet.bin");
-    const TX_PROPOSE: &[u8] = include_bytes!("../../testdata/examples/ika/tx_propose.bin");
-    const TX_CLEANUP: &[u8] = include_bytes!("../../testdata/examples/ika/tx_cleanup.bin");
+    const TX_APPROVE: &[u8] = include_bytes!("../../../hardware/testdata/examples/ika/tx_approve.bin");
+    const TX_CANCEL: &[u8] = include_bytes!("../../../hardware/testdata/examples/ika/tx_cancel.bin");
+    const TX_EXECUTE: &[u8] = include_bytes!("../../../hardware/testdata/examples/ika/tx_execute.bin");
+    const TX_BIND: &[u8] = include_bytes!("../../../hardware/testdata/examples/ika/tx_bind_dwallet.bin");
+    const TX_IKA_SIGN: &[u8] = include_bytes!("../../../hardware/testdata/examples/ika/tx_ika_sign.bin");
+    const TX_CREATE: &[u8] = include_bytes!("../../../hardware/testdata/examples/ika/tx_create_wallet.bin");
+    const TX_PROPOSE: &[u8] = include_bytes!("../../../hardware/testdata/examples/ika/tx_propose.bin");
+    const TX_CLEANUP: &[u8] = include_bytes!("../../../hardware/testdata/examples/ika/tx_cleanup.bin");
 
     // ── durable-nonce fixtures ───────────────────────────────────────────
     // Legacy + v0 transactions whose FIRST instruction is
@@ -2260,9 +2260,9 @@ mod tests {
     // the advance-nonce instruction gets a labeled review row instead of the
     // unknown-instruction warning path.
     const TX_NONCE_LEGACY: &[u8] =
-        include_bytes!("../../testdata/examples/nonce/tx_advance_nonce_transfer_legacy.bin");
+        include_bytes!("../../../hardware/testdata/examples/nonce/tx_advance_nonce_transfer_legacy.bin");
     const TX_NONCE_V0: &[u8] =
-        include_bytes!("../../testdata/examples/nonce/tx_advance_nonce_transfer_v0.bin");
+        include_bytes!("../../../hardware/testdata/examples/nonce/tx_advance_nonce_transfer_v0.bin");
 
     /// True when the instruction carries a `Header(expected)` review row.
     fn has_header(ix: &ParsedInstruction, expected: &str) -> bool {

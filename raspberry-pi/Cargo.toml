@@ -46,6 +46,7 @@ faraday-core = { path = "../core" }
 
 embedded-graphics-core = "0.4"
 base64 = "0.22"
+bs58 = "0.5"
 
 # QR decoding + image buffer. `rxing` is paired with an Otsu binarize pass
 # (core/src/qr/threshold.rs) so it copes with hand-drawn CompactSeedQR

@@ -10,10 +10,9 @@ use embedded_graphics::{
 
 use crate::gui::app::{App, Screen};
 use crate::gui::colors;
-// `draw_status_bar` is only reachable from the `not(simulator)`-and-`not(linux)`
-// fallback `draw_message`. Gating the import the same way avoids an
-// `unused_imports` error under the simulator/Linux feature matrix CI uses.
-#[cfg(not(any(feature = "simulator", target_os = "linux")))]
+// `draw_status_bar` is only reachable from the fallback `draw_message`
+// (gated out when `_desktop_sim`, Linux, or `touch-ui` are active).
+#[cfg(not(any(feature = "_desktop_sim", target_os = "linux", feature = "touch-ui")))]
 use crate::gui::components::draw_status_bar;
 use crate::gui::logo;
 use crate::ui::Theme;
