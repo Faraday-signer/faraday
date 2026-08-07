@@ -499,35 +499,26 @@ function Esp32MenuUI() {
         </FwText>
         <FwRect x={120} y={28.5} w={240} h={1} color={FW.border} />
 
-        {/* three 82px rows; the selected one is a solid accent fill */}
+        {/* three full-height rows (no bottom bar on a touch menu — you just
+            tap the row you want); the selected one is a solid accent fill */}
         {rows.map(([label, sub, sel], i) => {
-          const top = 29 + i * 82;
+          const top = 29 + i * 97;
           const labelColor = sel ? FW.bg : FW.text;
           const subColor = sel ? FW.bg : FW.muted;
           return (
             <group key={label}>
               {sel && (
-                <FwRect x={120} y={top + 41} w={240} h={82} color={FW.accent} />
+                <FwRect x={120} y={top + 48.5} w={240} h={97} color={FW.accent} />
               )}
-              <FwText x={12} y={top + 32} size={22} color={labelColor}>
+              <FwText x={12} y={top + 40} size={22} color={labelColor}>
                 {label}
               </FwText>
-              <FwText x={12} y={top + 54} size={13} color={subColor}>
+              <FwText x={12} y={top + 62} size={13} color={subColor}>
                 {sub}
               </FwText>
             </group>
           );
         })}
-
-        {/* bottom touch bar: back (left, text) · confirm (right, accent) */}
-        <FwRect x={120} y={276} w={240} h={1} color={FW.border} />
-        <FwRect x={80} y={298} w={1} h={44} color={FW.border} />
-        <FwRect x={160} y={298} w={1} h={44} color={FW.border} />
-        <FwRect x={42} y={298} w={12} h={3} color={FW.text} />
-        <FwRect x={38} y={295.8} w={8} h={3} color={FW.text} rotation={QP} />
-        <FwRect x={38} y={300.2} w={8} h={3} color={FW.text} rotation={-QP} />
-        <FwRect x={195.5} y={301.5} w={9} h={3} color={FW.accent} rotation={-QP} />
-        <FwRect x={202} y={298.5} w={15} h={3} color={FW.accent} rotation={QP} />
       </group>
     </>
   );
