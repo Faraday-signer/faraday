@@ -24,6 +24,9 @@ credentials.*
 # Rust
 target/
 
+# ESP-IDF build artifacts
+.embuild/
+
 # Pi build artifacts
 *.img
 *.iso
@@ -37,10 +40,10 @@ opt/faraday-bin
 .buildroot-ccache/
 .ccache/
 
-# Test transaction data (generated via hardware/testdata/capture.sh)
-hardware/testdata/test_txs_bin/
-hardware/testdata/test_txs_qr/
-hardware/testdata/test_txs_ur/
+# Test transaction data (generated via raspberry-pi/testdata/capture.sh)
+raspberry-pi/testdata/test_txs_bin/
+raspberry-pi/testdata/test_txs_qr/
+raspberry-pi/testdata/test_txs_ur/
 
 # Ika demo QRs (generated via `just ika-fixtures`)
 hardware/testdata/examples/ika/*.png

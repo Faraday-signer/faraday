@@ -1,0 +1,26 @@
+[workspace]
+members = ["core", "raspberry-pi", "esp32-common", "esp32-touch2"]
+resolver = "2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+
+# QR decoding is compute-bound; size-optimized code (opt-level "s") makes it
+# 2-4x slower. Override to speed-optimized for the QR decode path. rxing is a
+# shared dependency of both esp32-common and raspberry-pi, and Cargo profile
+# overrides are workspace-wide, so this applies to the Pi build too — this is
+# intentional (faster QR decode), at the cost of a larger rxing object on the
+# Pi. The ESP32 speed win is the primary motivation.
+[profile.release.package.rxing]
+opt-level = 3
+
+# The QR decoder, camera path, and main loop now live in esp32-common (shared by
+# every ESP32-S3 board), so the speed override targets it; the per-board binary
+# is thin glue but kept at opt-level 3 too for the per-pixel camera blit.
+[profile.release.package.esp32-common]
+opt-level = 3
+
+[profile.release.package.faraday-esp32-touch2]
+opt-level = 3
