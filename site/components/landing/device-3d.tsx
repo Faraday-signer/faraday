@@ -57,18 +57,17 @@ const CONTROL_EDGES = false;
 /** Camera aperture in the bottom shell, measured by ray-casting its floor:
  * an 8×8mm round hole at assembled (x, z). The camera looks out the bottom. */
 const PI_CAMERA_XZ: [number, number] = [-14.2, 0.02];
-/** How far the Pi lid (with controls + screen) lifts when exploded (mm). */
-const PI_EXPLODE_MM = 26;
+/** Explode travel (mm): the lid rises high, the board to mid-height, and the
+ * camera module stays seated over its floor aperture — a 3-layer sandwich. */
+const PI_LID_LIFT_MM = 32;
+const PI_BOARD_LIFT_MM = 14;
 
-/** Simplified Raspberry Pi Zero (65×30mm) with a standard Pi Camera Module,
- * built from real dimensions as basic shapes — readable at hero size. Sits
- * flat in the bottom shell; the camera's lens points down through the
- * measured floor aperture. */
-function PiBoard({ y }: { y: number }) {
-  const pcb = "#123724";
+/** Simplified Raspberry Pi Zero (65×30mm), real dimensions as basic shapes —
+ * readable at hero size. Lifts to mid-height when exploded. */
+function PiZeroBoard({ y }: { y: number }) {
+  const pcb = "#16502f";
   const metal = { color: "#c8ccd2", metalness: 0.85, roughness: 0.3 } as const;
   const gold = { color: "#b98a2f", metalness: 0.9, roughness: 0.35 } as const;
-  const [camX, camZ] = PI_CAMERA_XZ;
   return (
     <group>
       {/* Pi Zero PCB, components facing up */}
@@ -104,28 +103,44 @@ function PiBoard({ y }: { y: number }) {
         <boxGeometry args={[51, 0.6, 4.5]} />
         <meshStandardMaterial {...gold} />
       </mesh>
-      {/* camera module: PCB over the floor aperture, lens block pointing down */}
-      <mesh position={[camX, y - 3.2, camZ]}>
-        <boxGeometry args={[24, 1, 25]} />
-        <meshStandardMaterial color={pcb} roughness={0.55} metalness={0.1} />
+    </group>
+  );
+}
+
+/** Standard Pi Camera Module seated over the floor aperture, lens down.
+ * Stays with the bottom shell so the open view shows it clearly: green
+ * module PCB, silver lens ring visible in profile, gold flex connector. */
+function PiCameraModule({ y }: { y: number }) {
+  const [camX, camZ] = PI_CAMERA_XZ;
+  return (
+    <group position={[camX, y, camZ]}>
+      {/* module PCB (back face up) */}
+      <mesh>
+        <boxGeometry args={[24, 1.2, 25]} />
+        <meshStandardMaterial color="#16502f" roughness={0.5} metalness={0.1} />
       </mesh>
-      <mesh position={[camX, y - 4.9, camZ]}>
-        <boxGeometry args={[8.5, 3.4, 8.5]} />
-        <meshStandardMaterial color="#0a0b0d" roughness={0.3} metalness={0.3} />
+      {/* gold flex connector stub on the module's back */}
+      <mesh position={[9, 0.75, 0]}>
+        <boxGeometry args={[6, 0.4, 14]} />
+        <meshStandardMaterial color="#b98a2f" metalness={0.9} roughness={0.35} />
       </mesh>
-      <mesh position={[camX, y - 6.65, camZ]} rotation={[Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[2.6, 24]} />
+      {/* lens block below, with a silver ring so it reads in profile */}
+      <mesh position={[0, -2.3, 0]}>
+        <boxGeometry args={[9, 3.6, 9]} />
+        <meshStandardMaterial color="#23262c" roughness={0.35} metalness={0.35} />
+      </mesh>
+      <mesh position={[0, -4.15, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[2.9, 0.55, 10, 28]} />
+        <meshStandardMaterial color="#c8ccd2" metalness={0.85} roughness={0.25} />
+      </mesh>
+      <mesh position={[0, -4.35, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[2.4, 24]} />
         <meshPhysicalMaterial
-          color="#06121c"
-          roughness={0.1}
-          metalness={0.2}
+          color="#0a1e30"
+          roughness={0.08}
+          metalness={0.3}
           clearcoat={1}
         />
-      </mesh>
-      {/* ribbon from the camera up to the board's edge connector */}
-      <mesh position={[camX + 14, y - 1.6, camZ]} rotation={[0, 0, 0.35]}>
-        <boxGeometry args={[9, 0.3, 16]} />
-        <meshStandardMaterial color="#c8b48c" roughness={0.7} />
       </mesh>
     </group>
   );
@@ -183,21 +198,23 @@ function PiAssembly({ open }: { open: boolean }) {
   }, [geos]);
 
   const lidRef = useRef<Group>(null);
+  const boardRef = useRef<Group>(null);
   const wrapRef = useRef<Group>(null);
   const progress = useRef(0);
   useFrame((_, delta) => {
-    if (!lidRef.current || !wrapRef.current) return;
-    // Same damped pattern as the ESP32: lift the lid, recenter the pair,
-    // shrink a touch so the taller open assembly stays framed.
+    if (!lidRef.current || !boardRef.current || !wrapRef.current) return;
+    // Same damped pattern as the ESP32, but three layers: lid high, board
+    // to mid-height, camera stays seated. Recenter + shrink to stay framed.
     const t = (progress.current = MathUtils.damp(
       progress.current,
       open ? 1 : 0,
       4,
       delta,
     ));
-    const s = 1 - 0.18 * t;
-    lidRef.current.position.y = t * PI_EXPLODE_MM;
-    wrapRef.current.position.y = (-s * t * PI_EXPLODE_MM) / 2;
+    const s = 1 - 0.22 * t;
+    lidRef.current.position.y = t * PI_LID_LIFT_MM;
+    boardRef.current.position.y = t * PI_BOARD_LIFT_MM;
+    wrapRef.current.position.y = (-s * t * PI_LID_LIFT_MM) / 2;
     wrapRef.current.scale.setScalar(s);
   });
 
@@ -205,9 +222,13 @@ function PiAssembly({ open }: { open: boolean }) {
     <group ref={wrapRef}>
       {/* Assembly is X/Z-centered by construction; shift so Y is centered too. */}
       <group position={[0, -topY / 2, 0]}>
-        {/* bottom shell stays put, with the board + camera living inside it */}
+        {/* bottom shell stays put; the camera module stays seated over its
+            floor aperture so the open view shows it in the clear */}
         <CaseMesh geometry={parts[0].geometry} position={parts[0].position} />
-        <PiBoard y={9} />
+        <PiCameraModule y={5.2} />
+        <group ref={boardRef}>
+          <PiZeroBoard y={9} />
+        </group>
         {/* lid, controls, and the screen lift off together */}
         <group ref={lidRef}>
           {parts.slice(1).map((p, i) => (
@@ -659,18 +680,48 @@ function Turntable({
  * spins about its own screen normal, so the screen stays presented all cycle. */
 const PRESENTATION: Record<
   Device3DName,
-  { scale: number; tilt: [number, number, number] }
+  { scale: number; tiltX: number; openTiltX: number }
 > = {
   // 59.3mm tall case → ~2.3 units high, screen already facing +Z.
-  esp32: { scale: 2.3 / 59.3, tilt: [0, 0, 0] },
-  // 73.8mm wide case, screen on the top face → tip it toward the camera.
-  pi: { scale: 2.5 / 73.8, tilt: [Math.PI / 3.2, 0, 0] },
+  esp32: { scale: 2.3 / 59.3, tiltX: 0, openTiltX: 0 },
+  // 73.8mm wide case, screen on the top face → tip it toward the camera;
+  // while open it levels out so the 3-layer sandwich is seen from the side.
+  pi: { scale: 2.5 / 73.8, tiltX: Math.PI / 3.2, openTiltX: 0.32 },
 };
+
+/** Damps the presentation tilt between its closed and open values. */
+function PresentationTilt({
+  open,
+  closedX,
+  openX,
+  children,
+}: {
+  open: boolean;
+  closedX: number;
+  openX: number;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<Group>(null);
+  useFrame((_, delta) => {
+    if (!ref.current) return;
+    ref.current.rotation.x = MathUtils.damp(
+      ref.current.rotation.x,
+      open ? openX : closedX,
+      3,
+      delta,
+    );
+  });
+  return (
+    <group ref={ref} rotation={[closedX, 0, 0]}>
+      {children}
+    </group>
+  );
+}
 
 function DeviceModel({ device, open }: { device: Device3DName; open: boolean }) {
   const p = PRESENTATION[device];
   return (
-    <group rotation={p.tilt}>
+    <PresentationTilt open={open} closedX={p.tiltX} openX={p.openTiltX}>
       <Turntable hold={open} openYaw={OPEN_YAW[device]}>
         <group scale={p.scale}>
           {device === "pi" ? (
@@ -680,7 +731,7 @@ function DeviceModel({ device, open }: { device: Device3DName; open: boolean }) 
           )}
         </group>
       </Turntable>
-    </group>
+    </PresentationTilt>
   );
 }
 
