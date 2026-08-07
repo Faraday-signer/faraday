@@ -24,10 +24,17 @@ export function DeviceShowcase() {
       <Device3D device={device} open={open} />
 
       <div
-        className="inline-flex rounded-sm border border-border p-1"
+        className="relative inline-grid grid-cols-2 rounded-sm border border-border p-1"
         role="group"
         aria-label="Choose device"
       >
+        {/* sliding active pill */}
+        <span
+          aria-hidden
+          className={`absolute inset-y-1 left-1 w-[calc(50%-4px)] rounded-[1px] bg-primary transition-transform duration-300 ease-out ${
+            device === "pi" ? "translate-x-full" : ""
+          }`}
+        />
         {(
           [
             ["esp32", "ESP32-S3"],
@@ -38,10 +45,10 @@ export function DeviceShowcase() {
             key={value}
             aria-pressed={device === value}
             onClick={() => setDevice(value)}
-            className={`rounded-[1px] px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.16em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+            className={`relative z-10 cursor-pointer rounded-[1px] px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.16em] transition-[color,transform] duration-300 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
               device === value
-                ? "bg-primary text-brand"
-                : "text-muted-foreground hover:text-foreground"
+                ? "text-brand"
+                : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground"
             }`}
           >
             {label}
@@ -52,9 +59,12 @@ export function DeviceShowcase() {
       <button
         aria-pressed={open}
         onClick={() => setOpen((v) => !v)}
-        className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className="group cursor-pointer font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-brand hover:decoration-solid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         {open ? "close it up" : "look inside"}
+        <span className="ml-1.5 inline-block transition-transform duration-300 group-hover:translate-y-0.5">
+          {open ? "↑" : "↓"}
+        </span>
       </button>
 
       <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
