@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { SectionLabel, Tag } from "./primitives";
+import { Segmented } from "./segmented";
 
 type DeviceMode = "build" | "buy";
 
@@ -31,41 +32,26 @@ export function DeviceSection() {
   return (
     <section id="device" className="border-b border-border bg-background">
       <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-24">
-        <div className="max-w-2xl">
-            <SectionLabel index="03">The device</SectionLabel>
+        <div className="mx-auto max-w-2xl text-center">
+            <SectionLabel index="03" className="justify-center">The device</SectionLabel>
             <h2 className="mt-5 font-display text-3xl leading-tight tracking-tight text-foreground sm:text-4xl">
               Two devices. One firmware.
             </h2>
 
-            <div
-              className="mt-6 inline-flex rounded-sm border border-border p-1"
-              role="tablist"
-              aria-label="Device path"
-            >
-              {(
-                [
+            <div className="mt-6">
+              <Segmented
+                label="Device path"
+                value={mode}
+                onChange={setMode}
+                options={[
                   ["build", "Raspberry Pi Zero"],
                   ["buy", "ESP32-S3"],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  role="tab"
-                  aria-selected={mode === value}
-                  onClick={() => setMode(value)}
-                  className={`cursor-pointer rounded-[1px] px-4 py-2 font-mono text-[11px] uppercase tracking-[0.16em] transition-colors ${
-                    mode === value
-                      ? "bg-primary text-brand"
-                      : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+                ] as const}
+              />
             </div>
 
             {mode === "build" ? (
-              <p className="mt-6 max-w-xl text-base leading-relaxed text-foreground/70">
+              <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-foreground/70">
                 An open board with no network hardware, a screen, and a camera.
                 Every part of it is auditable. The Pi Zero 1.3 is recommended
                 precisely because the radio chip isn&apos;t physically there,
@@ -73,7 +59,7 @@ export function DeviceSection() {
                 &ldquo;off.&rdquo;
               </p>
             ) : (
-              <p className="mt-6 max-w-xl text-base leading-relaxed text-foreground/70">
+              <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-foreground/70">
                 One board, no assembly: an ESP32-S3 with a touch screen and
                 camera, in a 3D-printed Faraday case. This chip does have
                 radio silicon, so the firmware never links the drivers, and
@@ -82,7 +68,7 @@ export function DeviceSection() {
               </p>
             )}
 
-            <div className="mt-8 flex flex-wrap gap-2">
+            <div className="mt-8 flex flex-wrap justify-center gap-2">
               {mode === "build" ? (
                 <Tag tone="brand">Shipping today · Pi Zero</Tag>
               ) : (
