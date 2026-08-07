@@ -49,15 +49,13 @@ export function DeviceShowcase() {
         ))}
       </div>
 
-      {device === "esp32" && (
-        <button
-          aria-pressed={open}
-          onClick={() => setOpen((v) => !v)}
-          className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-        >
-          {open ? "close it up" : "look inside"}
-        </button>
-      )}
+      <button
+        aria-pressed={open}
+        onClick={() => setOpen((v) => !v)}
+        className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      >
+        {open ? "close it up" : "look inside"}
+      </button>
 
       <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
         two devices · same firmware

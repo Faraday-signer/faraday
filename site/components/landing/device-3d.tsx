@@ -54,11 +54,90 @@ const CONTROL_COLOR = "#e8eaed";
 const CONTROL_EDGES = false;
 
 
+/** Camera aperture in the bottom shell, measured by ray-casting its floor:
+ * an 8×8mm round hole at assembled (x, z). The camera looks out the bottom. */
+const PI_CAMERA_XZ: [number, number] = [-14.2, 0.02];
+/** How far the Pi lid (with controls + screen) lifts when exploded (mm). */
+const PI_EXPLODE_MM = 26;
+
+/** Simplified Raspberry Pi Zero (65×30mm) with a standard Pi Camera Module,
+ * built from real dimensions as basic shapes — readable at hero size. Sits
+ * flat in the bottom shell; the camera's lens points down through the
+ * measured floor aperture. */
+function PiBoard({ y }: { y: number }) {
+  const pcb = "#123724";
+  const metal = { color: "#c8ccd2", metalness: 0.85, roughness: 0.3 } as const;
+  const gold = { color: "#b98a2f", metalness: 0.9, roughness: 0.35 } as const;
+  const [camX, camZ] = PI_CAMERA_XZ;
+  return (
+    <group>
+      {/* Pi Zero PCB, components facing up */}
+      <mesh position={[0, y, 0]}>
+        <boxGeometry args={[65, 1.4, 30]} />
+        <meshStandardMaterial color={pcb} roughness={0.55} metalness={0.1} />
+      </mesh>
+      {/* SoC, centered */}
+      <mesh position={[2, y + 1.2, 0]}>
+        <boxGeometry args={[12, 1.2, 12]} />
+        <meshStandardMaterial color="#0c0d10" roughness={0.35} metalness={0.4} />
+      </mesh>
+      {/* SD slot, left edge */}
+      <mesh position={[-27, y + 1.4, -6]}>
+        <boxGeometry args={[11, 1.6, 12]} />
+        <meshStandardMaterial {...metal} />
+      </mesh>
+      {/* mini-HDMI + 2× micro-USB along the front edge */}
+      <mesh position={[-12, y + 1.5, 11.5]}>
+        <boxGeometry args={[11.2, 1.8, 7]} />
+        <meshStandardMaterial {...metal} />
+      </mesh>
+      <mesh position={[8, y + 1.4, 11.8]}>
+        <boxGeometry args={[8, 1.6, 5.6]} />
+        <meshStandardMaterial {...metal} />
+      </mesh>
+      <mesh position={[20, y + 1.4, 11.8]}>
+        <boxGeometry args={[8, 1.6, 5.6]} />
+        <meshStandardMaterial {...metal} />
+      </mesh>
+      {/* 40-pin GPIO pad strip along the back edge */}
+      <mesh position={[0, y + 1, -13]}>
+        <boxGeometry args={[51, 0.6, 4.5]} />
+        <meshStandardMaterial {...gold} />
+      </mesh>
+      {/* camera module: PCB over the floor aperture, lens block pointing down */}
+      <mesh position={[camX, y - 3.2, camZ]}>
+        <boxGeometry args={[24, 1, 25]} />
+        <meshStandardMaterial color={pcb} roughness={0.55} metalness={0.1} />
+      </mesh>
+      <mesh position={[camX, y - 4.9, camZ]}>
+        <boxGeometry args={[8.5, 3.4, 8.5]} />
+        <meshStandardMaterial color="#0a0b0d" roughness={0.3} metalness={0.3} />
+      </mesh>
+      <mesh position={[camX, y - 6.65, camZ]} rotation={[Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[2.6, 24]} />
+        <meshPhysicalMaterial
+          color="#06121c"
+          roughness={0.1}
+          metalness={0.2}
+          clearcoat={1}
+        />
+      </mesh>
+      {/* ribbon from the camera up to the board's edge connector */}
+      <mesh position={[camX + 14, y - 1.6, camZ]} rotation={[0, 0, 0.35]}>
+        <boxGeometry args={[9, 0.3, 16]} />
+        <meshStandardMaterial color="#c8b48c" roughness={0.7} />
+      </mesh>
+    </group>
+  );
+}
+
 /** Pi case: the STLs are a print-bed layout, so assemble by footprint-centering
  * each part and stacking on Y — with the lid overlapping the bottom's rim so
  * the case reads closed, the square 1.3" screen glowing in the aperture, and
- * the printed buttons/thumbstick seated in their measured holes. */
-function PiAssembly() {
+ * the printed buttons/thumbstick seated in their measured holes. `open` lifts
+ * the lid (with controls and screen) off the bottom shell to reveal the
+ * board and camera inside. */
+function PiAssembly({ open }: { open: boolean }) {
   const geos = useLoader(STLLoader, [
     "/models/pi/bottom.stl",
     "/models/pi/top.stl",
@@ -66,10 +145,9 @@ function PiAssembly() {
     "/models/pi/thumbstick.stl",
   ]) as BufferGeometry[];
 
-  const { parts, topY, footprint } = useMemo(() => {
+  const { parts, topY } = useMemo(() => {
     let y = 0;
     const out: { geometry: BufferGeometry; position: [number, number, number] }[] = [];
-    let fp: [number, number] = [0, 0];
     geos.slice(0, 2).forEach((src, i) => {
       // The top/lid (index 1) is exported upside down; flip it before stacking.
       const g = i === 1 ? src.clone().rotateX(Math.PI) : src;
@@ -84,7 +162,6 @@ function PiAssembly() {
       if (i === 1) y -= PI_LID_OVERLAP;
       out.push({ geometry: g, position: [-center.x, y - bb.min.y, -center.z] });
       y += size.y;
-      if (i === 0) fp = [size.x, size.z];
     });
     // Buttons and thumbstick print base-down: recenter on X/Z, then drop each
     // under the lid top so only its caps poke through the holes.
@@ -102,34 +179,56 @@ function PiAssembly() {
         position: [hx - center.x, y - sink - bb.min.y, hz - center.z],
       });
     });
-    return { parts: out, topY: y, footprint: fp };
+    return { parts: out, topY: y };
   }, [geos]);
 
+  const lidRef = useRef<Group>(null);
+  const wrapRef = useRef<Group>(null);
+  const progress = useRef(0);
+  useFrame((_, delta) => {
+    if (!lidRef.current || !wrapRef.current) return;
+    // Same damped pattern as the ESP32: lift the lid, recenter the pair,
+    // shrink a touch so the taller open assembly stays framed.
+    const t = (progress.current = MathUtils.damp(
+      progress.current,
+      open ? 1 : 0,
+      4,
+      delta,
+    ));
+    const s = 1 - 0.18 * t;
+    lidRef.current.position.y = t * PI_EXPLODE_MM;
+    wrapRef.current.position.y = (-s * t * PI_EXPLODE_MM) / 2;
+    wrapRef.current.scale.setScalar(s);
+  });
+
   return (
-    // Assembly is X/Z-centered by construction; shift so Y is centered too.
-    <group position={[0, -topY / 2, 0]}>
-      {parts.map((p, i) => (
-        <CaseMesh
-          key={i}
-          geometry={p.geometry}
-          position={p.position}
-          color={i >= 2 ? CONTROL_COLOR : CASE_COLOR}
-          edges={i >= 2 ? CONTROL_EDGES : true}
-        />
-      ))}
-      {/* dark board filling the interior so apertures don't show through */}
-      <mesh position={[0, topY - 2.6, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[footprint[0] * 0.92, footprint[1] * 0.85]} />
-        <meshStandardMaterial color="#0b0c0f" roughness={0.7} />
-      </mesh>
-      {/* the live 240×240 firmware UI, recessed just under the lid aperture
-          (~25mm), its edges masked by the aperture rim */}
-      <group
-        position={[-0.4, topY - 1.2, -0.3]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        scale={25.8 / 240}
-      >
-        <PiScreenUI />
+    <group ref={wrapRef}>
+      {/* Assembly is X/Z-centered by construction; shift so Y is centered too. */}
+      <group position={[0, -topY / 2, 0]}>
+        {/* bottom shell stays put, with the board + camera living inside it */}
+        <CaseMesh geometry={parts[0].geometry} position={parts[0].position} />
+        <PiBoard y={9} />
+        {/* lid, controls, and the screen lift off together */}
+        <group ref={lidRef}>
+          {parts.slice(1).map((p, i) => (
+            <CaseMesh
+              key={i}
+              geometry={p.geometry}
+              position={p.position}
+              color={i >= 1 ? CONTROL_COLOR : CASE_COLOR}
+              edges={i >= 1 ? CONTROL_EDGES : true}
+            />
+          ))}
+          {/* the live 240×240 firmware UI, recessed just under the lid
+              aperture (~25mm), its edges masked by the aperture rim */}
+          <group
+            position={[-0.4, topY - 1.2, -0.3]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            scale={25.8 / 240}
+          >
+            <PiScreenUI />
+          </group>
+        </group>
       </group>
     </group>
   );
@@ -464,10 +563,10 @@ function Esp32Assembly({ open }: { open: boolean }) {
 
 useGLTF.preload("/models/esp32/board.glb");
 
-/** Yaw the explode swings to when opened: a three-quarter side view, since
- * the board slides along the device's front axis and the separation is
- * invisible dead-on. */
-const OPEN_YAW = -1.05;
+/** Yaw the explode swings to when opened. The ESP32's board slides along its
+ * front axis, invisible dead-on, so it swings well to the side; the Pi's lid
+ * lifts vertically, so a slight angle is enough. */
+const OPEN_YAW: Record<Device3DName, number> = { esp32: -1.05, pi: -0.35 };
 const TWO_PI = Math.PI * 2;
 
 /** Slow turntable driven on the model (not the camera): framing is fixed by
@@ -475,10 +574,18 @@ const TWO_PI = Math.PI * 2;
  * explode is open it swings to (and holds) a side pose so the separation is
  * actually visible; closing resumes the spin. Honors prefers-reduced-motion
  * by holding static poses. */
-function Turntable({ hold, children }: { hold: boolean; children: React.ReactNode }) {
+function Turntable({
+  hold,
+  openYaw,
+  children,
+}: {
+  hold: boolean;
+  openYaw: number;
+  children: React.ReactNode;
+}) {
   const ref = useRef<Group>(null);
   const { gl } = useThree();
-  const targetYaw = useRef(OPEN_YAW);
+  const targetYaw = useRef(openYaw);
   const dragging = useRef(false);
   const lastX = useRef(0);
   const reduced =
@@ -492,7 +599,7 @@ function Turntable({ hold, children }: { hold: boolean; children: React.ReactNod
     if (!hold) return;
     if (ref.current) {
       const y = ref.current.rotation.y;
-      targetYaw.current = OPEN_YAW + TWO_PI * Math.round((y - OPEN_YAW) / TWO_PI);
+      targetYaw.current = openYaw + TWO_PI * Math.round((y - openYaw) / TWO_PI);
     }
     const el = gl.domElement;
     const down = (e: PointerEvent) => {
@@ -525,7 +632,7 @@ function Turntable({ hold, children }: { hold: boolean; children: React.ReactNod
       el.removeEventListener("pointercancel", up);
       dragging.current = false;
     };
-  }, [hold, gl]);
+  }, [hold, gl, openYaw]);
 
   useFrame((_, delta) => {
     if (!ref.current) return;
@@ -564,9 +671,13 @@ function DeviceModel({ device, open }: { device: Device3DName; open: boolean }) 
   const p = PRESENTATION[device];
   return (
     <group rotation={p.tilt}>
-      <Turntable hold={device === "esp32" && open}>
+      <Turntable hold={open} openYaw={OPEN_YAW[device]}>
         <group scale={p.scale}>
-          {device === "pi" ? <PiAssembly /> : <Esp32Assembly open={open} />}
+          {device === "pi" ? (
+            <PiAssembly open={open} />
+          ) : (
+            <Esp32Assembly open={open} />
+          )}
         </group>
       </Turntable>
     </group>
