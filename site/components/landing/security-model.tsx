@@ -152,7 +152,7 @@ export function SecurityModel() {
           Four moments decide whether a key is ever really yours.
         </p>
 
-        <div className="mt-16 flex flex-col gap-16 sm:mt-20 sm:gap-20">
+        <div className="mt-16 flex flex-col gap-24 sm:mt-20 sm:gap-32">
           {/* 01 · lead row, receipt right */}
           <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-[1fr_minmax(0,20rem)] lg:gap-24">
             <Claim
