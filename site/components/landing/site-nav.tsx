@@ -20,7 +20,7 @@ export function SiteNav() {
           aria-label="Faraday home"
           className="inline-flex items-center transition-opacity hover:opacity-80"
         >
-          <Logo height={20} />
+          <Logo height={30} />
         </Link>
 
         <div className="hidden items-center gap-7 md:flex">
