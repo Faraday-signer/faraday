@@ -18,6 +18,7 @@
 //!
 //! Run:
 //!   cargo run --features simulator --bin gen-nonce-fixtures
+use bs58;
 
 // Canonical public example addresses. Not real account holders.
 const NONCE_AUTHORITY_B58: &str = "4KD1Rdrd89NG7XbzW3xsX9Aqnx2EExJvExiNme6g9iAT";
