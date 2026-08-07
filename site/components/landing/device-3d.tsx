@@ -314,17 +314,22 @@ function Esp32Assembly({ open }: { open: boolean }) {
     const center = new Vector3();
     bb.getSize(size);
     bb.getCenter(center);
-    // Slim side bezel; height follows the panel's true 240:320 aspect so
-    // nothing stretches, leaving the natural larger chin/forehead.
-    const screenW = size.x * 0.9;
+    // The display is recessed INTO the case opening (not proud of the face)
+    // so the case rim overlaps it — that parallax is what makes it read as
+    // an embedded screen. Panel keeps the true 240:320 aspect, slightly
+    // wider than the opening so its edges hide under the rim; a dark module
+    // backing fills the rest of the opening behind it.
+    const screenW = size.x * 0.95;
     const screenH = (screenW * 320) / 240;
     return {
       cx: center.x,
       cy: center.y,
       cz: center.z,
       pxScale: screenW / 240,
-      screenH,
-      screenZ: bb.max.z + 0.2,
+      backW: size.x * 0.97,
+      backH: size.y * 0.97,
+      screenZ: bb.max.z - 1.0,
+      glassZ: bb.max.z - 0.45,
       offset: [-center.x, -center.y, -center.z] as [number, number, number],
     };
   }, [geo]);
@@ -355,10 +360,29 @@ function Esp32Assembly({ open }: { open: boolean }) {
       {/* the board (and its lit screen) slide out together when open */}
       <group ref={boardRef}>
         <Esp32Board position={[fit.cx, fit.cy, fit.cz + 2.5]} />
+        {/* display-module backing fills the whole case opening behind the panel */}
+        <mesh position={[fit.cx, fit.cy, fit.screenZ - 0.3]}>
+          <planeGeometry args={[fit.backW, fit.backH]} />
+          <meshStandardMaterial color="#05080b" roughness={0.85} />
+        </mesh>
         {/* live firmware UI in the screen's logical px space (1px = pxScale mm) */}
         <group position={[fit.cx, fit.cy, fit.screenZ]} scale={fit.pxScale}>
           <Esp32ScreenUI />
         </group>
+        {/* glass: a faint gloss layer the key light glints across while it
+            spins. depthWrite off + late renderOrder so it overlays the UI
+            text without ever depth-culling it. */}
+        <mesh position={[fit.cx, fit.cy, fit.glassZ]} renderOrder={10}>
+          <planeGeometry args={[fit.backW, fit.backH]} />
+          <meshStandardMaterial
+            color="#000000"
+            transparent
+            opacity={0.16}
+            roughness={0.08}
+            metalness={0.7}
+            depthWrite={false}
+          />
+        </mesh>
       </group>
       </group>
     </group>
