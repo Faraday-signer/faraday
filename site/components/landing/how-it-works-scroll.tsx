@@ -235,7 +235,7 @@ export function HowItWorksScroll() {
               two machines, with a QR chip that crosses it on the QR legs */}
           <div
             aria-hidden
-            className="relative hidden h-24 w-56 shrink-0 lg:block"
+            className="relative hidden h-24 flex-1 lg:-ml-1 lg:-mr-16 lg:block"
           >
             {/* dashed track + end ticks, drawing-annotation style */}
             <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-brand/50" />
@@ -254,19 +254,6 @@ export function HowItWorksScroll() {
               </span>
             </div>
 
-            {/* the crossing: one QR chip per click on the QR legs */}
-            {phase === 1 && (
-              <QrGlyph
-                key="out"
-                className="absolute left-0 top-1/2 h-8 w-8 -translate-y-1/2 text-foreground/75 motion-safe:animate-[gap-cross_2.2s_ease-in-out_forwards] motion-reduce:hidden"
-              />
-            )}
-            {phase === 3 && (
-              <QrGlyph
-                key="back"
-                className="absolute right-0 top-1/2 h-8 w-8 -translate-y-1/2 text-brand motion-safe:animate-[gap-return_2.2s_ease-in-out_forwards] motion-reduce:hidden"
-              />
-            )}
           </div>
 
           {/* stacked (mobile): short vertical track */}

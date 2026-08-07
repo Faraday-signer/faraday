@@ -105,21 +105,3 @@ html {
   /* show only the first firmware screen */
   .screen-frame[style*="0s"] { opacity: 1; }
 }
-
-/* how-it-works prototypes: QR chip crossing the air gap + step progress */
-@keyframes gap-cross {
-  from { left: 0%; opacity: 0; }
-  10% { opacity: 1; }
-  90% { opacity: 1; }
-  to { left: calc(100% - 1.75rem); opacity: 0; }
-}
-@keyframes gap-return {
-  from { right: 0%; opacity: 0; }
-  10% { opacity: 1; }
-  90% { opacity: 1; }
-  to { right: calc(100% - 1.75rem); opacity: 0; }
-}
-@keyframes step-progress {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
-}
