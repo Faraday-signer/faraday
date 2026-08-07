@@ -1,12 +1,10 @@
 import { DeviceShowcase } from "./device-showcase";
-import { MeasurementGrid } from "./measurement-grid";
 
 const GITHUB_URL = "https://github.com/Faraday-signer/faraday";
 
 export function Hero() {
   return (
     <section className="relative overflow-hidden border-b border-border">
-      <MeasurementGrid className="opacity-70" />
 
       <div className="relative mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 px-5 pb-16 pt-14 sm:px-8 sm:pb-24 sm:pt-20 lg:grid-cols-[1fr_auto] lg:gap-16">
         <div>
