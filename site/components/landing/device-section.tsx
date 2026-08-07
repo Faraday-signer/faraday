@@ -32,8 +32,9 @@ export function DeviceSection() {
   return (
     <section id="device" className="border-b border-border bg-background">
       <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-24">
-        <div className="mx-auto max-w-2xl text-center">
-            <SectionLabel index="03" className="justify-center">The device</SectionLabel>
+        <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-[1fr_minmax(0,24rem)] lg:gap-20">
+          <div>
+            <SectionLabel index="03">The device</SectionLabel>
             <h2 className="mt-5 font-display text-3xl leading-tight tracking-tight text-foreground sm:text-4xl">
               Two devices. One firmware.
             </h2>
@@ -51,7 +52,7 @@ export function DeviceSection() {
             </div>
 
             {mode === "build" ? (
-              <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-foreground/70">
+              <p key="copy-build" className="mt-6 max-w-xl text-base leading-relaxed text-foreground/70 motion-safe:animate-[content-swap_300ms_ease-out]">
                 An open board with no network hardware, a screen, and a camera.
                 Every part of it is auditable. The Pi Zero 1.3 is recommended
                 precisely because the radio chip isn&apos;t physically there,
@@ -59,7 +60,7 @@ export function DeviceSection() {
                 &ldquo;off.&rdquo;
               </p>
             ) : (
-              <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-foreground/70">
+              <p key="copy-buy" className="mt-6 max-w-xl text-base leading-relaxed text-foreground/70 motion-safe:animate-[content-swap_300ms_ease-out]">
                 One board, no assembly: an ESP32-S3 with a touch screen and
                 camera, in a 3D-printed Faraday case. This chip does have
                 radio silicon, so the firmware never links the drivers, and
@@ -68,7 +69,7 @@ export function DeviceSection() {
               </p>
             )}
 
-            <div className="mt-8 flex flex-wrap justify-center gap-2">
+            <div key={`tags-${mode}`} className="mt-8 flex flex-wrap gap-2 motion-safe:animate-[content-swap_300ms_ease-out]">
               {mode === "build" ? (
                 <Tag tone="brand">Shipping today · Pi Zero</Tag>
               ) : (
@@ -77,9 +78,9 @@ export function DeviceSection() {
               <Tag>Same firmware · same air gap</Tag>
             </div>
 
-        </div>
+          </div>
 
-        <dl className="mx-auto mt-10 w-full max-w-2xl divide-y divide-border border-t border-border">
+          <dl key={`dl-${mode}`} className="w-full divide-y divide-border border-t border-border motion-safe:animate-[content-swap_300ms_ease-out]">
               {specs.map((spec) => (
                 <div
                   key={spec.k}
@@ -93,7 +94,8 @@ export function DeviceSection() {
                   </dd>
                 </div>
               ))}
-        </dl>
+          </dl>
+        </div>
       </div>
     </section>
   );
