@@ -209,53 +209,57 @@ function ExtensionPanel({ phase }: { phase: number }) {
   );
 }
 
+const PHASE_MS = 3400;
+
 /**
- * The scroll story: a pinned panel three viewports deep. Native scroll maps to
- * four phases acting out the real round trip between the extension and the 3D
- * device (which turns its camera to the QR, reviews, then shows the signed QR
- * on its actual screen). No wheel hijacking, and anchor jumps pass through.
+ * The round-trip story as a normal-height section: once it scrolls into
+ * view the four phases auto-advance (hover pauses, clicking a step takes
+ * manual control), acting out the real flow between the extension and the
+ * 3D device. No pinning — the section only occupies its content height.
  */
 export function HowItWorksScroll() {
   const sectionRef = useRef<HTMLElement>(null);
   const [phase, setPhase] = useState(0);
+  const [manual, setManual] = useState(false);
+  const [inView, setInView] = useState(false);
+  const paused = useRef(false);
 
   useEffect(() => {
-    let raf = 0;
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const el = sectionRef.current;
-        if (!el) return;
-        const rect = el.getBoundingClientRect();
-        const scrollable = rect.height - window.innerHeight;
-        if (scrollable <= 0) return;
-        const progress = Math.min(1, Math.max(0, -rect.top / scrollable));
-        setPhase(Math.min(3, Math.floor(progress * 4)));
-      });
-    };
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("scroll", onScroll);
-    };
+    const el = sectionRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { threshold: 0.35 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (manual || !inView) return;
+    const id = setInterval(() => {
+      if (!paused.current) setPhase((p) => (p + 1) % 4);
+    }, PHASE_MS);
+    return () => clearInterval(id);
+  }, [manual, inView]);
 
   return (
     <section
       ref={sectionRef}
       id="how-it-works"
-      className="relative h-[200svh] border-b border-border bg-background"
+      className="border-b border-border bg-background"
+      onMouseEnter={() => (paused.current = true)}
+      onMouseLeave={() => (paused.current = false)}
     >
-      <div className="sticky top-0 flex h-svh flex-col overflow-hidden pt-14">
-        <div className="mx-auto w-full max-w-6xl px-5 pt-4 sm:px-8">
+      <div className="flex flex-col py-14 sm:py-16">
+        <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">
           <SectionLabel index="01">How it works</SectionLabel>
           <h2 className="mt-2 max-w-2xl font-display text-2xl leading-tight tracking-tight text-foreground sm:text-3xl">
             One round trip across the air gap
           </h2>
         </div>
 
-        <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center gap-6 px-5 sm:px-8 lg:flex-row lg:gap-12">
+        <div className="mx-auto mt-10 flex w-full max-w-6xl flex-col items-center justify-center gap-6 px-5 sm:px-8 lg:flex-row lg:gap-12">
           <ExtensionPanel phase={phase} />
 
           {/* the gap between the two: direction arrow per leg */}
@@ -291,33 +295,51 @@ export function HowItWorksScroll() {
           </div>
         </div>
 
-        {/* compact step rail + progress */}
-        <div className="mx-auto mb-4 w-full max-w-6xl px-5 sm:px-8">
-          <ol className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
+        {/* clickable step rail + progress */}
+        <div className="mx-auto mt-10 w-full max-w-6xl px-5 sm:px-8">
+          <ol className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
             {STEPS.map((step, i) => (
               <li key={step.n} aria-current={phase === i ? "step" : undefined}>
-                <div
-                  className={`h-0.5 w-full origin-left rounded-full transition-[background-color,transform] duration-500 ${
-                    phase >= i ? "scale-x-100 bg-brand" : "scale-x-100 bg-border"
-                  }`}
-                />
-                <p
-                  className={`mt-2 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-300 ${
-                    phase === i ? "text-foreground" : "text-foreground/40"
-                  }`}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManual(true);
+                    setPhase(i);
+                  }}
+                  className="w-full cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  {step.n} · {step.title}
-                </p>
-                <p
-                  className={`mt-0.5 hidden text-xs leading-relaxed text-foreground/60 transition-opacity duration-300 sm:block ${
-                    phase === i ? "opacity-100" : "opacity-0"
-                  }`}
-                >
-                  {step.short}
-                </p>
+                  <span
+                    className={`block h-0.5 w-full rounded-full transition-colors duration-500 ${
+                      phase >= i ? "bg-brand" : "bg-border"
+                    }`}
+                  />
+                  <span
+                    className={`mt-2 block font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-300 ${
+                      phase === i ? "text-foreground" : "text-foreground/40"
+                    }`}
+                  >
+                    {step.n} · {step.title}
+                  </span>
+                  <span
+                    className={`mt-0.5 hidden text-xs leading-relaxed text-foreground/60 transition-opacity duration-300 sm:block ${
+                      phase === i ? "opacity-100" : "opacity-0"
+                    }`}
+                  >
+                    {step.short}
+                  </span>
+                </button>
               </li>
             ))}
           </ol>
+          {manual && (
+            <button
+              type="button"
+              onClick={() => setManual(false)}
+              className="mt-3 cursor-pointer font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-brand"
+            >
+              resume auto-play
+            </button>
+          )}
         </div>
       </div>
     </section>
