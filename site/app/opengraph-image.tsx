@@ -4,7 +4,7 @@ import { join } from "node:path";
 // @ts-expect-error — wawoff2 has no types
 import { decompress } from "wawoff2";
 
-export const alt = "Faraday — Air-gapped Solana signer";
+export const alt = "Faraday · Air-gapped Solana signer";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -22,14 +22,14 @@ export default async function Image() {
           height: "100%",
           display: "flex",
           flexDirection: "column",
-          backgroundColor: "#f7f6f1",
+          backgroundColor: "#12151b",
           backgroundImage: [
             // Primary 100px grid (stronger lines)
-            "linear-gradient(to right, rgba(23,23,23,0.14) 1px, transparent 1px)",
-            "linear-gradient(to bottom, rgba(23,23,23,0.14) 1px, transparent 1px)",
+            "linear-gradient(to right, rgba(255,255,255,0.10) 1px, transparent 1px)",
+            "linear-gradient(to bottom, rgba(255,255,255,0.10) 1px, transparent 1px)",
             // Sub 20px grid (lighter)
-            "linear-gradient(to right, rgba(23,23,23,0.06) 1px, transparent 1px)",
-            "linear-gradient(to bottom, rgba(23,23,23,0.06) 1px, transparent 1px)",
+            "linear-gradient(to right, rgba(255,255,255,0.045) 1px, transparent 1px)",
+            "linear-gradient(to bottom, rgba(255,255,255,0.045) 1px, transparent 1px)",
           ].join(", "),
           backgroundSize: "100px 100px, 100px 100px, 20px 20px, 20px 20px",
           padding: "80px",
@@ -49,7 +49,7 @@ export default async function Image() {
             width="380"
             height="80"
             fill="#1AF8FF"
-            style={{ filter: "drop-shadow(3px 3px 0 #717171)" }}
+            style={{ filter: "drop-shadow(3px 3px 0 rgba(0,0,0,0.55))" }}
           >
             <path d="M757.438 54.0006H770.322V92.5085H757.438V54.0006ZM808.974 54.0006H821.859V92.5085H808.974V54.0006ZM783.206 118.18H796.09V143.852H783.206V118.18ZM783.206 143.852V156.688H757.438V143.852H783.206ZM796.09 92.5085H808.974V118.18H796.09V92.5085ZM770.322 92.5085H783.206V118.18H770.322V92.5085Z" />
             <path d="M667.198 92.5085H680.083V118.18H667.198V92.5085ZM680.083 118.18H705.851V131.016H680.083V118.18ZM705.851 105.344H718.735V92.5085H680.083V79.6725H718.735V66.8366H731.619V131.016H718.735V118.18H705.851V105.344ZM680.083 54.0006H718.735V66.8366H680.083V54.0006Z" />
@@ -68,7 +68,7 @@ export default async function Image() {
             viewBox="0 0 7 7"
             width="80"
             height="80"
-            fill="#171717"
+            fill="#3a414f"
             shapeRendering="crispEdges"
           >
             <rect x="0" y="0" width="7" height="1" />
@@ -87,7 +87,7 @@ export default async function Image() {
             marginTop: 60,
           }}
         >
-          <span style={{ fontSize: 64, color: "#424242", lineHeight: 1.1 }}>
+          <span style={{ fontSize: 64, color: "#e8eaed", lineHeight: 1.1 }}>
             Sign Solana Transactions
           </span>
           <span
@@ -96,7 +96,7 @@ export default async function Image() {
               color: "#1AF8FF",
               lineHeight: 1,
               marginTop: 8,
-              textShadow: "3px 3px 0 #717171",
+              textShadow: "3px 3px 0 rgba(0,0,0,0.55)",
             }}
           >
             without trusting
@@ -104,7 +104,7 @@ export default async function Image() {
           <span
             style={{
               fontSize: 64,
-              color: "#424242",
+              color: "#e8eaed",
               lineHeight: 1,
               marginTop: 8,
             }}
@@ -119,7 +119,7 @@ export default async function Image() {
             marginTop: 56,
             display: "flex",
             fontSize: 22,
-            color: "#717171",
+            color: "#9aa2b1",
             letterSpacing: 4,
             textTransform: "uppercase",
           }}

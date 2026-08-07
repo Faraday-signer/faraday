@@ -14,7 +14,7 @@ export function Logo({ className, height = 32 }: LogoProps) {
       height={height}
       className={cn("text-brand", className)}
       style={{
-        filter: "drop-shadow(1px 1px 0 var(--muted-foreground))",
+        filter: "drop-shadow(1px 1px 0 var(--foreground))",
       }}
     />
   );
