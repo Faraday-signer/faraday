@@ -12,9 +12,9 @@ export function Hero() {
         <div>
         <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground sm:text-xs">
           Air-gapped
-          <span className="mx-2 text-brand-ink">·</span>
+          <span className="mx-2 text-brand">·</span>
           Memory-resident keys
-          <span className="mx-2 text-brand-ink">·</span>
+          <span className="mx-2 text-brand">·</span>
           Open-source
         </p>
 
@@ -22,7 +22,7 @@ export function Hero() {
           <span className="block text-4xl leading-[1.05] sm:text-6xl">
             Sign Solana transactions
           </span>
-          <span className="mt-1 block text-4xl leading-[1.05] text-brand-ink pixel-shadow sm:text-6xl">
+          <span className="mt-1 block text-4xl leading-[1.05] text-brand pixel-shadow sm:text-6xl">
             without trusting
           </span>
           <span className="mt-1 block text-4xl leading-[1.05] sm:text-6xl">

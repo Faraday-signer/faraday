@@ -20,8 +20,6 @@
   --primary: oklch(0.269 0 0);
   --primary-foreground: oklch(0.975 0.005 85);
   --brand: #1AF8FF;
-  /* Darkened cyan (same hue) only for cyan text/accents that must stay legible on the warm white. */
-  --brand-ink: oklch(0.51 0.1 210);
   --radius: 0.125rem;
 }
 
@@ -36,7 +34,6 @@
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-brand: var(--brand);
-  --color-brand-ink: var(--brand-ink);
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: "Departure Mono", ui-monospace, monospace;
   --font-mono: "Departure Mono", ui-monospace, monospace;
@@ -77,6 +74,13 @@ html {
 /* Cyan pixel-offset shadow used on emphasized display type (the wordmark look). */
 .pixel-shadow {
   filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, 0.55));
+}
+
+/* Tighter hard offset for small cyan labels — gives bright brand text a dark
+   edge so it stays legible on the light background. Crisper as text-shadow
+   than a filter at small sizes. */
+.pixel-shadow-sm {
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.55);
 }
 
 /* Ambient hero device: slow float + a 9s three-screen firmware cycle. */

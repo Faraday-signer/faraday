@@ -45,7 +45,7 @@ export default function FlashPage() {
       <main className="mx-auto max-w-4xl px-5 py-16 sm:px-8 sm:py-24">
         <SectionLabel index="—">Flash your device</SectionLabel>
         <h1 className="mt-5 font-display text-4xl leading-tight tracking-tight text-foreground sm:text-5xl">
-          Install Faraday firmware<span className="text-brand-ink pixel-shadow"> from your browser</span>
+          Install Faraday firmware<span className="text-brand pixel-shadow"> from your browser</span>
         </h1>
         <p className="mt-6 max-w-2xl text-base leading-relaxed text-foreground/75 sm:text-lg">
           Plug an ESP32-S3 into your computer, click once, and the browser
@@ -69,7 +69,7 @@ export default function FlashPage() {
         <dl className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-sm border border-border bg-border sm:grid-cols-2">
           {NOTES.map((note) => (
             <div key={note.k} className="bg-background p-5 sm:p-6">
-              <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-brand-ink">
+              <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-brand">
                 {note.k}
               </dt>
               <dd className="mt-2 text-sm text-foreground/80">{note.v}</dd>
@@ -82,7 +82,7 @@ export default function FlashPage() {
           Pi boots a Buildroot SD-card image instead.{" "}
           <Link
             href="/#device"
-            className="text-brand-ink transition-colors hover:text-brand-ink/80"
+            className="text-brand transition-colors hover:text-brand/80"
           >
             See the device build →
           </Link>

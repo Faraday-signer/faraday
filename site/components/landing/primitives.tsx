@@ -16,7 +16,7 @@ export function SectionLabel({
   return (
     <p
       className={cn(
-        "flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.22em] text-brand-ink sm:text-xs",
+        "flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.22em] text-brand sm:text-xs",
         className
       )}
     >
@@ -27,7 +27,7 @@ export function SectionLabel({
       <span aria-hidden className="text-foreground/25">
         ·
       </span>
-      <span>{children}</span>
+      <span className="pixel-shadow-sm">{children}</span>
       <span aria-hidden className="text-foreground/30">
         ]
       </span>
@@ -50,7 +50,7 @@ export function Tag({
       className={cn(
         "inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] sm:text-[11px]",
         tone === "brand"
-          ? "border-brand/40 text-brand-ink"
+          ? "border-brand/40 text-brand"
           : "border-border text-muted-foreground",
         className
       )}

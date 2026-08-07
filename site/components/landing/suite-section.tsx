@@ -54,7 +54,7 @@ export function SuiteSection() {
               key={part.title}
               className="flex flex-col bg-background p-6 sm:p-8"
             >
-              <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-brand-ink">
+              <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-brand">
                 {part.kind}
               </p>
               <h3 className="mt-3 font-display text-xl tracking-tight text-foreground">
@@ -70,7 +70,7 @@ export function SuiteSection() {
                     href={part.action.href}
                     target={part.action.external ? "_blank" : undefined}
                     rel={part.action.external ? "noopener noreferrer" : undefined}
-                    className="whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.14em] text-foreground transition-colors hover:text-brand-ink"
+                    className="whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.14em] text-foreground transition-colors hover:text-brand"
                   >
                     {part.action.label}
                   </a>
