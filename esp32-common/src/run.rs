@@ -52,15 +52,7 @@ pub fn run<'d, D, T, B>(
     }
     unsafe { bootloader_random_enable() };
 
-    // Fail-closed RNG liveness check, mirroring the seed self-test above: two
-    // samples must differ and not both be zero, catching a dead or stuck RNG at
-    // boot before any entropy is drawn for a wallet.
-    let r1 = unsafe { esp_idf_sys::esp_random() };
-    let r2 = unsafe { esp_idf_sys::esp_random() };
-    assert!(
-        r1 != r2 && !(r1 == 0 && r2 == 0),
-        "esp_random self-test failed — hardware RNG entropy source not live"
-    );
+    rng_health_check();
 
     // Back-date so the first loop iteration samples immediately. `checked_sub`
     // guards against underflow early in boot (the monotonic clock is still near
@@ -354,6 +346,60 @@ pub fn run<'d, D, T, B>(
 
         FreeRtos::delay_ms(5);
     }
+}
+
+/// NIST SP 800-90B health tests on the hardware RNG, run once at boot.
+///
+/// Two tests:
+/// 1. Repetition Count Test (RCT) — catches a stuck RNG producing constant or
+///    near-constant output (the Coldcard Mk4 failure mode).
+/// 2. Monobit test — catches a catastrophically biased RNG.
+///
+/// For a conditioned 32-bit source (`esp_random` after `bootloader_random_enable`),
+/// an RCT cutoff of 2 (three consecutive identical values = failure) has a
+/// false-positive probability < 2⁻⁶⁴ per position — effectively zero over 256
+/// samples. The monobit test uses a 6σ window on 8192 bits, giving a ~2×10⁻⁹
+/// false-positive rate.
+fn rng_health_check() {
+    const SAMPLES: usize = 256;
+    const BITS: f64 = (SAMPLES * 32) as f64;
+    const SIGMA: f64 = 6.0;
+    let expected = BITS / 2.0;
+    let stddev = (BITS * 0.25).sqrt();
+
+    let mut prev: u32 = 0;
+    let mut run: u32 = 1;
+    let mut max_run: u32 = 1;
+    let mut ones: u64 = 0;
+
+    for i in 0..SAMPLES {
+        let v = unsafe { esp_idf_sys::esp_random() };
+        if i > 0 {
+            if v == prev {
+                run += 1;
+            } else {
+                run = 1;
+            }
+            if run > max_run {
+                max_run = run;
+            }
+        }
+        prev = v;
+        ones += v.count_ones() as u64;
+    }
+
+    assert!(
+        max_run <= 2,
+        "RNG health: repetition count test failed — max run of {max_run} consecutive identical values"
+    );
+
+    let diff = (ones as f64 - expected).abs();
+    assert!(
+        diff < SIGMA * stddev,
+        "RNG health: monobit test failed — {ones} ones, expected ≈ {e} (σ ≈ {s:.1})",
+        e = expected as u64,
+        s = stddev,
+    );
 }
 
 // How often to re-sample the battery. The pack voltage moves slowly, so a
