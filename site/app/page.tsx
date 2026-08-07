@@ -1,13 +1,10 @@
-import { DemoSection } from "@/components/landing/demo-section";
 import { DeviceSection } from "@/components/landing/device-section";
-import { FlashTeaser } from "@/components/landing/flash-teaser";
 import { Hero } from "@/components/landing/hero";
 import { HowItWorksScroll } from "@/components/landing/how-it-works-scroll";
 import { MeasurementGrid } from "@/components/landing/measurement-grid";
 import { SecurityModel } from "@/components/landing/security-model";
 import { SiteFooter } from "@/components/landing/site-footer";
 import { SiteNav } from "@/components/landing/site-nav";
-import { SuiteSection } from "@/components/landing/suite-section";
 import { WaitlistCta } from "@/components/landing/waitlist-cta";
 
 export default function Home() {
@@ -25,9 +22,8 @@ export default function Home() {
           <SecurityModel />
           <HowItWorksScroll />
           <DeviceSection />
-          <SuiteSection />
-          <DemoSection />
-          <FlashTeaser />
+          {/* SuiteSection, DemoSection, and FlashTeaser are hidden until
+              their content is real; the components remain in the tree. */}
           <WaitlistCta />
         </main>
         <SiteFooter />

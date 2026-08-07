@@ -22,19 +22,12 @@ export function SiteFooter() {
               <FooterLink href="#how-it-works">How it works</FooterLink>
               <FooterLink href="#security">Security</FooterLink>
               <FooterLink href="#device">Device</FooterLink>
-              <FooterLink href="/flash" internal>
-                Flash device
-              </FooterLink>
             </FooterCol>
 
             <FooterCol title="Code">
               <FooterLink href={GITHUB_URL} external>
                 GitHub
               </FooterLink>
-              {/* Reserved slot for the extension store listing (FA-08). */}
-              <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground/50">
-                Extension · soon
-              </span>
             </FooterCol>
 
             <FooterCol title="More">

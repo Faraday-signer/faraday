@@ -6,7 +6,6 @@ const SECTION_LINKS = [
   { href: "#security", label: "Security" },
   { href: "#how-it-works", label: "How it works" },
   { href: "#device", label: "Device" },
-  { href: "#suite", label: "The suite" },
 ];
 
 const GITHUB_URL = "https://github.com/Faraday-signer/faraday";
@@ -33,16 +32,6 @@ export function SiteNav() {
               {link.label}
             </a>
           ))}
-          {/* Reserved slot for the web flasher (FA-13); ships as /flash. */}
-          <Link
-            href="/flash"
-            className="group inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Flash device
-            <span className="rounded-sm border border-brand-ink/50 px-1 py-px text-[11px] leading-none tracking-[0.1em] text-brand-ink">
-              soon
-            </span>
-          </Link>
         </div>
 
         <div className="flex items-center gap-4">
