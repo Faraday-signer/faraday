@@ -432,7 +432,106 @@ function Esp32ScreenUI() {
 }
 
 /** What the ESP32's screen is showing. */
-export type Esp32Screen = "review" | "signed";
+export type Esp32Screen = "menu" | "review" | "signed";
+
+/** The firmware's pixel logo bitmap (core/src/gui/logo.rs) — 60×10, packed
+ * MSB-first into two u32 chunks per row. The pixel grid IS the brand. */
+const FW_LOGO: [number, number][] = [
+  [0xf30f8000, 0x00080000],
+  [0xf3080000, 0x00080000],
+  [0xf0080e36, 0x3868e220],
+  [0xf00f0118, 0x04981220],
+  [0x0f080f10, 0x3c88f220],
+  [0x0f081110, 0x44891140],
+  [0xcf081310, 0x4c993140],
+  [0xcf080d3c, 0x3468d080],
+  [0x00000000, 0x00000080],
+  [0x00000000, 0x00000300],
+];
+
+/** The touch build's main menu, seed loaded: Brand header (pixel logo +
+ * short-address chip), three 82px list rows with the selected one filled
+ * solid accent (SIGN / transaction), and the bottom touch bar (back ·
+ * confirm). Geometry from core/src/gui/screens.rs draw_main_menu +
+ * ui/widgets/list.rs. */
+function Esp32MenuUI() {
+  const logoTex = useMemo(() => {
+    const w = 60, h = 10;
+    const cnv = document.createElement("canvas");
+    cnv.width = w;
+    cnv.height = h;
+    const ctx = cnv.getContext("2d")!;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#1AF8FF";
+    FW_LOGO.forEach((chunks, r) => {
+      for (let c = 0; c < w; c++) {
+        const chunk = chunks[c < 32 ? 0 : 1];
+        const bit = (chunk >>> (31 - (c % 32))) & 1;
+        if (bit === 1) ctx.fillRect(c, r, 1, 1);
+      }
+    });
+    const t = new CanvasTexture(cnv);
+    t.magFilter = NearestFilter;
+    t.colorSpace = SRGBColorSpace;
+    return t;
+  }, []);
+
+  const bg = useMemo(() => roundedRectShape(240, 320, 14), []);
+  const rows: [string, string, boolean][] = [
+    ["SIGN", "transaction", true],
+    ["WALLET DATA", "addresses & backup", false],
+    ["ABOUT", "about faraday", false],
+  ];
+  return (
+    <>
+      <mesh>
+        <shapeGeometry args={[bg]} />
+        <meshBasicMaterial color={FW.bg} toneMapped={false} />
+      </mesh>
+      <group position={[-120, 160, 0]}>
+        {/* Brand header: logo at scale 2, address chip, hairline */}
+        <mesh position={[66, -15, 0.4]}>
+          <planeGeometry args={[120, 20]} />
+          <meshBasicMaterial map={logoTex} transparent toneMapped={false} />
+        </mesh>
+        <FwText x={228} y={17} size={12} color={FW.dim} align="right">
+          7xKX...gAsU
+        </FwText>
+        <FwRect x={120} y={28.5} w={240} h={1} color={FW.border} />
+
+        {/* three 82px rows; the selected one is a solid accent fill */}
+        {rows.map(([label, sub, sel], i) => {
+          const top = 29 + i * 82;
+          const labelColor = sel ? FW.bg : FW.text;
+          const subColor = sel ? FW.bg : FW.muted;
+          return (
+            <group key={label}>
+              {sel && (
+                <FwRect x={120} y={top + 41} w={240} h={82} color={FW.accent} />
+              )}
+              <FwText x={12} y={top + 32} size={22} color={labelColor}>
+                {label}
+              </FwText>
+              <FwText x={12} y={top + 54} size={13} color={subColor}>
+                {sub}
+              </FwText>
+            </group>
+          );
+        })}
+
+        {/* bottom touch bar: back (left, text) · confirm (right, accent) */}
+        <FwRect x={120} y={276} w={240} h={1} color={FW.border} />
+        <FwRect x={80} y={298} w={1} h={44} color={FW.border} />
+        <FwRect x={160} y={298} w={1} h={44} color={FW.border} />
+        <FwRect x={42} y={298} w={12} h={3} color={FW.text} />
+        <FwRect x={38} y={295.8} w={8} h={3} color={FW.text} rotation={QP} />
+        <FwRect x={38} y={300.2} w={8} h={3} color={FW.text} rotation={-QP} />
+        <FwRect x={195.5} y={301.5} w={9} h={3} color={FW.accent} rotation={-QP} />
+        <FwRect x={202} y={298.5} w={15} h={3} color={FW.accent} rotation={QP} />
+      </group>
+    </>
+  );
+}
 
 /** The signed-QR screen: the deterministic QrGlyph pattern rendered once to a
  * tiny canvas (nearest-filtered, so modules stay razor sharp) on the
@@ -684,7 +783,13 @@ function Esp32Assembly({
         </mesh>
         {/* live firmware UI in the screen's logical px space (1px = pxScale mm) */}
         <group position={[fit.cx, fit.cy, fit.screenZ]} scale={fit.pxScale}>
-          {screen === "signed" ? <Esp32SignedUI /> : <Esp32ScreenUI />}
+          {screen === "signed" ? (
+            <Esp32SignedUI />
+          ) : screen === "menu" ? (
+            <Esp32MenuUI />
+          ) : (
+            <Esp32ScreenUI />
+          )}
         </group>
         {/* glass: a faint gloss layer the key light glints across while it
             spins. depthWrite off + late renderOrder so it overlays the UI

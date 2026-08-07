@@ -280,7 +280,7 @@ export function HowItWorksScroll() {
             <Device3D
               device="esp32"
               holdYaw={POSES[phase]}
-              screen={phase === 3 ? "signed" : "review"}
+              screen={phase === 0 ? "menu" : phase === 3 ? "signed" : "review"}
             />
             <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
               {phase === 0 && "offline · idle"}
