@@ -3,7 +3,7 @@ import { WaitlistForm } from "./waitlist-form";
 
 export function WaitlistCta() {
   return (
-    <section id="waitlist" className="border-b border-border">
+    <section id="waitlist" className="border-b border-border bg-background">
       <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-24">
         <div className="max-w-xl">
           <SectionLabel index="07">Early access</SectionLabel>

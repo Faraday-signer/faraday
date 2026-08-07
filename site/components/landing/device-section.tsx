@@ -29,7 +29,7 @@ export function DeviceSection() {
   const specs = mode === "build" ? PI_SPECS : ESP32_SPECS;
 
   return (
-    <section id="device" className="border-b border-border">
+    <section id="device" className="border-b border-border bg-background">
       <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-24">
         <div className="max-w-2xl">
             <SectionLabel index="03">The device</SectionLabel>
