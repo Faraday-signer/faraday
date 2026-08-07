@@ -8,8 +8,9 @@
 # macOS
 .DS_Store
 
-# Claude Code
-.claude/
+# Claude Code (local state stays untracked; shared agent definitions are versioned)
+.claude/*
+!.claude/agents/
 
 # Secrets - NEVER commit these
 .env
@@ -43,6 +44,9 @@ opt/faraday-bin
 raspberry-pi/testdata/test_txs_bin/
 raspberry-pi/testdata/test_txs_qr/
 raspberry-pi/testdata/test_txs_ur/
+
+# Ika demo QRs (generated via `just ika-fixtures`)
+hardware/testdata/examples/ika/*.png
 
 # Logs
 *.log

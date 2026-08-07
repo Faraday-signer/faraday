@@ -28,6 +28,11 @@ pub fn identify(program_id: &[u8; 32]) -> Option<KnownProgram> {
         "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo" => "Meteora DLMM",
         "PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY" => "Phoenix",
         "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P" => "Pump.fun",
+        // clear-msig-ika (Quasar program, 1-byte discriminators). Deployed on
+        // devnet at slot 464406014 (verified via getAccountInfo). No mainnet
+        // deployment observed at time of writing — that's expected; the demo
+        // flow lives on devnet.
+        "2jsLpMRZAJUJJ7weNhBJqVAgLjpngi6xTEPUbttmTUjA" => "Ika clear-msig",
         _ => return None,
     };
     Some(KnownProgram { name })
@@ -138,6 +143,12 @@ mod tests {
     fn test_raydium_cpmm() {
         let id = pubkey_from_b58("CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C");
         assert_eq!(identify(&id).unwrap().name, "Raydium CPMM");
+    }
+
+    #[test]
+    fn test_ika_clear_msig() {
+        let id = pubkey_from_b58("2jsLpMRZAJUJJ7weNhBJqVAgLjpngi6xTEPUbttmTUjA");
+        assert_eq!(identify(&id).unwrap().name, "Ika clear-msig");
     }
 
     #[test]

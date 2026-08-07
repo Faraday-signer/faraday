@@ -30,6 +30,14 @@ ext:
 ext-install:
     cd extension && npm install
 
+# Generate Ika fixture QRs (8 messages + 8 txs) into testdata/examples/ika/.
+ika-fixtures:
+    cd hardware && cargo run --features simulator --bin gen-ika-fixtures
+
+# Generate durable-nonce tx fixtures (legacy + v0) into testdata/examples/nonce/.
+nonce-fixtures:
+    cd hardware && cargo run --features simulator --bin gen-nonce-fixtures
+
 # Run cargo tests.
 test:
     cd raspberry-pi && cargo test

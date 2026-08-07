@@ -3,13 +3,18 @@ import bs58 from "bs58";
 import nacl from "tweetnacl";
 
 import {
+  buildSolanaOffchainMessage,
   buildSignMessageQrPayload,
+  decodeSignMessageQrPayload,
   decodeHexSignature,
   decodeBase64,
+  describeSignMessageBytes,
   encodeBase64,
   formatSiwsMessage,
   isValidSolanaAddress,
   parseFaradaySigEnvelope,
+  parseIkaApprovalMessage,
+  parseSolanaOffchainMessage,
   pubkeyToBytes,
   spliceFaradaySignature,
   validateSignedMessage,
@@ -498,6 +503,245 @@ describe("buildSignMessageQrPayload", () => {
   it("rejects messages below firmware scan threshold", () => {
     const message = new Uint8Array(35).fill(0x41);
     expect(() => buildSignMessageQrPayload(message)).toThrow(/too short/i);
+  });
+
+  it("decodes a 0xFF-prefixed sign-message QR payload", () => {
+    const message = new TextEncoder().encode("expires 2030-01-01 00:00:00: approve transfer");
+    const payload = buildSignMessageQrPayload(message);
+    expect(decodeSignMessageQrPayload(payload)).toEqual(message);
+  });
+});
+
+describe("Solana off-chain messages", () => {
+  const text = "expires 2030-01-01 00:00:00: approve transfer 1000000000 lamports to 9abc | wallet: treasury proposal: 42";
+
+  it("builds and parses Solana off-chain message bytes", () => {
+    const message = buildSolanaOffchainMessage(text);
+    expect(message[0]).toBe(0xff);
+    expect(new TextDecoder().decode(message.slice(1, 16))).toBe("solana offchain");
+
+    const parsed = parseSolanaOffchainMessage(message);
+    expect(parsed?.version).toBe(0);
+    expect(parsed?.format).toBe(0);
+    expect(parsed?.bodyText).toBe(text);
+  });
+
+  it("describes wrapped messages by their human-readable body", () => {
+    const message = buildSolanaOffchainMessage(text);
+    const preview = describeSignMessageBytes(message);
+    expect(preview.title).toBe("Solana off-chain message");
+    expect(preview.text).toBe(text);
+    expect(preview.wrapped).toBe(true);
+    // The fixture body is a real Ika approval — parser should attach details.
+    expect(preview.ika?.action).toBe("approve");
+    expect(preview.ika?.proposalIndex).toBe("42");
+  });
+
+  it("rejects unknown off-chain version or format bytes", () => {
+    const body = new TextEncoder().encode(text);
+    const buildHeader = (version: number, format: number): Uint8Array => {
+      const msg = new Uint8Array(20 + body.length);
+      msg.set(new Uint8Array([
+        0xff, 0x73, 0x6f, 0x6c, 0x61, 0x6e, 0x61, 0x20,
+        0x6f, 0x66, 0x66, 0x63, 0x68, 0x61, 0x69, 0x6e
+      ]), 0);
+      msg[16] = version;
+      msg[17] = format;
+      msg[18] = body.length & 0xff;
+      msg[19] = body.length >> 8;
+      msg.set(body, 20);
+      return msg;
+    };
+    expect(parseSolanaOffchainMessage(buildHeader(1, 0))).toBeNull();
+    expect(parseSolanaOffchainMessage(buildHeader(0, 1))).toBeNull();
+  });
+
+  it("returns null for ordinary messages", () => {
+    const message = new TextEncoder().encode("ordinary message");
+    expect(parseSolanaOffchainMessage(message)).toBeNull();
+    expect(describeSignMessageBytes(message)).toEqual({
+      title: "Message",
+      text: "ordinary message",
+      wrapped: false
+    });
+  });
+
+  it("rejects a wrapped message with the wrong body length", () => {
+    const message = buildSolanaOffchainMessage(text).slice(0, -1);
+    expect(() => parseSolanaOffchainMessage(message)).toThrow(/length/i);
+  });
+});
+
+describe("parseIkaApprovalMessage", () => {
+  it("parses an approve lamport transfer", () => {
+    const details = parseIkaApprovalMessage(
+      "expires 2030-01-01 00:00:00: approve transfer 1000000000 lamports to 9abcDEFghijKLMnopQRstuvWXyz12345678ABCDefgh | wallet: treasury proposal: 42"
+    );
+    expect(details).not.toBeNull();
+    expect(details?.action).toBe("approve");
+    expect(details?.expires).toBe("2030-01-01 00:00:00");
+    expect(details?.walletName).toBe("treasury");
+    expect(details?.proposalIndex).toBe("42");
+    expect(details?.content).toEqual({
+      kind: "transfer",
+      amountLamports: 1_000_000_000n,
+      to: "9abcDEFghijKLMnopQRstuvWXyz12345678ABCDefgh"
+    });
+  });
+
+  it("parses propose and cancel actions", () => {
+    expect(
+      parseIkaApprovalMessage(
+        "expires 2030-01-01 00:00:00: propose transfer 1 lamports to addr | wallet: t proposal: 1"
+      )?.action
+    ).toBe("propose");
+    expect(
+      parseIkaApprovalMessage(
+        "expires 2030-01-01 00:00:00: cancel transfer 1 lamports to addr | wallet: t proposal: 1"
+      )?.action
+    ).toBe("cancel");
+  });
+
+  it("parses an SPL transfer", () => {
+    const details = parseIkaApprovalMessage(
+      "expires 2030-01-01 00:00:00: approve transfer 1500000 of mint EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v to 9abcDEFghijKLMnopQRstuvWXyz12345678ABCDefgh | wallet: treasury proposal: 12"
+    );
+    expect(details?.content).toEqual({
+      kind: "spl-transfer",
+      amount: "1500000",
+      mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      to: "9abcDEFghijKLMnopQRstuvWXyz12345678ABCDefgh"
+    });
+  });
+
+  it("parses meta-intent variants", () => {
+    expect(
+      parseIkaApprovalMessage(
+        "expires 2030-01-01 00:00:00: approve add intent definition_hash: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef | wallet: t proposal: 1"
+      )?.content
+    ).toEqual({
+      kind: "add-intent",
+      definitionHash:
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    });
+    expect(
+      parseIkaApprovalMessage(
+        "expires 2030-01-01 00:00:00: approve remove intent 3 | wallet: t proposal: 1"
+      )?.content
+    ).toEqual({ kind: "remove-intent", index: "3" });
+    expect(
+      parseIkaApprovalMessage(
+        "expires 2030-01-01 00:00:00: approve update intent 2 definition_hash: deadbeef | wallet: t proposal: 1"
+      )?.content
+    ).toEqual({ kind: "update-intent", index: "2", definitionHash: "deadbeef" });
+  });
+
+  it("falls through to `other` for cross-chain content", () => {
+    const details = parseIkaApprovalMessage(
+      "expires 2030-01-01 00:00:00: approve send 12345 sats to bc1q-pkh:0xdead from utxo 0xabcd:0 | wallet: treasury proposal: 5"
+    );
+    expect(details?.content.kind).toBe("other");
+  });
+
+  it("returns null for non-Ika bodies", () => {
+    expect(parseIkaApprovalMessage("just some text")).toBeNull();
+    expect(
+      parseIkaApprovalMessage(
+        "expires 2030: approve transfer 1 lamports to x | wallet: t proposal: 1"
+      )
+    ).not.toBeNull(); // tolerant of timestamp shape (still parses)
+    expect(
+      parseIkaApprovalMessage(
+        "expires 2030-01-01 00:00:00: revoke transfer 1 lamports to x | wallet: t proposal: 1"
+      )
+    ).toBeNull(); // unknown verb → reject
+  });
+
+  // ── Edge cases ───────────────────────────────────────────────────────
+
+  it("uses the LAST ` | ` against content-injection spoofing", () => {
+    // The on-chain trailer is always last. An injected fake trailer in the
+    // content portion must not surface to the user — the device has to
+    // display what binds on chain.
+    const details = parseIkaApprovalMessage(
+      "expires 2030-01-01 00:00:00: approve send free-text-payload | wallet: SPOOF proposal: 0 | wallet: REAL proposal: 99"
+    );
+    expect(details?.walletName).toBe("REAL");
+    expect(details?.proposalIndex).toBe("99");
+  });
+
+  it("uses the LAST ` proposal: ` so wallet names cannot spoof the index", () => {
+    const details = parseIkaApprovalMessage(
+      "expires 2030-01-01 00:00:00: approve transfer 1 lamports to addr | wallet: weird name proposal: 7 proposal: 42"
+    );
+    expect(details?.walletName).toBe("weird name proposal: 7");
+    expect(details?.proposalIndex).toBe("42");
+  });
+
+  it("handles the u64-max proposal index", () => {
+    const details = parseIkaApprovalMessage(
+      "expires 2030-01-01 00:00:00: approve transfer 1 lamports to addr | wallet: t proposal: 18446744073709551615"
+    );
+    expect(details?.proposalIndex).toBe("18446744073709551615");
+  });
+
+  it("rejects a verb-only action (no content)", () => {
+    expect(
+      parseIkaApprovalMessage(
+        "expires 2030-01-01 00:00:00: approve | wallet: t proposal: 1"
+      )
+    ).toBeNull();
+  });
+});
+
+describe("describeSignMessageBytes edge cases", () => {
+  function wrapped(body: string): Uint8Array {
+    return buildSolanaOffchainMessage(body);
+  }
+
+  it("describes an empty UTF-8 body as a Solana off-chain message", () => {
+    // buildSolanaOffchainMessage rejects empty, so handcraft a 0-length
+    // body the way the on-chain spec actually allows it.
+    const out = new Uint8Array(20);
+    out.set(new Uint8Array([
+      0xff, 0x73, 0x6f, 0x6c, 0x61, 0x6e, 0x61, 0x20,
+      0x6f, 0x66, 0x66, 0x63, 0x68, 0x61, 0x69, 0x6e
+    ]), 0);
+    // version=0, format=0, len=0
+    const parsed = parseSolanaOffchainMessage(out);
+    expect(parsed?.bodyText).toBe("");
+    const preview = describeSignMessageBytes(out);
+    expect(preview.title).toBe("Solana off-chain message");
+    expect(preview.text).toBe("");
+    expect(preview.ika).toBeUndefined();
+  });
+
+  it("handles a max-length body (u16 boundary, ~64 KiB)", () => {
+    const body = "A".repeat(0xffff);
+    const message = wrapped(body);
+    const parsed = parseSolanaOffchainMessage(message);
+    expect(parsed?.bodyText.length).toBe(0xffff);
+    // Not an Ika body → generic preview, but must not OOM/crash.
+    const preview = describeSignMessageBytes(message);
+    expect(preview.wrapped).toBe(true);
+    expect(preview.ika).toBeUndefined();
+  });
+
+  it("rejects a body that lies about its declared length", () => {
+    // Build a header that claims 100 bytes but only 5 follow.
+    const out = new Uint8Array(25);
+    out.set(new Uint8Array([
+      0xff, 0x73, 0x6f, 0x6c, 0x61, 0x6e, 0x61, 0x20,
+      0x6f, 0x66, 0x66, 0x63, 0x68, 0x61, 0x69, 0x6e
+    ]), 0);
+    out[18] = 100;
+    out[19] = 0;
+    expect(() => parseSolanaOffchainMessage(out)).toThrow(/length/i);
+  });
+
+  it("returns null for bytes shorter than the off-chain header itself", () => {
+    expect(parseSolanaOffchainMessage(new Uint8Array(5))).toBeNull();
+    expect(parseSolanaOffchainMessage(new Uint8Array(0))).toBeNull();
   });
 });
 
