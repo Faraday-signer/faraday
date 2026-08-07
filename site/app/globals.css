@@ -9,19 +9,19 @@
 }
 
 :root {
-  /* Light "instrument paper" theme — ink on soft cool white, cyan as accent. */
-  --background: oklch(0.988 0.003 250);
-  --foreground: oklch(0.205 0.015 250);
-  --muted: oklch(0.955 0.005 250);
-  --muted-foreground: oklch(0.455 0.015 250);
-  --border: oklch(0.885 0.008 250);
-  --input: oklch(0.955 0.005 250);
-  --ring: oklch(0.62 0.13 220);
-  --primary: oklch(0.205 0.015 250);
-  --primary-foreground: oklch(0.988 0.003 250);
-  /* Bright cyan for decorative fills/lines/glyphs; ink cyan for text/interactive accent. */
+  /* Warm light theme — matches main. */
+  --background: oklch(0.975 0.005 85);
+  --foreground: oklch(0.269 0 0);
+  --muted: oklch(0.94 0.005 85);
+  --muted-foreground: oklch(0.45 0 0);
+  --border: oklch(0.88 0.005 85);
+  --input: oklch(0.92 0.005 85);
+  --ring: oklch(0.269 0 0);
+  --primary: oklch(0.269 0 0);
+  --primary-foreground: oklch(0.975 0.005 85);
   --brand: #1AF8FF;
-  --brand-ink: oklch(0.52 0.13 225);
+  /* Darkened cyan (same hue) only for cyan text/accents that must stay legible on the warm white. */
+  --brand-ink: oklch(0.51 0.1 210);
   --radius: 0.125rem;
 }
 
@@ -61,7 +61,7 @@ body {
 
 ::selection {
   background: var(--brand);
-  color: oklch(0.20 0.015 250);
+  color: oklch(0.269 0 0);
 }
 
 html {
