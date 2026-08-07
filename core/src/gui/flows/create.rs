@@ -871,8 +871,9 @@ const DEFAULT_METHOD: usize = 1;
 
 fn generate_wallet(word_count: usize) -> Screen {
     // Entropy integrity comes from `bootloader_random_enable()` (the SAR-ADC
-    // hardware source, enabled in `esp32-common`) plus the boot liveness
-    // assert — NOT from folding two draws of the same RNG. On ESP32 both
+    // hardware source, enabled in `esp32-common`) plus the NIST SP 800-90B
+    // health tests (RCT + monobit) that gate boot before any wallet entropy
+    // is drawn — NOT from folding two draws of the same RNG. On ESP32 both
     // `getrandom` draws hit the identical `esp_random` backend, so XOR-ing a
     // second draw adds no independence; use the conditioned draw directly.
     let mut entropy = [0u8; 32];
