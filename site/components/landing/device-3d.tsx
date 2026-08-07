@@ -2,10 +2,10 @@
 
 import { Suspense, useMemo, useRef } from "react";
 import { Canvas, useFrame, useLoader } from "@react-three/fiber";
-import { Edges, Text, useGLTF, useTexture } from "@react-three/drei";
+import { Edges, Text, useGLTF } from "@react-three/drei";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-import { Box3, MathUtils, Shape, SRGBColorSpace, Vector3 } from "three";
-import type { BufferGeometry, Group, Texture } from "three";
+import { Box3, MathUtils, Shape, Vector3 } from "three";
+import type { BufferGeometry, Group } from "three";
 
 export type Device3DName = "esp32" | "pi";
 
@@ -44,18 +44,6 @@ const PI_STICK_XZ: [number, number] = [23.31, -0.93];
 const CONTROL_COLOR = "#e8eaed";
 const CONTROL_EDGES = false;
 
-/** Screen content: real pixels, not a flat glow. The Pi shows an actual
- * firmware capture (the SPL-transfer review screen); the ESP32 shows a boot
- * splash built from the brand mark + Departure Mono, matching firmware style. */
-function useScreenTexture(url: string): Texture {
-  const tex = useTexture(url);
-  return useMemo(() => {
-    tex.colorSpace = SRGBColorSpace;
-    tex.anisotropy = 8;
-    tex.needsUpdate = true;
-    return tex;
-  }, [tex]);
-}
 
 /** Pi case: the STLs are a print-bed layout, so assemble by footprint-centering
  * each part and stacking on Y — with the lid overlapping the bottom's rim so
@@ -68,7 +56,6 @@ function PiAssembly() {
     "/models/pi/buttons.stl",
     "/models/pi/thumbstick.stl",
   ]) as BufferGeometry[];
-  const piScreen = useScreenTexture("/models/screens/pi-boot.png");
 
   const { parts, topY, footprint } = useMemo(() => {
     let y = 0;
@@ -126,12 +113,15 @@ function PiAssembly() {
         <planeGeometry args={[footprint[0] * 0.92, footprint[1] * 0.85]} />
         <meshStandardMaterial color="#0b0c0f" roughness={0.7} />
       </mesh>
-      {/* the 240×240 screen, recessed just under the lid aperture; sized to
-          the measured ~25mm aperture with a small bleed so no gap shows */}
-      <mesh position={[-0.4, topY - 1.2, -0.3]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[26.5, 26]} />
-        <meshBasicMaterial map={piScreen} toneMapped={false} />
-      </mesh>
+      {/* the live 240×240 firmware UI, recessed just under the lid aperture
+          (~25mm), its edges masked by the aperture rim */}
+      <group
+        position={[-0.4, topY - 1.2, -0.3]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        scale={25.8 / 240}
+      >
+        <PiScreenUI />
+      </group>
     </group>
   );
 }
@@ -175,7 +165,7 @@ function FwText({
       anchorX={align}
       anchorY="middle"
       letterSpacing={0.02}
-      position={[x - 120, 160 - y, 0.4]}
+      position={[x, -y, 0.4]}
     >
       {children}
     </Text>
@@ -199,7 +189,7 @@ function FwRect({
   rotation?: number;
 }) {
   return (
-    <mesh position={[x - 120, 160 - y, 0.3]} rotation={[0, 0, rotation]}>
+    <mesh position={[x, -y, 0.3]} rotation={[0, 0, rotation]}>
       <planeGeometry args={[w, h]} />
       <meshBasicMaterial color={color} toneMapped={false} />
     </mesh>
@@ -245,6 +235,7 @@ function Esp32ScreenUI() {
         <shapeGeometry args={[roundedScreen]} />
         <meshBasicMaterial color={FW.bg} toneMapped={false} />
       </mesh>
+      <group position={[-120, 160, 0]}>
 
       {/* header */}
       <FwText x={12} y={17} size={14} color={FW.accent}>APPROVE SEND</FwText>
@@ -285,6 +276,67 @@ function Esp32ScreenUI() {
       {/* sign (accent check) */}
       <FwRect x={195.5} y={301.5} w={9} h={3} color={FW.accent} rotation={-QP} />
       <FwRect x={202} y={298.5} w={15} h={3} color={FW.accent} rotation={QP} />
+      </group>
+    </>
+  );
+}
+
+/** The Pi build's zoned APPROVE SEND screen (240×240, physical keys): same
+ * three zones on the firmware's grid — header 29px, zones at y 29/99/169 —
+ * with the K1/K2/K3 edge-hint gutter column on the right instead of a
+ * bottom bar, matching the case's real side buttons. */
+function PiScreenUI() {
+  const FROM = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
+  const TO = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
+  const bg = useMemo(() => roundedRectShape(240, 240, 6), []);
+  return (
+    <>
+      <mesh>
+        <shapeGeometry args={[bg]} />
+        <meshBasicMaterial color={FW.bg} toneMapped={false} />
+      </mesh>
+      <group position={[-120, 120, 0]}>
+
+      {/* header */}
+      <FwText x={12} y={17} size={14} color={FW.accent}>APPROVE SEND</FwText>
+      <FwText x={228} y={17} size={14} color={FW.dim} align="right">1/3</FwText>
+      <FwRect x={120} y={28.5} w={240} h={1} color={FW.border} />
+
+      {/* zone dividers (full width) + gutter column border */}
+      <FwRect x={120} y={99} w={240} h={1} color={FW.border} />
+      <FwRect x={120} y={169} w={240} h={1} color={FW.border} />
+      <FwRect x={212} y={134} w={1} h={212} color={FW.border} />
+
+      {/* FROM zone */}
+      <FwText x={12} y={43} size={13} color={FW.muted}>FROM</FwText>
+      <FwText x={52} y={43} size={13} color={FW.accent}>(you)</FwText>
+      <FwText x={12} y={61} size={12.5} color={FW.text}>{FROM.slice(0, 22)}</FwText>
+      <FwText x={12} y={79} size={12.5} color={FW.text}>{FROM.slice(22)}</FwText>
+
+      {/* TO zone */}
+      <FwText x={12} y={113} size={13} color={FW.muted}>TO</FwText>
+      <FwText x={12} y={131} size={12.5} color={FW.text}>{TO.slice(0, 22)}</FwText>
+      <FwText x={12} y={149} size={12.5} color={FW.text}>{TO.slice(22)}</FwText>
+
+      {/* AMOUNT zone (right edge excludes the 28px gutter) */}
+      <FwText x={12} y={188} size={15} color={FW.muted}>AMOUNT</FwText>
+      <FwText x={204} y={188} size={15} color={FW.accent} align="right">SOL</FwText>
+      <FwText x={204} y={224} size={22} color={FW.text} align="right">1.5</FwText>
+
+      {/* gutter cells: dividers + K1 sign / K2 next / K3 reject icons */}
+      <FwRect x={226} y={98} w={28} h={1} color={FW.border} />
+      <FwRect x={226} y={169} w={28} h={1} color={FW.border} />
+      {/* K1 check (accent) */}
+      <FwRect x={222} y={65.5} w={8} h={2.5} color={FW.accent} rotation={-QP} />
+      <FwRect x={228} y={62.5} w={13} h={2.5} color={FW.accent} rotation={QP} />
+      {/* K2 arrow-right */}
+      <FwRect x={224.5} y={134} w={10} h={2.5} color={FW.text} />
+      <FwRect x={229.5} y={131.8} w={8} h={2.5} color={FW.text} rotation={-QP} />
+      <FwRect x={229.5} y={136.2} w={8} h={2.5} color={FW.text} rotation={QP} />
+      {/* K3 cross (danger) */}
+      <FwRect x={226} y={204} w={15} h={2.5} color={FW.danger} rotation={QP} />
+      <FwRect x={226} y={204} w={15} h={2.5} color={FW.danger} rotation={-QP} />
+      </group>
     </>
   );
 }
