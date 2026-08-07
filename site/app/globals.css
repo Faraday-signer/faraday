@@ -20,6 +20,8 @@
   --primary: oklch(0.269 0 0);
   --primary-foreground: oklch(0.975 0.005 85);
   --brand: #1AF8FF;
+  /* brand cyan darkened for text on the light background (WCAG-readable) */
+  --brand-ink: #0E7580;
   --radius: 0.125rem;
 }
 
@@ -34,6 +36,7 @@
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: "Departure Mono", ui-monospace, monospace;
   --font-mono: "Departure Mono", ui-monospace, monospace;

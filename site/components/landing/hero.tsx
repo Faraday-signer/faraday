@@ -10,9 +10,9 @@ export function Hero() {
         <div>
         <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground sm:text-xs">
           Air-gapped
-          <span className="mx-2 text-brand">·</span>
+          <span className="mx-2 text-brand-ink">·</span>
           Memory-resident keys
-          <span className="mx-2 text-brand">·</span>
+          <span className="mx-2 text-brand-ink">·</span>
           Open-source
         </p>
 

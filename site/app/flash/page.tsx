@@ -69,7 +69,7 @@ export default function FlashPage() {
         <dl className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-sm border border-border bg-border sm:grid-cols-2">
           {NOTES.map((note) => (
             <div key={note.k} className="bg-background p-5 sm:p-6">
-              <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-brand">
+              <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-brand-ink">
                 {note.k}
               </dt>
               <dd className="mt-2 text-sm text-foreground/80">{note.v}</dd>
@@ -82,7 +82,7 @@ export default function FlashPage() {
           Pi boots a Buildroot SD-card image instead.{" "}
           <Link
             href="/#device"
-            className="text-brand transition-colors hover:text-brand/80"
+            className="text-brand-ink transition-colors hover:text-brand-ink/80"
           >
             See the device build →
           </Link>

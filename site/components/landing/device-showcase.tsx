@@ -59,7 +59,7 @@ export function DeviceShowcase() {
       <button
         aria-pressed={open}
         onClick={() => setOpen((v) => !v)}
-        className="group cursor-pointer font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-brand hover:decoration-solid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className="group cursor-pointer font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground underline decoration-dotted underline-offset-4 transition-colors hover:text-brand-ink hover:decoration-solid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         {open ? "close it up" : "look inside"}
         <span className="ml-1.5 inline-block transition-transform duration-300 group-hover:translate-y-0.5">

@@ -53,10 +53,10 @@ export function DeviceSection() {
                   role="tab"
                   aria-selected={mode === value}
                   onClick={() => setMode(value)}
-                  className={`rounded-[1px] px-4 py-2 font-mono text-[11px] uppercase tracking-[0.16em] transition-colors ${
+                  className={`cursor-pointer rounded-[1px] px-4 py-2 font-mono text-[11px] uppercase tracking-[0.16em] transition-colors ${
                     mode === value
-                      ? "bg-brand/10 text-brand"
-                      : "text-muted-foreground hover:text-foreground"
+                      ? "bg-primary text-brand"
+                      : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground"
                   }`}
                 >
                   {label}
@@ -66,20 +66,19 @@ export function DeviceSection() {
 
             {mode === "build" ? (
               <p className="mt-6 max-w-xl text-base leading-relaxed text-foreground/70">
-                No secure element you have to take on faith. Just an open board
-                with no network hardware, a screen, and a camera. The Pi Zero 1.3
-                is recommended precisely because the radio chip isn&apos;t
-                physically there, so there is nothing to misconfigure or trust
-                to &ldquo;off.&rdquo;
+                An open board with no network hardware, a screen, and a camera.
+                Every part of it is auditable. The Pi Zero 1.3 is recommended
+                precisely because the radio chip isn&apos;t physically there,
+                so there is nothing to misconfigure or trust to
+                &ldquo;off.&rdquo;
               </p>
             ) : (
               <p className="mt-6 max-w-xl text-base leading-relaxed text-foreground/70">
                 One board, no assembly: an ESP32-S3 with a touch screen and
-                camera, in a 3D-printed Faraday case. You&apos;ll flash the
-                firmware straight from this site when the web flasher ships.
-                This chip does have radio silicon, so the firmware never links
-                the drivers, and the build pipeline fails if they so much as
-                appear in the binary.
+                camera, in a 3D-printed Faraday case. This chip does have
+                radio silicon, so the firmware never links the drivers, and
+                the build pipeline fails if they so much as appear in the
+                binary.
               </p>
             )}
 
@@ -87,12 +86,14 @@ export function DeviceSection() {
               {mode === "build" ? (
                 <Tag tone="brand">Shipping today · Pi Zero</Tag>
               ) : (
-                <Tag tone="brand">In progress · flash from the browser</Tag>
+                <Tag tone="brand">In progress · ESP32-S3</Tag>
               )}
               <Tag>Same firmware · same air gap</Tag>
             </div>
 
-            <dl className="mt-8 max-w-xl divide-y divide-border border-t border-border">
+        </div>
+
+        <dl className="mx-auto mt-10 w-full max-w-2xl divide-y divide-border border-t border-border">
               {specs.map((spec) => (
                 <div
                   key={spec.k}
@@ -106,8 +107,7 @@ export function DeviceSection() {
                   </dd>
                 </div>
               ))}
-            </dl>
-        </div>
+        </dl>
       </div>
     </section>
   );

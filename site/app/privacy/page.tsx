@@ -227,7 +227,7 @@ export default function PrivacyPolicy() {
                 If you have questions about this privacy policy, contact us at{" "}
                 <a
                   href="mailto:javilois@gmail.com"
-                  className="text-brand transition-colors hover:text-brand/80"
+                  className="text-brand-ink transition-colors hover:text-brand-ink/80"
                 >
                   javilois@gmail.com
                 </a>
