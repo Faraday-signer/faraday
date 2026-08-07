@@ -228,25 +228,54 @@ export function HowItWorksScroll() {
           </h2>
         </div>
 
-        <div className="mx-auto mt-10 flex w-full max-w-6xl flex-col items-center justify-center gap-6 px-5 sm:px-8 lg:flex-row lg:gap-12">
+        <div className="mx-auto mt-10 flex w-full max-w-6xl flex-col items-center justify-center gap-6 px-5 sm:px-8 lg:flex-row lg:gap-4">
           <ExtensionPanel phase={phase} />
 
-          {/* the gap between the two: direction arrow per leg */}
+          {/* the air gap: a dimension-line track physically connecting the
+              two machines, with a QR chip that crosses it on the QR legs */}
           <div
             aria-hidden
-            className="flex h-10 flex-col items-center justify-center lg:h-auto lg:w-16"
+            className="relative hidden h-24 w-56 shrink-0 lg:block"
           >
-            <span
-              className={`font-mono text-xl text-brand transition-opacity duration-500 ${
-                phase === 1 || phase === 3 ? "opacity-100" : "opacity-20"
-              }`}
-            >
-              <span className="hidden lg:inline">{phase === 3 ? "←" : "→"}</span>
-              <span className="lg:hidden">{phase === 3 ? "↑" : "↓"}</span>
+            {/* dashed track + end ticks, drawing-annotation style */}
+            <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-brand/50" />
+            <div className="absolute left-0 top-1/2 h-4 w-px -translate-y-1/2 bg-brand/60" />
+            <div className="absolute right-0 top-1/2 h-4 w-px -translate-y-1/2 bg-brand/60" />
+
+            {/* label riding the line */}
+            <div className="absolute inset-x-0 top-1/2 flex -translate-y-[calc(100%+8px)] flex-col items-center">
+              <span className="pixel-shadow-sm whitespace-nowrap font-mono text-sm uppercase tracking-[0.24em] text-brand">
+                Air gap
+              </span>
+            </div>
+            <div className="absolute inset-x-0 top-1/2 flex translate-y-2 flex-col items-center">
+              <span className="whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                QR only · light
+              </span>
+            </div>
+
+            {/* the crossing: one QR chip per click on the QR legs */}
+            {phase === 1 && (
+              <QrGlyph
+                key="out"
+                className="absolute left-0 top-1/2 h-8 w-8 -translate-y-1/2 text-foreground/75 motion-safe:animate-[gap-cross_2.2s_ease-in-out_forwards] motion-reduce:hidden"
+              />
+            )}
+            {phase === 3 && (
+              <QrGlyph
+                key="back"
+                className="absolute right-0 top-1/2 h-8 w-8 -translate-y-1/2 text-brand motion-safe:animate-[gap-return_2.2s_ease-in-out_forwards] motion-reduce:hidden"
+              />
+            )}
+          </div>
+
+          {/* stacked (mobile): short vertical track */}
+          <div aria-hidden className="flex items-center gap-3 lg:hidden">
+            <span className="h-10 border-l border-dashed border-brand/50" />
+            <span className="pixel-shadow-sm font-mono text-xs uppercase tracking-[0.2em] text-brand">
+              Air gap
             </span>
-            <span className="mt-1 hidden whitespace-nowrap font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground lg:block">
-              air gap
-            </span>
+            <span className="h-10 border-l border-dashed border-brand/50" />
           </div>
 
           <div className="flex flex-col items-center">
