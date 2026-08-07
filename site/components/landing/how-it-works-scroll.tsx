@@ -245,12 +245,12 @@ export function HowItWorksScroll() {
     <section
       ref={sectionRef}
       id="how-it-works"
-      className="relative h-[240svh] border-b border-border bg-background"
+      className="relative h-[200svh] border-b border-border bg-background"
     >
-      <div className="sticky top-0 flex h-svh flex-col overflow-hidden pt-16">
-        <div className="mx-auto w-full max-w-6xl px-5 pt-6 sm:px-8">
+      <div className="sticky top-0 flex h-svh flex-col overflow-hidden pt-14">
+        <div className="mx-auto w-full max-w-6xl px-5 pt-4 sm:px-8">
           <SectionLabel index="01">How it works</SectionLabel>
-          <h2 className="mt-3 max-w-2xl font-display text-2xl leading-tight tracking-tight text-foreground sm:text-4xl">
+          <h2 className="mt-2 max-w-2xl font-display text-2xl leading-tight tracking-tight text-foreground sm:text-3xl">
             One round trip across the air gap
           </h2>
         </div>
@@ -292,7 +292,7 @@ export function HowItWorksScroll() {
         </div>
 
         {/* compact step rail + progress */}
-        <div className="mx-auto mb-6 w-full max-w-6xl px-5 sm:px-8">
+        <div className="mx-auto mb-4 w-full max-w-6xl px-5 sm:px-8">
           <ol className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
             {STEPS.map((step, i) => (
               <li key={step.n} aria-current={phase === i ? "step" : undefined}>
