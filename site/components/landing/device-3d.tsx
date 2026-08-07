@@ -14,11 +14,21 @@ const EDGE_COLOR = "#1AF8FF";
 /** How far the lid skirt sinks over the bottom shell's rim (mm). */
 const PI_LID_OVERLAP = 3;
 
-function CaseMesh({ geometry, position }: { geometry: BufferGeometry; position?: [number, number, number] }) {
+function CaseMesh({
+  geometry,
+  position,
+  color = CASE_COLOR,
+  edges = true,
+}: {
+  geometry: BufferGeometry;
+  position?: [number, number, number];
+  color?: string;
+  edges?: boolean;
+}) {
   return (
     <mesh geometry={geometry} position={position} castShadow receiveShadow>
-      <meshStandardMaterial color={CASE_COLOR} roughness={0.55} metalness={0.15} />
-      <Edges threshold={28} color={EDGE_COLOR} />
+      <meshStandardMaterial color={color} roughness={0.55} metalness={0.15} />
+      {edges && <Edges threshold={28} color={EDGE_COLOR} />}
     </mesh>
   );
 }
@@ -28,6 +38,11 @@ function CaseMesh({ geometry, position }: { geometry: BufferGeometry; position?:
  * 7×4mm button holes around (-26.2, 0) and a 9.2mm thumbstick hole. */
 const PI_BUTTONS_XZ: [number, number] = [-26.15, -0.03];
 const PI_STICK_XZ: [number, number] = [23.31, -0.93];
+
+/** Controls (buttons + thumbstick) get their own material so they read against
+ * the case. Color/edges are the current design-exploration candidate. */
+const CONTROL_COLOR = "#e8eaed";
+const CONTROL_EDGES = false;
 
 /** Pi case: the STLs are a print-bed layout, so assemble by footprint-centering
  * each part and stacking on Y — with the lid overlapping the bottom's rim so
@@ -84,7 +99,13 @@ function PiAssembly() {
     // Assembly is X/Z-centered by construction; shift so Y is centered too.
     <group position={[0, -topY / 2, 0]}>
       {parts.map((p, i) => (
-        <CaseMesh key={i} geometry={p.geometry} position={p.position} />
+        <CaseMesh
+          key={i}
+          geometry={p.geometry}
+          position={p.position}
+          color={i >= 2 ? CONTROL_COLOR : CASE_COLOR}
+          edges={i >= 2 ? CONTROL_EDGES : true}
+        />
       ))}
       {/* dark board filling the interior so apertures don't show through */}
       <mesh position={[0, topY - 2.6, 0]} rotation={[-Math.PI / 2, 0, 0]}>
