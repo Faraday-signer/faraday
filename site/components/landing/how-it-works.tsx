@@ -39,15 +39,15 @@ export function HowItWorks() {
           {STEPS.map((step) => (
             <li
               key={step.n}
-              className="flex flex-col gap-4 bg-background p-6 sm:p-7"
+              className="flex flex-col gap-4 bg-muted p-6 sm:p-7"
             >
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-sm bg-muted font-mono text-sm text-brand pixel-shadow-sm">
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-sm bg-primary font-mono text-sm text-brand">
                 {step.n}
               </span>
-              <h3 className="font-display text-lg tracking-tight text-foreground">
+              <h3 className="font-display text-xl tracking-tight text-foreground">
                 {step.title}
               </h3>
-              <p className="text-sm leading-relaxed text-foreground/70">
+              <p className="text-[15px] leading-relaxed text-foreground/75">
                 {step.body}
               </p>
             </li>

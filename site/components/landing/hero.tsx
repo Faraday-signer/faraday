@@ -40,7 +40,7 @@ export function Hero() {
         <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
           <a
             href="#waitlist"
-            className="inline-flex h-12 items-center justify-center rounded-sm bg-primary px-6 font-mono text-xs uppercase tracking-[0.14em] text-primary-foreground transition-colors hover:bg-primary/90"
+            className="inline-flex h-12 items-center justify-center rounded-sm bg-primary px-6 font-mono text-xs uppercase tracking-[0.14em] text-brand transition-colors hover:bg-primary/90"
           >
             Get early access →
           </a>

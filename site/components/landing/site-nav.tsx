@@ -59,7 +59,7 @@ export function SiteNav() {
           </a>
           <a
             href="#waitlist"
-            className="hidden rounded-sm bg-primary px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-primary-foreground transition-colors hover:bg-primary/90 sm:inline-block"
+            className="hidden rounded-sm bg-primary px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-brand transition-colors hover:bg-primary/90 sm:inline-block"
           >
             Early access
           </a>
