@@ -58,11 +58,12 @@ function PiAssembly() {
   );
 }
 
-/** ESP32 case + an emissive cyan screen on the front face, so it reads as a
- * powered device rather than an empty shell. */
+/** ESP32 case with the Waveshare ESP32-S3-Touch-LCD-2 up front: a 2" 240×320
+ * screen (real ~30.5×40.6mm active area) in a dark bezel, over a dark interior
+ * so the case reads as a finished, powered device rather than an empty shell. */
 function Esp32Assembly() {
   const geo = useLoader(STLLoader, "/models/esp32/touch2.stl") as BufferGeometry;
-  const screen = useMemo(() => {
+  const fit = useMemo(() => {
     geo.computeVertexNormals();
     geo.computeBoundingBox();
     const bb = geo.boundingBox!;
@@ -70,24 +71,38 @@ function Esp32Assembly() {
     const center = new Vector3();
     bb.getSize(size);
     bb.getCenter(center);
-    // Portrait front face (X × Y) at the +Z side; screen fills most of it.
+    // Real 2" 240×320 active area, scaled to the case so proportions match.
+    const screenH = size.y * 0.66;
+    const screenW = screenH * 0.75; // 240:320
+    const frontZ = bb.max.z;
     return {
-      w: size.x * 0.72,
-      h: size.y * 0.82,
-      pos: [center.x, center.y, bb.max.z + 0.4] as [number, number, number],
+      cx: center.x,
+      cy: center.y,
+      screenW,
+      screenH,
+      bezelW: size.x * 0.9,
+      bezelH: size.y * 0.9,
+      bezelZ: frontZ - 0.6,
+      screenZ: frontZ + 0.2,
     };
   }, [geo]);
 
   return (
     <group>
       <CaseMesh geometry={geo} />
-      <mesh position={screen.pos}>
-        <planeGeometry args={[screen.w, screen.h]} />
+      {/* dark bezel/board filling the front opening (kills the hollow look) */}
+      <mesh position={[fit.cx, fit.cy, fit.bezelZ]}>
+        <planeGeometry args={[fit.bezelW, fit.bezelH]} />
+        <meshStandardMaterial color="#0b0c0f" roughness={0.7} />
+      </mesh>
+      {/* the lit screen */}
+      <mesh position={[fit.cx, fit.cy, fit.screenZ]}>
+        <planeGeometry args={[fit.screenW, fit.screenH]} />
         <meshStandardMaterial
-          color="#0a1418"
+          color="#08121a"
           emissive={EDGE_COLOR}
-          emissiveIntensity={0.35}
-          roughness={0.3}
+          emissiveIntensity={0.45}
+          roughness={0.25}
         />
       </mesh>
     </group>
