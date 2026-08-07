@@ -10,7 +10,7 @@ export function SiteFooter() {
       <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8">
         <div className="flex flex-col gap-10 sm:flex-row sm:justify-between">
           <div className="max-w-xs">
-            <FaradayMark size={28} className="text-brand" />
+            <FaradayMark size={28} className="text-brand-ink" />
             <p className="mt-4 text-sm leading-relaxed text-foreground/60">
               An open-source, air-gapped signing suite for Solana. Your keys are
               born offline and stay there.

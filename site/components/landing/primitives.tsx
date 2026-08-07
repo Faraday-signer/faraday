@@ -16,7 +16,7 @@ export function SectionLabel({
   return (
     <p
       className={cn(
-        "flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.22em] text-brand sm:text-xs",
+        "flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.22em] text-brand-ink sm:text-xs",
         className
       )}
     >
@@ -50,7 +50,7 @@ export function Tag({
       className={cn(
         "inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] sm:text-[11px]",
         tone === "brand"
-          ? "border-brand/40 text-brand"
+          ? "border-brand/40 text-brand-ink"
           : "border-border text-muted-foreground",
         className
       )}

@@ -39,7 +39,7 @@ export function SiteNav() {
             className="group inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground transition-colors hover:text-foreground"
           >
             Flash device
-            <span className="rounded-sm border border-brand/40 px-1 py-px text-[9px] leading-none tracking-[0.1em] text-brand">
+            <span className="rounded-sm border border-brand/40 px-1 py-px text-[9px] leading-none tracking-[0.1em] text-brand-ink">
               soon
             </span>
           </Link>

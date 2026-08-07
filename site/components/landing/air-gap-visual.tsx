@@ -64,7 +64,7 @@ export function AirGapVisual({ className }: { className?: string }) {
       >
         <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent md:h-16 md:w-px md:flex-none md:bg-gradient-to-b" />
         <div className="flex flex-col items-center gap-1 whitespace-nowrap px-1">
-          <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-brand">
+          <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-brand-ink">
             Air gap
           </span>
           <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
@@ -75,7 +75,7 @@ export function AirGapVisual({ className }: { className?: string }) {
       </div>
 
       <Node label="Faraday signer" status="Offline · no antennas" statusTone="offline">
-        <QrGlyph className="h-24 w-24 text-brand" title="Signed transaction QR" />
+        <QrGlyph className="h-24 w-24 text-brand-ink" title="Signed transaction QR" />
       </Node>
     </div>
   );

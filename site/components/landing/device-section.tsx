@@ -55,7 +55,7 @@ export function DeviceSection() {
                   onClick={() => setMode(value)}
                   className={`rounded-[1px] px-4 py-2 font-mono text-[11px] uppercase tracking-[0.16em] transition-colors ${
                     mode === value
-                      ? "bg-brand/10 text-brand"
+                      ? "bg-brand/10 text-brand-ink"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
