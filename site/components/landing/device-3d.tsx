@@ -1,7 +1,7 @@
 "use client";
 
-import { Suspense, useMemo, useRef } from "react";
-import { Canvas, useFrame, useLoader } from "@react-three/fiber";
+import { Suspense, useEffect, useMemo, useRef } from "react";
+import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
 import { Edges, Environment, Lightformer, Text, useGLTF } from "@react-three/drei";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { Box3, MathUtils, Shape, Vector3 } from "three";
@@ -464,17 +464,80 @@ function Esp32Assembly({ open }: { open: boolean }) {
 
 useGLTF.preload("/models/esp32/board.glb");
 
+/** Yaw the explode swings to when opened: a three-quarter side view, since
+ * the board slides along the device's front axis and the separation is
+ * invisible dead-on. */
+const OPEN_YAW = -1.05;
+const TWO_PI = Math.PI * 2;
+
 /** Slow turntable driven on the model (not the camera): framing is fixed by
- * construction, so the device can never drift out of the canvas. Honors
- * prefers-reduced-motion by holding a static three-quarter pose. */
-function Turntable({ children }: { children: React.ReactNode }) {
+ * construction, so the device can never drift out of the canvas. While the
+ * explode is open it swings to (and holds) a side pose so the separation is
+ * actually visible; closing resumes the spin. Honors prefers-reduced-motion
+ * by holding static poses. */
+function Turntable({ hold, children }: { hold: boolean; children: React.ReactNode }) {
   const ref = useRef<Group>(null);
+  const { gl } = useThree();
+  const targetYaw = useRef(OPEN_YAW);
+  const dragging = useRef(false);
+  const lastX = useRef(0);
   const reduced =
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // While inspecting, the visitor can spin the model themselves. The drag
+  // only ever adjusts the model's own yaw — framing is untouched, so the
+  // drift that made us drop OrbitControls cannot come back.
+  useEffect(() => {
+    if (!hold) return;
+    if (ref.current) {
+      const y = ref.current.rotation.y;
+      targetYaw.current = OPEN_YAW + TWO_PI * Math.round((y - OPEN_YAW) / TWO_PI);
+    }
+    const el = gl.domElement;
+    const down = (e: PointerEvent) => {
+      dragging.current = true;
+      lastX.current = e.clientX;
+      el.setPointerCapture(e.pointerId);
+      el.style.cursor = "grabbing";
+    };
+    const move = (e: PointerEvent) => {
+      if (!dragging.current) return;
+      targetYaw.current += (e.clientX - lastX.current) * 0.012;
+      lastX.current = e.clientX;
+    };
+    const up = () => {
+      dragging.current = false;
+      el.style.cursor = "grab";
+    };
+    el.style.cursor = "grab";
+    el.style.touchAction = "none";
+    el.addEventListener("pointerdown", down);
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+    return () => {
+      el.style.cursor = "";
+      el.style.touchAction = "";
+      el.removeEventListener("pointerdown", down);
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+      dragging.current = false;
+    };
+  }, [hold, gl]);
+
   useFrame((_, delta) => {
-    if (!ref.current || reduced) return;
-    ref.current.rotation.y += delta * 0.25;
+    if (!ref.current) return;
+    if (hold) {
+      // swing to the showcase yaw (shortest way around), then follow drags
+      const y = ref.current.rotation.y;
+      ref.current.rotation.y = reduced
+        ? targetYaw.current
+        : MathUtils.damp(y, targetYaw.current, 4, delta);
+    } else if (!reduced) {
+      ref.current.rotation.y += delta * 0.25;
+    }
   });
   return (
     <group ref={ref} rotation={[0, -0.45, 0]}>
@@ -501,7 +564,7 @@ function DeviceModel({ device, open }: { device: Device3DName; open: boolean }) 
   const p = PRESENTATION[device];
   return (
     <group rotation={p.tilt}>
-      <Turntable>
+      <Turntable hold={device === "esp32" && open}>
         <group scale={p.scale}>
           {device === "pi" ? <PiAssembly /> : <Esp32Assembly open={open} />}
         </group>
