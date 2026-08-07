@@ -177,9 +177,11 @@ function Esp32Assembly({ open }: { open: boolean }) {
     const center = new Vector3();
     bb.getSize(size);
     bb.getCenter(center);
-    // Real 2" 240×320 active area, scaled to the case so proportions match.
-    const screenH = size.y * 0.66;
-    const screenW = screenH * 0.75; // 240:320
+    // The display fills most of the front face with a slim ~2mm bezel;
+    // the 240:320 texture stretches slightly to the case's aspect,
+    // which is imperceptible at hero size.
+    const screenH = size.y * 0.9;
+    const screenW = size.x * 0.9;
     return {
       cx: center.x,
       cy: center.y,
