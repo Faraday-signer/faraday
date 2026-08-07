@@ -48,3 +48,6 @@ CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 # radio stack is linked into the final binary.
 CONFIG_ESP_WIFI_ENABLED=n
 CONFIG_BT_ENABLED=n
+# Also disable the TCP/IP and netif stacks — they're only useful with WiFi
+# and some of them `select` ESP_WIFI in the Kconfig.
+CONFIG_ESP_NETIF_ENABLED=n
