@@ -42,3 +42,9 @@ CONFIG_SCCB_HARDWARE_I2C_PORT=1
 
 # Logging
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# Air-gap: disable WiFi and Bluetooth. The ESP-IDF framework enables both by
+# default; explicitly turning them off shortens the build and guarantees no
+# radio stack is linked into the final binary.
+CONFIG_ESP_WIFI_ENABLED=n
+CONFIG_BT_ENABLED=n
