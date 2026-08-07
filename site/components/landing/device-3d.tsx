@@ -529,13 +529,18 @@ function Esp32MenuUI() {
  * firmware's palette, under a SIGNED header. */
 function Esp32SignedUI() {
   const qrTex = useMemo(() => {
+    // Real QR colors: black modules on a white surface with a quiet zone,
+    // like the firmware actually renders scannable codes.
     const n = 21;
+    const quiet = 2;
+    const size = n + quiet * 2;
     const cnv = document.createElement("canvas");
-    cnv.width = cnv.height = n;
+    cnv.width = cnv.height = size;
     const ctx = cnv.getContext("2d")!;
-    ctx.fillStyle = "#001721";
-    ctx.fillRect(0, 0, n, n);
-    ctx.fillStyle = "#1AF8FF";
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = "#000000";
+    ctx.translate(quiet, quiet);
     const inBox = (r: number, c: number, br: number, bc: number) =>
       r >= br && r < br + 7 && c >= bc && c < bc + 7;
     for (let r = 0; r < n; r++) {
