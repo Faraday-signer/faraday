@@ -3,8 +3,8 @@ import Link from "next/link";
 import { Logo } from "./logo";
 
 const SECTION_LINKS = [
-  { href: "#how-it-works", label: "How it works" },
   { href: "#security", label: "Security" },
+  { href: "#how-it-works", label: "How it works" },
   { href: "#device", label: "Device" },
   { href: "#suite", label: "The suite" },
 ];

@@ -142,9 +142,9 @@ function Claim({
  */
 export function SecurityModel() {
   return (
-    <section id="security" className="border-b border-border">
+    <section id="security" className="border-b border-border bg-background">
       <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-24">
-        <SectionLabel index="02">Security model</SectionLabel>
+        <SectionLabel index="01">Security model</SectionLabel>
         <h2 className="mt-5 max-w-2xl font-display text-3xl leading-tight tracking-tight text-foreground sm:text-4xl">
           The life of a key
         </h2>

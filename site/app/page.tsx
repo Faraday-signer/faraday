@@ -22,8 +22,8 @@ export default function Home() {
         <SiteNav />
         <main>
           <Hero />
-          <HowItWorksScroll />
           <SecurityModel />
+          <HowItWorksScroll />
           <DeviceSection />
           <SuiteSection />
           <DemoSection />

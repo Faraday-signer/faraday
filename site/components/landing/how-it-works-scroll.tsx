@@ -37,10 +37,10 @@ export function HowItWorksScroll() {
   const [phase, setPhase] = useState(0);
 
   return (
-    <section id="how-it-works" className="border-b border-border bg-background">
+    <section id="how-it-works" className="border-b border-border">
       <div className="flex flex-col py-14 sm:py-16">
         <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">
-          <SectionLabel index="01">How it works</SectionLabel>
+          <SectionLabel index="02">How it works</SectionLabel>
           <h2 className="mt-2 max-w-2xl font-display text-2xl leading-tight tracking-tight text-foreground sm:text-3xl">
             One round trip across the air gap
           </h2>
