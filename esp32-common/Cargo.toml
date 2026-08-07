@@ -1,0 +1,27 @@
+[package]
+name = "esp32-common"
+version = "0.1.0"
+edition = "2021"
+description = "Faraday air-gapped signer — shared ESP32-S3 family firmware"
+
+[lib]
+name = "esp32_common"
+path = "src/lib.rs"
+
+[dependencies]
+faraday-core = { path = "../core", features = ["hardware-sha512", "touch-ui"] }
+
+embedded-graphics-core = "0.4"
+
+esp-idf-hal = "0.46"
+esp-idf-sys = "0.37"
+
+log = "0.4"
+
+# QR decoding — rxing (zxing port), the most tolerant decoder, same as the Pi.
+# It DOES build for xtensa (the `image` crate it pulls in is pure-Rust and
+# esp-idf has std). TryHarder reads the dense ~61-module fragments at lower,
+# faster resolution where quircs/rqrr could not. The camera-component bindings
+# (`esp_idf_sys::camera`) are generated from the board binary crate's metadata
+# (see esp32-touch2/Cargo.toml) and used here by `camera.rs`.
+rxing = { version = "0.7", default-features = false }

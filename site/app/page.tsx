@@ -50,8 +50,8 @@ export default function Home() {
 
           <p className="mt-4 max-w-xl text-sm leading-relaxed text-foreground/80 sm:text-base">
             Faraday is a pocket-sized hardware signer. Keys never touch a
-            network. Transactions cross the air gap via QR. No Wi-Fi,
-            Bluetooth, NFC, or USB.
+            network. Transactions cross the air gap via QR. On the Pi, no
+            radio hardware exists to disable.
           </p>
 
           <ul className="mt-6 grid grid-cols-2 gap-x-6 gap-y-2 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground/70 sm:grid-cols-3 sm:text-xs">
