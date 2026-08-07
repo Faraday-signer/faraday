@@ -15,7 +15,7 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     let word_count = if selected == 0 { 12 } else { 24 };
                     return app.maybe_help(
                         HelpTopic::ChooseEntropyMethod,
-                        Screen::CreateMethod { word_count, selected: 0 },
+                        Screen::CreateMethod { word_count, selected: DEFAULT_METHOD },
                     );
                 }
                 InputEvent::Back => return Screen::MainMenu { selected: 0 },
@@ -864,9 +864,20 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
     }
 }
 
+/// Default entropy method highlighted on the picker: CAMERA (index 1, per the
+/// dispatch in `Screen::CreateMethod`), not RANDOM (0), so the device RNG is
+/// never the pre-selected default.
+const DEFAULT_METHOD: usize = 1;
+
 fn generate_wallet(word_count: usize) -> Screen {
+    // Entropy integrity comes from `bootloader_random_enable()` (the SAR-ADC
+    // hardware source, enabled in `esp32-common`) plus the boot liveness
+    // assert — NOT from folding two draws of the same RNG. On ESP32 both
+    // `getrandom` draws hit the identical `esp_random` backend, so XOR-ing a
+    // second draw adds no independence; use the conditioned draw directly.
     let mut entropy = [0u8; 32];
     getrandom::getrandom(&mut entropy).expect("Failed to get random entropy");
+
     let mnemonic = Zeroizing::new(
         bip39::mnemonic_from_entropy(&entropy, word_count).expect("Failed to generate mnemonic"),
     );
@@ -924,5 +935,25 @@ fn build_verify_screen(mnemonic: Zeroizing<String>, checks: Vec<usize>, current:
         options,
         correct_idx: correct_pos,
         selected: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::Theme;
+
+    #[test]
+    fn default_create_method_is_not_random() {
+        let mut app = App::new(Theme::faraday_240());
+        let next = handle(
+            &mut app,
+            Screen::CreateWordCount { selected: 0 },
+            InputEvent::Confirm,
+        );
+        match next {
+            Screen::CreateMethod { selected, .. } => assert_ne!(selected, 0),
+            _ => panic!("expected CreateMethod screen"),
+        }
     }
 }

@@ -57,15 +57,36 @@ pub(crate) fn read_swap_footer(data: &[u8]) -> Result<(u64, u64, u16, u8), &'sta
     Ok((in_amount, out_amount, slippage_bps, fee_bps))
 }
 
+/// Display label for an ALT account we couldn't resolve offline. Every render
+/// helper that can receive the `UNRESOLVED` sentinel maps it to this so it can
+/// never surface as a plausible base58 address. `pubkey_short` (truncated) and
+/// `render_account` (full) both collapse the sentinel to this exact label.
+const UNRESOLVED_LABEL: &str = "<ALT unresolved>";
+
 /// Truncated `<head>..<tail>` rendering of a 32-byte pubkey for review-line
 /// display where the full base58 form would overflow the column.
 pub(crate) fn pubkey_short(key: &[u8; 32]) -> String {
+    if crate::parser::lookup_tables::is_unresolved(key) {
+        return UNRESOLVED_LABEL.to_string();
+    }
     let b58 = bs58::encode(key).into_string();
     if b58.len() >= 8 {
         format!("{}..{}", &b58[..4], &b58[b58.len() - 4..])
     } else {
         b58
     }
+}
+
+/// Full-length base58 rendering of a pubkey for the review sites that show the
+/// complete address — the unknown-program `Program` field, swap symbol
+/// fallback, and classification transfer legs (whose strings are compared
+/// against a full-base58 focal wallet, so they must stay full-length). Maps
+/// the `UNRESOLVED` sentinel to the shared marker instead of leaking it.
+pub(crate) fn render_account(key: &[u8; 32]) -> String {
+    if crate::parser::lookup_tables::is_unresolved(key) {
+        return UNRESOLVED_LABEL.to_string();
+    }
+    bs58::encode(key).into_string()
 }
 
 #[cfg(test)]

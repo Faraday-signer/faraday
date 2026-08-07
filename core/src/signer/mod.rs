@@ -118,14 +118,32 @@ pub fn sign_transaction_base64(
     sign_transaction_bytes(&tx_bytes, private_key, public_key)
 }
 
-/// Sign an arbitrary message with Ed25519.
+/// Upper bound on off-chain message length (Solana packet MTU). Longer
+/// payloads are rejected before signing.
+const MAX_OFFCHAIN_MSG: usize = 1232;
+
+/// Sign an arbitrary off-chain message, signing the RAW bytes so real dApps
+/// (`nacl.verify(message, sig, pubkey)`) and SIWS (`verifySignIn`) validate
+/// unchanged.
+///
+/// WHY the guard: signing the bare bytes would otherwise let an attacker submit
+/// a transaction *message* through the "sign message" channel and receive a
+/// valid transaction signature, bypassing tx review. Instead of domain-
+/// separating (which breaks dApp verification), we refuse to sign anything that
+/// parses as a Solana transaction — closing the forge while keeping raw signing.
 pub fn sign_message(
     message: &[u8],
     private_key: &[u8; 32],
-) -> [u8; 64] {
+) -> Result<[u8; 64], &'static str> {
+    if message.len() > MAX_OFFCHAIN_MSG {
+        return Err("Message too long");
+    }
+    if crate::parser::is_transaction_message(message) {
+        return Err("refused: looks like a transaction");
+    }
     let signing_key = SigningKey::from_bytes(private_key);
     let signature = signing_key.sign(message);
-    signature.to_bytes()
+    Ok(signature.to_bytes())
 }
 
 /// Strict ed25519 verification of (message, signature, public_key).
@@ -238,13 +256,62 @@ mod tests {
         tx
     }
 
+    /// The message portion (no signature prefix) of a minimal legacy tx with
+    /// one System.Transfer instruction — the exact bytes a relayer verifies as
+    /// a transaction signature, and what the message-signing guard must refuse.
+    fn tx_message_with_transfer(signer_pubkey: &[u8; 32]) -> Vec<u8> {
+        let mut m = Vec::new();
+        m.push(1);                          // num_required_signatures
+        m.push(0);                          // num_readonly_signed
+        m.push(1);                          // num_readonly_unsigned
+        m.push(2);                          // num_account_keys (compact-u16)
+        m.extend_from_slice(signer_pubkey);
+        m.extend_from_slice(&[0u8; 32]);    // system program
+        m.extend_from_slice(&[7u8; 32]);    // recent blockhash
+        m.push(1);                          // num_instructions
+        m.push(1);                          // program_id_index
+        m.push(1);                          // 1 account index
+        m.push(0);                          // account_indices[0]
+        m.push(4);                          // data_len (compact-u16)
+        m.extend_from_slice(&[2, 0, 0, 0]); // System Transfer discriminant
+        m
+    }
+
     #[test]
     fn test_sign_message() {
         let kp = test_keypair(0);
         let message = b"hello solana";
-        let sig = sign_message(message, &kp.private_key);
+        let sig = sign_message(message, &kp.private_key).unwrap();
         assert_eq!(sig.len(), 64);
+        // Raw signing: the signature verifies against the bare message bytes,
+        // exactly what a dApp's nacl.verify(message, sig, pubkey) checks.
         assert!(verify_signature(message, &sig, &kp.public_key).is_ok());
+    }
+
+    /// Crown-jewel forge-closure proof (#79): a real transaction message handed
+    /// to the message channel is refused, so no valid transaction signature can
+    /// be minted through `sign_message`. A normal short text still signs and its
+    /// raw signature verifies.
+    #[test]
+    fn sign_message_refuses_transaction_but_signs_text() {
+        let kp = test_keypair(0);
+
+        let tx_message = tx_message_with_transfer(&kp.public_key);
+        assert_eq!(
+            sign_message(&tx_message, &kp.private_key),
+            Err("refused: looks like a transaction"),
+        );
+
+        let text = b"gm from faraday";
+        let sig = sign_message(text, &kp.private_key).unwrap();
+        assert!(verify_signature(text, &sig, &kp.public_key).is_ok());
+    }
+
+    #[test]
+    fn sign_message_rejects_over_length() {
+        let kp = test_keypair(0);
+        let too_long = vec![0u8; MAX_OFFCHAIN_MSG + 1];
+        assert!(sign_message(&too_long, &kp.private_key).is_err());
     }
 
     #[test]
@@ -259,7 +326,7 @@ mod tests {
     fn verify_accepts_valid_signature() {
         let kp = test_keypair(0);
         let msg = b"canonical input";
-        let sig = sign_message(msg, &kp.private_key);
+        let sig = sign_message(msg, &kp.private_key).unwrap();
         assert!(verify_signature(msg, &sig, &kp.public_key).is_ok());
     }
 
@@ -267,7 +334,7 @@ mod tests {
     fn verify_rejects_tampered_message() {
         let kp = test_keypair(0);
         let msg = b"original message";
-        let sig = sign_message(msg, &kp.private_key);
+        let sig = sign_message(msg, &kp.private_key).unwrap();
         let tampered = b"tampered message";
         assert!(verify_signature(tampered, &sig, &kp.public_key).is_err());
     }
@@ -276,7 +343,7 @@ mod tests {
     fn verify_rejects_corrupted_signature() {
         let kp = test_keypair(0);
         let msg = b"hello";
-        let mut sig = sign_message(msg, &kp.private_key);
+        let mut sig = sign_message(msg, &kp.private_key).unwrap();
         sig[0] ^= 0x01; // flip one bit
         assert!(verify_signature(msg, &sig, &kp.public_key).is_err());
     }
@@ -286,7 +353,7 @@ mod tests {
         let kp_a = test_keypair(0);
         let kp_b = test_keypair(1); // different account → different keypair
         let msg = b"hello";
-        let sig = sign_message(msg, &kp_a.private_key);
+        let sig = sign_message(msg, &kp_a.private_key).unwrap();
         assert!(verify_signature(msg, &sig, &kp_b.public_key).is_err());
     }
 

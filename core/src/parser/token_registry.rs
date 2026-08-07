@@ -46,7 +46,13 @@ pub fn format_amount(amount: u64, decimals: u8) -> String {
     if decimals == 0 {
         return amount.to_string();
     }
-    let divisor = 10u64.pow(decimals as u32);
+    // Decimals come from an attacker-controlled instruction byte. A u64 amount
+    // carries ~19 significant digits, so anything above 18 (or a power that
+    // overflows u64) can't scale meaningfully — refuse rather than wrap/panic.
+    let divisor = match 10u64.checked_pow(decimals as u32) {
+        Some(d) if decimals <= 18 => d,
+        _ => return format!("{} raw units (decimals {} unresolved)", amount, decimals),
+    };
     let whole = amount / divisor;
     let frac = amount % divisor;
     if frac == 0 {
@@ -181,6 +187,23 @@ mod tests {
     #[test]
     fn test_format_amount_trims_trailing_zeros() {
         assert_eq!(format_amount(1_100_000, 6), "1.1");
+    }
+
+    #[test]
+    fn test_format_amount_hostile_decimals() {
+        // Attacker-controlled decimals byte must never panic or emit a bogus
+        // "amount / divisor" style result (issue #80).
+        let out = format_amount(1_000_000, 255);
+        assert!(!out.contains('/'));
+        assert!(out.contains("unresolved"));
+        // 20–63 band: release wraps 10^decimals to nonzero garbage and returns a
+        // wrong amount with no panic — the silent-wrong regression must be guarded.
+        assert!(format_amount(u64::MAX, 30).contains("unresolved"));
+        assert!(!format_amount(1_000_000, 30).contains('/'));
+        // A divisor that overflows u64 (10^64) must also be handled gracefully.
+        assert!(format_amount(1_000_000, 64).contains("unresolved"));
+        // Valid decimals keep their existing behavior.
+        assert_eq!(format_amount(1_000_000, 6), "1");
     }
 
     #[test]

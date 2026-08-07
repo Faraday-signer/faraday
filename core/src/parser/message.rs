@@ -47,6 +47,41 @@ pub enum MessageVersion {
 }
 
 pub fn deserialize(tx_bytes: &[u8]) -> Result<ParsedMessage, &'static str> {
+    deserialize_with_len(tx_bytes).map(|(msg, _)| msg)
+}
+
+/// Robust transaction-shape guard for the off-chain message signer (#79).
+///
+/// Returns true when `message_bytes` — the raw bytes handed to the "sign
+/// message" channel — actually form a signable Solana transaction *message*:
+/// a v0 version prefix, or a legacy message that deserializes coherently and
+/// consumes the whole buffer — instruction count included zero, since a
+/// zero-instruction message still lands on-chain and charges the fee payer.
+/// Signing such bytes would mint a valid transaction signature, so the signer
+/// refuses them. Reuses the same wire-format deserializer the tx-review path
+/// relies on.
+pub fn is_signable_tx_message(message_bytes: &[u8]) -> bool {
+    // A high-bit-set first byte is a versioned-message prefix (0x80 = v0):
+    // unambiguously a transaction, refuse without further parsing.
+    if matches!(message_bytes.first(), Some(&b) if b & 0x80 != 0) {
+        return true;
+    }
+
+    // Prepend a zero signature count so the wire-format deserializer parses
+    // the bare message directly, then require a parse that consumes every byte
+    // — a plain text / SIWS payload won't fully parse as a header + accounts +
+    // blockhash + instruction list.
+    let mut wire = Vec::with_capacity(1 + message_bytes.len());
+    wire.push(0u8);
+    wire.extend_from_slice(message_bytes);
+
+    match deserialize_with_len(&wire) {
+        Ok((_msg, consumed)) => consumed == wire.len(),
+        Err(_) => false,
+    }
+}
+
+fn deserialize_with_len(tx_bytes: &[u8]) -> Result<(ParsedMessage, usize), &'static str> {
     let mut cur = Cursor::new(tx_bytes);
 
     // Skip signatures
@@ -129,13 +164,16 @@ pub fn deserialize(tx_bytes: &[u8]) -> Result<ParsedMessage, &'static str> {
         }
     }
 
-    Ok(ParsedMessage {
-        version,
-        num_required_signers,
-        accounts,
-        instructions,
-        address_table_lookups,
-    })
+    Ok((
+        ParsedMessage {
+            version,
+            num_required_signers,
+            accounts,
+            instructions,
+            address_table_lookups,
+        },
+        cur.pos,
+    ))
 }
 
 // === Cursor ===
@@ -301,6 +339,33 @@ mod tests {
         assert_eq!(msg.accounts.len(), 2);
         assert_eq!(msg.instructions.len(), 1);
         assert_eq!(msg.address_table_lookups.len(), 0);
+    }
+
+    /// A canonical zero-instruction legacy *message* (no signature prefix)
+    /// still lands on-chain and charges the fee payer, so the signer must
+    /// refuse it even though it carries no instructions.
+    #[test]
+    fn zero_instruction_message_is_signable_tx() {
+        let mut m = Vec::new();
+        m.push(1); // num_required_signers
+        m.push(0); // num_readonly_signed
+        m.push(1); // num_readonly_unsigned
+        m.push(2); // num_accounts (compact-u16)
+        m.extend_from_slice(&[0x01u8; 32]); // signer
+        m.extend_from_slice(&[0x00u8; 32]); // system program
+        m.extend_from_slice(&[0xABu8; 32]); // recent blockhash
+        m.push(0); // num_instructions = 0
+        assert!(is_signable_tx_message(&m));
+    }
+
+    /// A plain-text / SIWS-style payload must still pass through the guard so
+    /// genuine off-chain messages remain signable.
+    #[test]
+    fn plain_text_is_not_signable_tx() {
+        assert!(!is_signable_tx_message(b"gm from faraday"));
+        assert!(!is_signable_tx_message(
+            b"example.com wants you to sign in with your Solana account:"
+        ));
     }
 
     #[test]

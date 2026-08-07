@@ -31,6 +31,14 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                         // decodes to message_bytes. Route to the dedicated
                         // review screen before falling through to tx parsing.
                         if let Some(message_bytes) = decoded.message_bytes.clone() {
+                            // Cheap first-line UX router: bounce an obvious tx
+                            // scan back to the scanner. The authoritative
+                            // anti-forge check is `is_transaction_message`
+                            // inside `sign_message`, which refuses to sign
+                            // anything that parses as a transaction (#79).
+                            if looks_like_solana_tx(&message_bytes) {
+                                return Screen::SignScanTx;
+                            }
                             return Screen::SignMessageReview {
                                 message_bytes,
                                 scroll: 0,
@@ -224,12 +232,19 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 }
                 InputEvent::Confirm => {
                     if let Some(wallet) = &app.wallet {
-                        let sig = crate::signer::sign_message(
+                        match crate::signer::sign_message(
                             &message_bytes,
                             &wallet.keypair.private_key,
-                        );
-                        let signature_hex = hex::encode(&sig);
-                        return Screen::SignMessageResult { signature_hex };
+                        ) {
+                            Ok(sig) => {
+                                let signature_hex = hex::encode(&sig);
+                                return Screen::SignMessageResult { signature_hex };
+                            }
+                            // Any refusal (tx-shaped #79, or over-length) shows
+                            // the refusal outcome — never a signature, never a
+                            // silent drop to the menu.
+                            Err(_) => return Screen::SignMessageRefused,
+                        }
                     }
                     return Screen::MainMenu { selected: app.menu_index_of(2) };
                 }
@@ -245,16 +260,20 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
         Screen::SignMessageInput { mut grid } => {
             let done = grid.handle_input(event);
             if done {
-                if event == InputEvent::Back && (app.touch_input() || grid.text.is_empty()) {
+                if event == InputEvent::Back {
                     return Screen::SignScanTx;
                 }
                 if let Some(wallet) = &app.wallet {
-                    let sig = crate::signer::sign_message(
+                    match crate::signer::sign_message(
                         grid.text.as_bytes(),
                         &wallet.keypair.private_key,
-                    );
-                    let signature_hex = hex::encode(&sig);
-                    return Screen::SignMessageResult { signature_hex };
+                    ) {
+                        Ok(sig) => {
+                            let signature_hex = hex::encode(&sig);
+                            return Screen::SignMessageResult { signature_hex };
+                        }
+                        Err(_) => return Screen::SignMessageRefused,
+                    }
                 }
             }
             Screen::SignMessageInput { grid }
@@ -266,6 +285,16 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 _ => {}
             }
             Screen::SignMessageResult { signature_hex }
+        }
+
+        Screen::SignMessageRefused => {
+            match event {
+                InputEvent::Confirm | InputEvent::Back => {
+                    return Screen::MainMenu { selected: app.menu_index_of(2) }
+                }
+                _ => {}
+            }
+            Screen::SignMessageRefused
         }
 
         _ => unreachable!("sign::handle called with non-sign screen"),
@@ -367,6 +396,7 @@ mod input_model_tests {
                 instructions: Vec::new(),
                 fee_lamports: 0,
                 size: 0,
+                has_unresolved_accounts: false,
             }),
             page,
             scroll: 0,
@@ -436,6 +466,39 @@ mod input_model_tests {
         assert!(
             matches!(next, Screen::SignReview { .. }),
             "touch Confirm never cancels via menu"
+        );
+    }
+
+    #[test]
+    fn keys_back_on_message_keyboard_cancels_without_signing() {
+        // Regression (#84): on a keys build, Back with non-empty text must
+        // cancel to SignScanTx and never sign with the live key. A wallet is
+        // loaded so that any errant signing would route to SignMessageResult —
+        // reaching the cancel screen instead proves no signature was produced.
+        use crate::crypto::slip0010::SolanaKeypair;
+        use crate::gui::app::LoadedWallet;
+        use zeroize::Zeroizing;
+
+        let mut app = app_with(InputModel::Keys);
+        app.wallet = Some(LoadedWallet {
+            mnemonic: Zeroizing::new(String::new()),
+            passphrase: Zeroizing::new(String::new()),
+            keypair: SolanaKeypair {
+                private_key: [7u8; 32],
+                public_key: [0u8; 32],
+                derivation_path: String::new(),
+            },
+            address: String::new(),
+        });
+
+        let mut grid = CharGrid::new();
+        grid.text = "hello".to_string();
+        let screen = Screen::SignMessageInput { grid };
+
+        let next = handle(&mut app, screen, InputEvent::Back);
+        assert!(
+            matches!(next, Screen::SignScanTx),
+            "keys Back on message keyboard must cancel, not sign"
         );
     }
 }

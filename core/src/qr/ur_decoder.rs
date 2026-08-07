@@ -6,6 +6,13 @@
 
 extern crate alloc;
 
+/// Upper bound on a UR message's fragment count. A Solana tx (≤1232 bytes)
+/// fits in a handful of fragments, far below this. Enforced in `receive` on
+/// the decoded CBOR `sequence_count` — the value that sizes the fountain
+/// decoder's `(0..sequence_count)` index allocation. Left unbounded, an
+/// attacker's count OOMs/panics the decoder → reboot under `panic = "abort"`.
+const MAX_UR_FRAGMENTS: usize = 512;
+
 /// Wraps `ur::Decoder` with progress tracking and UR-detection logic.
 pub struct UrAccumulator {
     decoder: ur::Decoder,
@@ -53,6 +60,22 @@ impl UrAccumulator {
     ///   the part into a fresh decoder — so the next scan starts clean.
     pub fn receive(&mut self, part: &str) -> Result<bool, UrError> {
         let parsed = parse_seq_total(part);
+
+        // The URI `seq-total` header is validated then DISCARDED by
+        // `ur::decode`; the values that drive allocation live in the CBOR
+        // payload. Bound `sequence_count`/`sequence` from the decoded CBOR
+        // before the inner decoder calls `part.indexes()` (`choose_fragments`),
+        // which allocates `(0..sequence_count)` and computes `sequence - 1`.
+        // Left unbounded here, an attacker's count OOMs/panics → reboot. The
+        // `sequence` index legitimately climbs past `sequence_count` for
+        // fountain redundancy parts, so only its zero value is rejected.
+        if let Ok((ur::ur::Kind::MultiPart, cbor)) = ur::decode(part) {
+            match part_seq_count(&cbor) {
+                Some((seq, count)) if seq > 0 && count > 0 && count <= MAX_UR_FRAGMENTS as u64 => {}
+                _ => return Err(UrError::InvalidPart),
+            }
+        }
+
         let accept = |this: &mut Self| {
             this.started = true;
             if let Some((seq, total)) = parsed {
@@ -110,6 +133,20 @@ fn parse_seq_total(part: &str) -> Option<(usize, usize)> {
     let seq_total = after_type.split_once('/')?.0;
     let (seq, total) = seq_total.split_once('-')?;
     Some((seq.parse().ok()?, total.parse().ok()?))
+}
+
+/// Read `(sequence, sequence_count)` from a fountain part's decoded CBOR
+/// (`[sequence, sequence_count, message_length, checksum, data]`) without
+/// allocating fragment indices. `None` if the leading structure isn't the
+/// expected five-element array of unsigned integers.
+fn part_seq_count(cbor: &[u8]) -> Option<(u64, u64)> {
+    let mut d = minicbor::Decoder::new(cbor);
+    if d.array().ok()? != Some(5) {
+        return None;
+    }
+    let sequence = d.u64().ok()?;
+    let sequence_count = d.u64().ok()?;
+    Some((sequence, sequence_count))
 }
 
 #[derive(Debug)]
@@ -260,6 +297,64 @@ mod tests {
         assert!(UrAccumulator::is_ur("ur:bytes/1-3/lpadao..."));
         assert!(!UrAccumulator::is_ur("not a ur string"));
         assert!(!UrAccumulator::is_ur(""));
+    }
+
+    /// Wrap raw fountain-part CBOR into a UR fragment whose URI header is
+    /// deliberately honest-looking (`1-5`), the way a crafted QR would be.
+    fn ur_part_from_cbor(cbor: &[u8]) -> String {
+        let body = ur::bytewords::encode(cbor, ur::bytewords::Style::Minimal);
+        format!("ur:bytes/1-5/{body}")
+    }
+
+    #[test]
+    fn rejects_oversized_cbor_sequence_count() {
+        // Honest-looking header (`1-5`) but CBOR `sequence_count` far over the
+        // bound. `ur::decode` discards the header, so only the CBOR guard
+        // catches this — the inner decoder would otherwise hand the part to
+        // `choose_fragments`, allocating `(0..sequence_count)`.
+        // CBOR: [seq=1, sequence_count=100000, message_length=100, checksum=0,
+        //        data=h'01020304'].
+        let cbor = [
+            0x85, // array(5)
+            0x01, // sequence = 1
+            0x1a, 0x00, 0x01, 0x86, 0xa0, // sequence_count = 100000
+            0x18, 0x64, // message_length = 100
+            0x00, // checksum = 0
+            0x44, 0x01, 0x02, 0x03, 0x04, // data
+        ];
+        let part = ur_part_from_cbor(&cbor);
+        // Header parses as a small, plausible total — the old guard's blind spot.
+        assert_eq!(parse_seq_total(&part), Some((1, 5)));
+        let mut acc = UrAccumulator::new();
+        assert!(acc.receive(&part).is_err());
+    }
+
+    #[test]
+    fn rejects_zero_cbor_sequence() {
+        // CBOR `sequence == 0` underflows `sequence - 1` in `choose_fragments`.
+        // [seq=0, sequence_count=5, message_length=100, checksum=0, data].
+        let cbor = [
+            0x85, 0x00, 0x05, 0x18, 0x64, 0x00, 0x44, 0x01, 0x02, 0x03, 0x04,
+        ];
+        let part = ur_part_from_cbor(&cbor);
+        let mut acc = UrAccumulator::new();
+        assert!(acc.receive(&part).is_err());
+    }
+
+    #[test]
+    fn accepts_in_bound_multi_part_roundtrip() {
+        // A well-formed small multi-part sequence still reassembles.
+        let data = vec![0x42; 400];
+        let mut encoder = ur::Encoder::bytes(&data, 100).unwrap();
+        let total = encoder.fragment_count();
+        let mut acc = UrAccumulator::new();
+        for _ in 0..total {
+            let part = encoder.next_part().unwrap();
+            if acc.receive(&part).unwrap() {
+                break;
+            }
+        }
+        assert_eq!(acc.message().unwrap(), data);
     }
 
     #[test]

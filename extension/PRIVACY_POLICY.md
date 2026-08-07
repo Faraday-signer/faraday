@@ -20,7 +20,7 @@ None of this data is ever sent to Faraday — there are no Faraday servers. Appr
 
 ## What data the extension does not store
 
-- Private keys or seed phrases — signing happens exclusively on the air-gapped Faraday device
+- Private keys or seed phrases — signing happens exclusively on the Faraday hardware signer, which never connects to a network (the Pi Zero 1.3 has no radio hardware at all; the ESP32-S3 links no radio drivers)
 - Browsing history, page content, or URLs
 - Personal information such as name, email, or location
 - Analytics, telemetry, or usage metrics

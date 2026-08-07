@@ -19,6 +19,11 @@ use embedded_graphics::{
 use crate::ui::widgets::{EdgeHints, Header, HeaderKind, List, ListRow, FOOTER_H, GUTTER_W};
 use crate::ui::Theme;
 
+/// Height (pixels) of the danger description band carved off the top of the
+/// body when `description` is Some. Public so tap-mapping code can offset the
+/// list top by the same amount the draw reserves.
+pub const DESC_BAND_H: u32 = 42;
+
 pub struct ListScreen<'a> {
     pub header: HeaderKind<'a>,
     pub counter: Option<(usize, usize)>,
@@ -81,8 +86,7 @@ impl<'a> ListScreen<'a> {
         // left-aligned "!" sigil + inverted text so the whole strip reads as
         // an active warning, not a footnote.
         let body_rect = if let Some(desc) = self.description {
-            let band_h = 42i32;
-            let (band_rect, rest) = split_top(body_rect, band_h);
+            let (band_rect, rest) = split_top(body_rect, DESC_BAND_H as i32);
 
             // Danger fill.
             display.fill_solid(&band_rect, theme.danger)?;
