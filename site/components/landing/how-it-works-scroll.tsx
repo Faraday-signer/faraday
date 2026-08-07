@@ -25,7 +25,7 @@ const STEPS = [
 
 /** Device pose per phase: idle three-quarter, spun so the back camera faces
  * the extension's QR, face-on for review, face-on showing the signed QR. */
-const POSES = [-0.55, 2.35, 0.05, 0.05];
+const POSES = [-0.55, 2.35, 0.05, -0.55];
 
 /**
  * The round-trip story, fully reader-paced: four clearly clickable step
