@@ -208,6 +208,18 @@ function FwRect({
 
 const QP = Math.PI / 4;
 
+/** Rounded-rect Shape centered on the origin (dims in mm). */
+function roundedRectShape(w: number, h: number, r: number): Shape {
+  const s = new Shape();
+  const hw = w / 2, hh = h / 2;
+  s.moveTo(-hw + r, -hh);
+  s.lineTo(hw - r, -hh); s.quadraticCurveTo(hw, -hh, hw, -hh + r);
+  s.lineTo(hw, hh - r); s.quadraticCurveTo(hw, hh, hw - r, hh);
+  s.lineTo(-hw + r, hh); s.quadraticCurveTo(-hw, hh, -hw, hh - r);
+  s.lineTo(-hw, -hh + r); s.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
+  return s;
+}
+
 /** The ESP32 touch build's zoned APPROVE SEND screen, built as live geometry
  * (SDF text + rects) instead of a bitmap — crisp at any angle. Layout is the
  * firmware's own 240×320 grid: 29px header, three body zones at y 29/111/193,
@@ -326,8 +338,8 @@ function Esp32Assembly({ open }: { open: boolean }) {
       cy: center.y,
       cz: center.z,
       pxScale: screenW / 240,
-      backW: size.x * 0.97,
-      backH: size.y * 0.97,
+      // rounded like the case corners so no square corner pokes past the shell
+      backShape: roundedRectShape(size.x * 0.97, size.y * 0.97, 6),
       screenZ: bb.max.z - 1.0,
       glassZ: bb.max.z - 0.45,
       offset: [-center.x, -center.y, -center.z] as [number, number, number],
@@ -362,7 +374,7 @@ function Esp32Assembly({ open }: { open: boolean }) {
         <Esp32Board position={[fit.cx, fit.cy, fit.cz + 2.5]} />
         {/* display-module backing fills the whole case opening behind the panel */}
         <mesh position={[fit.cx, fit.cy, fit.screenZ - 0.3]}>
-          <planeGeometry args={[fit.backW, fit.backH]} />
+          <shapeGeometry args={[fit.backShape]} />
           <meshStandardMaterial color="#05080b" roughness={0.85} />
         </mesh>
         {/* live firmware UI in the screen's logical px space (1px = pxScale mm) */}
@@ -373,7 +385,7 @@ function Esp32Assembly({ open }: { open: boolean }) {
             spins. depthWrite off + late renderOrder so it overlays the UI
             text without ever depth-culling it. */}
         <mesh position={[fit.cx, fit.cy, fit.glassZ]} renderOrder={10}>
-          <planeGeometry args={[fit.backW, fit.backH]} />
+          <shapeGeometry args={[fit.backShape]} />
           <meshStandardMaterial
             color="#000000"
             transparent
