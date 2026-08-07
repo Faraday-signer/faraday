@@ -565,6 +565,13 @@ function Esp32Assembly({ open }: { open: boolean }) {
       {/* the board (and its lit screen) slide out together when open */}
       <group ref={boardRef}>
         <Esp32Board position={[fit.cx, fit.cy, fit.cz + 2.5]} />
+        {/* small spot picking the camera out of the dark on the board's back */}
+        <pointLight
+          position={[fit.cx, fit.cy + 14, fit.cz - 22]}
+          intensity={3}
+          distance={2.5}
+          decay={2}
+        />
         {/* display-module backing fills the whole case opening behind the panel */}
         <mesh position={[fit.cx, fit.cy, fit.screenZ - 0.3]}>
           <shapeGeometry args={[fit.backShape]} />
