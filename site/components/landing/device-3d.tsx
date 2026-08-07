@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
 import { Edges, Environment, Lightformer, Text, useGLTF } from "@react-three/drei";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-import { Box3, MathUtils, Shape, Vector3 } from "three";
+import { Box3, MathUtils, Shape, SRGBColorSpace, TextureLoader, Vector3 } from "three";
 import type { BufferGeometry, Group } from "three";
 
 export type Device3DName = "esp32" | "pi";
@@ -62,12 +62,15 @@ const PI_CAMERA_XZ: [number, number] = [-14.2, 0.02];
 const PI_LID_LIFT_MM = 32;
 const PI_BOARD_LIFT_MM = 14;
 
-/** Simplified Raspberry Pi Zero (65×30mm), real dimensions as basic shapes —
- * readable at hero size. Lifts to mid-height when exploded. */
+/** Simplified Raspberry Pi Zero (65×30mm), real dimensions as basic shapes
+ * over a generated PCB texture (solder mask, traces, GPIO pads, silkscreen,
+ * mounting holes) — readable as a real board at hero size. */
 function PiZeroBoard({ y }: { y: number }) {
-  const pcb = "#16502f";
+  const pcb = "#124a2c";
   const metal = { color: "#c8ccd2", metalness: 0.85, roughness: 0.3 } as const;
-  const gold = { color: "#b98a2f", metalness: 0.9, roughness: 0.35 } as const;
+  const top = useLoader(TextureLoader, "/models/pi/pcb-top.png");
+  top.colorSpace = SRGBColorSpace;
+  top.anisotropy = 8;
   return (
     <group>
       {/* Pi Zero PCB, components facing up */}
@@ -75,10 +78,15 @@ function PiZeroBoard({ y }: { y: number }) {
         <boxGeometry args={[65, 1.4, 30]} />
         <meshStandardMaterial color={pcb} roughness={0.55} metalness={0.1} />
       </mesh>
-      {/* SoC, centered */}
-      <mesh position={[2, y + 1.2, 0]}>
+      {/* textured top face: traces, GPIO pads, silkscreen, mounting holes */}
+      <mesh position={[0, y + 0.71, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[65, 30]} />
+        <meshStandardMaterial map={top} roughness={0.5} metalness={0.15} />
+      </mesh>
+      {/* SoC with a metal RF-shield look, center-left like the Zero 2 W */}
+      <mesh position={[-1, y + 1.2, 0]}>
         <boxGeometry args={[12, 1.2, 12]} />
-        <meshStandardMaterial color="#0c0d10" roughness={0.35} metalness={0.4} />
+        <meshStandardMaterial color="#9aa1a9" roughness={0.35} metalness={0.75} />
       </mesh>
       {/* SD slot, left edge */}
       <mesh position={[-27, y + 1.4, -6]}>
@@ -98,10 +106,14 @@ function PiZeroBoard({ y }: { y: number }) {
         <boxGeometry args={[8, 1.6, 5.6]} />
         <meshStandardMaterial {...metal} />
       </mesh>
-      {/* 40-pin GPIO pad strip along the back edge */}
-      <mesh position={[0, y + 1, -13]}>
-        <boxGeometry args={[51, 0.6, 4.5]} />
-        <meshStandardMaterial {...gold} />
+      {/* camera flex connector on the right edge */}
+      <mesh position={[29.5, y + 1.1, 0]}>
+        <boxGeometry args={[4.5, 1, 17]} />
+        <meshStandardMaterial color="#1b1d21" roughness={0.4} metalness={0.3} />
+      </mesh>
+      <mesh position={[31.2, y + 1.1, 0]}>
+        <boxGeometry args={[1.6, 0.8, 17]} />
+        <meshStandardMaterial color="#c8b48c" roughness={0.6} />
       </mesh>
     </group>
   );
@@ -256,7 +268,7 @@ function PiAssembly({ open }: { open: boolean }) {
 }
 
 /** How far the ESP32 board slides out of the case when exploded (mm). */
-const ESP32_EXPLODE_MM = 34;
+const ESP32_EXPLODE_MM = 48;
 
 /** Firmware UI palette (Theme::faraday_320 verbatim). */
 const FW = {
@@ -584,10 +596,11 @@ function Esp32Assembly({ open }: { open: boolean }) {
 
 useGLTF.preload("/models/esp32/board.glb");
 
-/** Yaw the explode swings to when opened. The ESP32's board slides along its
- * front axis, invisible dead-on, so it swings well to the side; the Pi's lid
- * lifts vertically, so a slight angle is enough. */
-const OPEN_YAW: Record<Device3DName, number> = { esp32: -1.05, pi: -0.35 };
+/** Yaw the explode swings to when opened. The ESP32 swings to a BACK
+ * three-quarter view — the camera module lives on the board's back, and the
+ * case's rear camera hole is there too; the Pi's lid lifts vertically, so a
+ * slight angle is enough. */
+const OPEN_YAW: Record<Device3DName, number> = { esp32: 1.9, pi: -0.35 };
 const TWO_PI = Math.PI * 2;
 
 /** Slow turntable driven on the model (not the camera): framing is fixed by
@@ -744,6 +757,8 @@ export function Device3D({ device, open = false }: { device: Device3DName; open?
     >
       <ambientLight intensity={0.35} />
       <directionalLight position={[3, 4, 5]} intensity={0.9} />
+      {/* rear fill so back-side details (the camera) read when exploded */}
+      <directionalLight position={[1, 2, -5]} intensity={0.55} />
       <directionalLight position={[-4, -2, -3]} intensity={0.5} color={EDGE_COLOR} />
       {/* procedural studio: soft top box + two side strips (no HDR download) */}
       <Environment resolution={256} frames={1}>
