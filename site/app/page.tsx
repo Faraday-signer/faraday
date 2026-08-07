@@ -2,7 +2,8 @@ import { DemoSection } from "@/components/landing/demo-section";
 import { DeviceSection } from "@/components/landing/device-section";
 import { FlashTeaser } from "@/components/landing/flash-teaser";
 import { Hero } from "@/components/landing/hero";
-import { HowItWorks } from "@/components/landing/how-it-works";
+import { HowItWorksLoop } from "@/components/landing/how-it-works-loop";
+import { HowItWorksScroll } from "@/components/landing/how-it-works-scroll";
 import { MeasurementGrid } from "@/components/landing/measurement-grid";
 import { SecurityModel } from "@/components/landing/security-model";
 import { SiteFooter } from "@/components/landing/site-footer";
@@ -22,7 +23,16 @@ export default function Home() {
         <SiteNav />
         <main>
           <Hero />
-          <HowItWorks />
+          {/* TEMPORARY: two how-it-works prototypes stacked for comparison.
+              The keeper stays, the label banners and the loser get deleted. */}
+          <div className="border-b border-border bg-brand/10 px-5 py-2 text-center font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/70">
+            [ prototype A · live round trip ]
+          </div>
+          <HowItWorksLoop />
+          <div className="border-b border-border bg-brand/10 px-5 py-2 text-center font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/70">
+            [ prototype B · scroll story ]
+          </div>
+          <HowItWorksScroll />
           <SecurityModel />
           <DeviceSection />
           <SuiteSection />

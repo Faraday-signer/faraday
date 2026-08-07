@@ -758,11 +758,23 @@ function PresentationTilt({
   );
 }
 
-function DeviceModel({ device, open }: { device: Device3DName; open: boolean }) {
+function DeviceModel({
+  device,
+  open,
+  holdYaw,
+}: {
+  device: Device3DName;
+  open: boolean;
+  /** When set, freezes the turntable at this yaw (drag still works). */
+  holdYaw?: number;
+}) {
   const p = PRESENTATION[device];
   return (
     <PresentationTilt open={open} closedX={p.tiltX} openX={p.openTiltX}>
-      <Turntable hold={open} openYaw={OPEN_YAW[device]}>
+      <Turntable
+        hold={open || holdYaw !== undefined}
+        openYaw={holdYaw ?? OPEN_YAW[device]}
+      >
         <group scale={p.scale}>
           {device === "pi" ? (
             <PiAssembly open={open} />
@@ -775,7 +787,15 @@ function DeviceModel({ device, open }: { device: Device3DName; open: boolean }) 
   );
 }
 
-export function Device3D({ device, open = false }: { device: Device3DName; open?: boolean }) {
+export function Device3D({
+  device,
+  open = false,
+  holdYaw,
+}: {
+  device: Device3DName;
+  open?: boolean;
+  holdYaw?: number;
+}) {
   return (
     <Canvas
       camera={{ position: [0, 0, 4], fov: 40 }}
@@ -810,7 +830,7 @@ export function Device3D({ device, open = false }: { device: Device3DName; open?
         />
       </Environment>
       <Suspense fallback={null}>
-        <DeviceModel key={device} device={device} open={open} />
+        <DeviceModel key={device} device={device} open={open} holdYaw={holdYaw} />
       </Suspense>
     </Canvas>
   );
