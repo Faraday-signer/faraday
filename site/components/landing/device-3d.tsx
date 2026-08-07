@@ -4,7 +4,16 @@ import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
 import { Edges, Environment, Lightformer, Text, useGLTF } from "@react-three/drei";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-import { Box3, MathUtils, Shape, SRGBColorSpace, TextureLoader, Vector3 } from "three";
+import {
+  Box3,
+  CanvasTexture,
+  MathUtils,
+  NearestFilter,
+  Shape,
+  SRGBColorSpace,
+  TextureLoader,
+  Vector3,
+} from "three";
 import type { BufferGeometry, Group } from "three";
 
 export type Device3DName = "esp32" | "pi";
@@ -422,6 +431,76 @@ function Esp32ScreenUI() {
   );
 }
 
+/** What the ESP32's screen is showing. */
+export type Esp32Screen = "review" | "signed";
+
+/** The signed-QR screen: the deterministic QrGlyph pattern rendered once to a
+ * tiny canvas (nearest-filtered, so modules stay razor sharp) on the
+ * firmware's palette, under a SIGNED header. */
+function Esp32SignedUI() {
+  const qrTex = useMemo(() => {
+    const n = 21;
+    const cnv = document.createElement("canvas");
+    cnv.width = cnv.height = n;
+    const ctx = cnv.getContext("2d")!;
+    ctx.fillStyle = "#001721";
+    ctx.fillRect(0, 0, n, n);
+    ctx.fillStyle = "#1AF8FF";
+    const inBox = (r: number, c: number, br: number, bc: number) =>
+      r >= br && r < br + 7 && c >= bc && c < bc + 7;
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        let on = false;
+        const finderZone =
+          (r < 8 && c < 8) || (r < 8 && c >= n - 8) || (r >= n - 8 && c < 8);
+        if (finderZone) {
+          for (const [br, bc] of [[0, 0], [0, n - 7], [n - 7, 0]] as const) {
+            if (inBox(r, c, br, bc)) {
+              const lr = r - br, lc = c - bc;
+              on =
+                lr === 0 || lr === 6 || lc === 0 || lc === 6 ||
+                (lr >= 2 && lr <= 4 && lc >= 2 && lc <= 4);
+            }
+          }
+        } else if (r === 6 || c === 6) {
+          on = (r + c) % 2 === 0;
+        } else {
+          const h = (r * 73856093) ^ (c * 19349663) ^ ((r + c) * 83492791);
+          on = (h & 7) > 3;
+        }
+        if (on) ctx.fillRect(c, r, 1, 1);
+      }
+    }
+    const t = new CanvasTexture(cnv);
+    t.magFilter = NearestFilter;
+    t.colorSpace = SRGBColorSpace;
+    return t;
+  }, []);
+
+  const bg = useMemo(() => roundedRectShape(240, 320, 14), []);
+  return (
+    <>
+      <mesh>
+        <shapeGeometry args={[bg]} />
+        <meshBasicMaterial color={FW.bg} toneMapped={false} />
+      </mesh>
+      <group position={[-120, 160, 0]}>
+        <FwText x={12} y={17} size={14} color={FW.accent}>SIGNED</FwText>
+        <FwText x={228} y={17} size={14} color={FW.dim} align="right">1/1</FwText>
+        <FwRect x={120} y={28.5} w={240} h={1} color={FW.border} />
+        <mesh position={[120, -160, 0.4]}>
+          <planeGeometry args={[190, 190]} />
+          <meshBasicMaterial map={qrTex} toneMapped={false} />
+        </mesh>
+        <FwText x={120} y={281} size={13} color={FW.muted} align="center">
+          SCAN WITH EXTENSION
+        </FwText>
+        <FwRect x={120} y={297} w={240} h={1} color={FW.border} />
+      </group>
+    </>
+  );
+}
+
 /** The Pi build's zoned APPROVE SEND screen (240×240, physical keys): same
  * three zones on the firmware's grid — header 29px, zones at y 29/99/169 —
  * with the K1/K2/K3 edge-hint gutter column on the right instead of a
@@ -506,7 +585,13 @@ function Esp32Board({ position }: { position: [number, number, number] }) {
  * bezel fills the front opening, the lit screen plane rides on the board, and
  * `open` slides the board out of the case. The STL's front is already +Z, so
  * no re-orientation is needed. */
-function Esp32Assembly({ open }: { open: boolean }) {
+function Esp32Assembly({
+  open,
+  screen = "review",
+}: {
+  open: boolean;
+  screen?: Esp32Screen;
+}) {
   const geo = useLoader(STLLoader, "/models/esp32/touch2.stl") as BufferGeometry;
   const boardRef = useRef<Group>(null);
   const wrapRef = useRef<Group>(null);
@@ -599,7 +684,7 @@ function Esp32Assembly({ open }: { open: boolean }) {
         </mesh>
         {/* live firmware UI in the screen's logical px space (1px = pxScale mm) */}
         <group position={[fit.cx, fit.cy, fit.screenZ]} scale={fit.pxScale}>
-          <Esp32ScreenUI />
+          {screen === "signed" ? <Esp32SignedUI /> : <Esp32ScreenUI />}
         </group>
         {/* glass: a faint gloss layer the key light glints across while it
             spins. depthWrite off + late renderOrder so it overlays the UI
@@ -762,11 +847,13 @@ function DeviceModel({
   device,
   open,
   holdYaw,
+  screen,
 }: {
   device: Device3DName;
   open: boolean;
   /** When set, freezes the turntable at this yaw (drag still works). */
   holdYaw?: number;
+  screen?: Esp32Screen;
 }) {
   const p = PRESENTATION[device];
   return (
@@ -779,7 +866,7 @@ function DeviceModel({
           {device === "pi" ? (
             <PiAssembly open={open} />
           ) : (
-            <Esp32Assembly open={open} />
+            <Esp32Assembly open={open} screen={screen} />
           )}
         </group>
       </Turntable>
@@ -791,10 +878,12 @@ export function Device3D({
   device,
   open = false,
   holdYaw,
+  screen,
 }: {
   device: Device3DName;
   open?: boolean;
   holdYaw?: number;
+  screen?: Esp32Screen;
 }) {
   return (
     <Canvas
@@ -830,7 +919,7 @@ export function Device3D({
         />
       </Environment>
       <Suspense fallback={null}>
-        <DeviceModel key={device} device={device} open={open} holdYaw={holdYaw} />
+        <DeviceModel key={device} device={device} open={open} holdYaw={holdYaw} screen={screen} />
       </Suspense>
     </Canvas>
   );

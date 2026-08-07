@@ -18,38 +18,202 @@ const Device3D = dynamic(() => import("./device-3d").then((m) => m.Device3D), {
 });
 
 const STEPS = [
-  {
-    n: "01",
-    title: "Build",
-    body: "Your wallet or a dapp builds an unsigned transaction in the browser, exactly as it would with any wallet.",
-  },
-  {
-    n: "02",
-    title: "Cross the gap",
-    body: "The Faraday extension renders the transaction as a QR code. The device's camera reads it. Nothing electrical connects the two. The only channel is light.",
-  },
-  {
-    n: "03",
-    title: "Review on-device",
-    body: "Faraday decodes the raw bytes offline, with no RPC or lookups, and shows exactly what you're about to sign in plain terms. You approve with the buttons.",
-  },
-  {
-    n: "04",
-    title: "Sign & return",
-    body: "The device signs in RAM and displays the signature as a QR. The browser scans it back and submits to Solana. The private key never crossed.",
-  },
+  { n: "01", title: "Build", short: "The extension builds the unsigned tx" },
+  { n: "02", title: "Cross the gap", short: "QR out, camera in. Light only" },
+  { n: "03", title: "Review & sign", short: "The device decodes and you approve" },
+  { n: "04", title: "Return & submit", short: "Signed QR back, extension submits" },
 ];
 
-/** Device pose per phase: intro three-quarter, spun around so the back camera
- * faces the browser panel, face-on for the review, and a soft angle for the
- * return leg. */
-const POSES = [-0.55, 2.35, 0.05, -0.9];
+/** Device pose per phase: idle three-quarter, spun so the back camera faces
+ * the extension's QR, face-on for review, face-on showing the signed QR. */
+const POSES = [-0.55, 2.35, 0.05, 0.05];
+
+/* The real extension's theme tokens (extension/src/lib/theme.ts) */
+const EXT = {
+  bg: "#001721",
+  panel: "#002536",
+  border: "#0A2836",
+  borderStrong: "#114358",
+  text: "#E7E7E7",
+  muted: "#8C9CA8",
+  dim: "#5E7180",
+  accent: "#1AF8FF",
+  success: "#4ADE80",
+};
+
+function ExtField({
+  label,
+  value,
+  trailing,
+}: {
+  label: string;
+  value: string;
+  trailing?: string;
+}) {
+  return (
+    <div
+      className="rounded-[10px] px-3 py-2"
+      style={{ background: EXT.panel, border: `1px solid ${EXT.border}` }}
+    >
+      <p
+        className="font-display text-[9px] uppercase tracking-[0.18em]"
+        style={{ color: EXT.dim }}
+      >
+        {label}
+      </p>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="truncate text-[12px]" style={{ color: EXT.text }}>
+          {value}
+        </p>
+        {trailing && (
+          <span
+            className="font-display text-[9px] uppercase tracking-[0.14em]"
+            style={{ color: EXT.accent }}
+          >
+            {trailing}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Faithful mini recreation of the real extension side panel (PanelShell:
+ * 52px header with eyebrow + title, dark navy shell, panel-card fields,
+ * branded white-surface QR frame, success green from the real theme). */
+function ExtensionPanel({ phase }: { phase: number }) {
+  const headers: [string, string][] = [
+    ["Send", "Send SOL"],
+    ["Sign transaction", "Sign on Faraday"],
+    ["Sign transaction", "Sign on Faraday"],
+    ["Send", "Broadcasted"],
+  ];
+  const [eyebrow, title] = headers[phase];
+  return (
+    <div
+      className="w-60 overflow-hidden rounded-[14px] sm:w-64"
+      style={{ background: EXT.bg, border: `1px solid ${EXT.borderStrong}` }}
+    >
+      {/* PanelShell header: back chevron · eyebrow + title · gear */}
+      <div
+        className="flex min-h-[44px] items-center justify-between px-3"
+        style={{ borderBottom: `1px solid ${EXT.border}` }}
+      >
+        <span className="text-[13px]" style={{ color: EXT.dim }}>
+          ‹
+        </span>
+        <div className="flex flex-col items-center leading-tight">
+          <span
+            className="font-display text-[8px] uppercase tracking-[0.22em]"
+            style={{ color: EXT.dim }}
+          >
+            {eyebrow}
+          </span>
+          <span className="text-[12px] font-medium" style={{ color: EXT.text }}>
+            {title}
+          </span>
+        </div>
+        <span className="text-[11px]" style={{ color: EXT.dim }}>
+          ⚙
+        </span>
+      </div>
+
+      <div className="relative h-64">
+        {/* P0: compose the send */}
+        <div
+          className={`absolute inset-0 flex flex-col gap-2 p-3 transition-opacity duration-500 ${
+            phase === 0 ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
+        >
+          <ExtField label="Token" value="SOL" trailing="12.4 SOL" />
+          <ExtField label="Amount" value="1.5" trailing="Max" />
+          <ExtField label="Recipient" value="9WzDXwBbmkg8ZTbNMqUxvQ…" />
+          <div
+            className="mt-auto rounded-[10px] py-2 text-center font-display text-[10px] uppercase tracking-[0.16em]"
+            style={{ background: EXT.accent, color: EXT.bg }}
+          >
+            Review send
+          </div>
+        </div>
+
+        {/* P1 + P2: the branded sign QR, then waiting for the signature */}
+        <div
+          className={`absolute inset-0 flex flex-col items-center gap-2 p-3 transition-opacity duration-500 ${
+            phase === 1 || phase === 2 ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
+        >
+          <div
+            className="rounded-[14px] p-2"
+            style={{ border: `1.5px solid ${EXT.accent}` }}
+          >
+            <p
+              className="pb-1 text-center font-display text-[8px] uppercase tracking-[0.2em]"
+              style={{ color: EXT.accent }}
+            >
+              Sign transaction
+            </p>
+            {/* real frames keep modules black-on-white for scan reliability */}
+            <div className="rounded-[8px] bg-white p-2">
+              <QrGlyph
+                className={`h-32 w-32 text-black transition-opacity duration-500 ${
+                  phase === 2 ? "opacity-30" : "opacity-100"
+                }`}
+              />
+            </div>
+          </div>
+          <p
+            className="text-center text-[10px] leading-snug"
+            style={{ color: EXT.muted }}
+          >
+            {phase === 2 ? (
+              <>
+                <span
+                  className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle motion-safe:animate-pulse"
+                  style={{ background: EXT.accent }}
+                />
+                Waiting for signature…
+              </>
+            ) : (
+              "Hold your Faraday up to the QR."
+            )}
+          </p>
+        </div>
+
+        {/* P3: broadcasted */}
+        <div
+          className={`absolute inset-0 flex flex-col items-center justify-center gap-3 p-3 transition-opacity duration-500 ${
+            phase === 3 ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
+        >
+          <span
+            className="flex h-12 w-12 items-center justify-center rounded-full text-xl"
+            style={{ background: "rgba(74,222,128,0.14)", color: EXT.success }}
+          >
+            ✓
+          </span>
+          <p className="text-[12px]" style={{ color: EXT.text }}>
+            Signature scanned back
+          </p>
+          <span
+            className="rounded-full px-2.5 py-0.5 font-display text-[9px] uppercase tracking-[0.16em]"
+            style={{
+              border: `1px solid rgba(74,222,128,0.4)`,
+              color: EXT.success,
+            }}
+          >
+            Broadcast · finalized
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /**
- * Option 2 — the scroll story. The section is four viewports tall; a pinned
- * panel advances the four phases as you scroll, steering the real 3D device
- * between poses. No wheel hijacking: native scroll position simply maps to a
- * phase, so speed and direction always belong to the visitor.
+ * The scroll story: a pinned panel three viewports deep. Native scroll maps to
+ * four phases acting out the real round trip between the extension and the 3D
+ * device (which turns its camera to the QR, reviews, then shows the signed QR
+ * on its actual screen). No wheel hijacking, and anchor jumps pass through.
  */
 export function HowItWorksScroll() {
   const sectionRef = useRef<HTMLElement>(null);
@@ -80,92 +244,80 @@ export function HowItWorksScroll() {
   return (
     <section
       ref={sectionRef}
-      id="how-it-works-scroll"
-      className="relative h-[400svh] border-b border-border bg-background"
+      id="how-it-works"
+      className="relative h-[300svh] border-b border-border bg-background"
     >
-      <div className="sticky top-0 flex h-svh flex-col overflow-hidden">
-        <div className="mx-auto w-full max-w-6xl px-5 pt-14 sm:px-8">
+      <div className="sticky top-0 flex h-svh flex-col overflow-hidden pt-16">
+        <div className="mx-auto w-full max-w-6xl px-5 pt-6 sm:px-8">
           <SectionLabel index="01">How it works</SectionLabel>
-          <h2 className="mt-4 max-w-2xl font-display text-3xl leading-tight tracking-tight text-foreground sm:text-4xl">
+          <h2 className="mt-3 max-w-2xl font-display text-2xl leading-tight tracking-tight text-foreground sm:text-4xl">
             One round trip across the air gap
           </h2>
         </div>
 
-        <div className="mx-auto grid w-full max-w-6xl flex-1 grid-cols-1 items-center gap-8 px-5 sm:px-8 lg:grid-cols-[1fr_auto]">
-          {/* left: the step list, active one expanded */}
-          <ol className="max-w-xl">
-            {STEPS.map((step, i) => (
-              <li
-                key={step.n}
-                className={`border-l-2 py-3 pl-5 transition-colors duration-300 ${
-                  phase === i ? "border-brand" : "border-border"
-                }`}
-                aria-current={phase === i ? "step" : undefined}
-              >
-                <div className="flex items-baseline gap-3">
-                  <span
-                    className={`font-mono text-xs transition-colors duration-300 ${
-                      phase === i ? "text-brand" : "text-foreground/40"
-                    }`}
-                  >
-                    {step.n}
-                  </span>
-                  <h3
-                    className={`font-display text-lg tracking-tight transition-colors duration-300 sm:text-xl ${
-                      phase === i ? "text-foreground" : "text-foreground/50"
-                    }`}
-                  >
-                    {step.title}
-                  </h3>
-                </div>
-                <div
-                  className={`grid transition-[grid-template-rows,opacity] duration-500 ease-out ${
-                    phase === i
-                      ? "grid-rows-[1fr] opacity-100"
-                      : "grid-rows-[0fr] opacity-0"
-                  }`}
-                >
-                  <p className="overflow-hidden text-[15px] leading-relaxed text-foreground/75">
-                    {step.body}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ol>
+        <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center gap-6 px-5 sm:px-8 lg:flex-row lg:gap-12">
+          <ExtensionPanel phase={phase} />
 
-          {/* right: browser chip + the real device, steered per phase */}
-          <div className="relative mx-auto flex flex-col items-center">
-            <div
-              aria-hidden
-              className={`absolute -left-28 top-1/2 hidden -translate-y-1/2 flex-col items-center gap-2 transition-opacity duration-500 lg:flex ${
-                phase === 1 || phase === 3 ? "opacity-100" : "opacity-0"
+          {/* the gap between the two: direction arrow per leg */}
+          <div
+            aria-hidden
+            className="flex h-10 flex-col items-center justify-center lg:h-auto lg:w-16"
+          >
+            <span
+              className={`font-mono text-xl text-brand transition-opacity duration-500 ${
+                phase === 1 || phase === 3 ? "opacity-100" : "opacity-20"
               }`}
             >
-              <QrGlyph
-                className={`h-16 w-16 ${phase === 3 ? "text-brand" : "text-foreground/70"}`}
-              />
-              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-                {phase === 3 ? "signed qr" : "tx qr"}
-              </span>
-            </div>
-            <Device3D device="esp32" holdYaw={POSES[phase]} />
-            <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-              {phase === 0 && "unsigned tx incoming"}
-              {phase === 1 && "camera reads the qr · light only"}
-              {phase === 2 && "review on the device screen"}
-              {phase === 3 && "signature returns as a qr"}
+              <span className="hidden lg:inline">{phase === 3 ? "←" : "→"}</span>
+              <span className="lg:hidden">{phase === 3 ? "↑" : "↓"}</span>
+            </span>
+            <span className="mt-1 hidden whitespace-nowrap font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground lg:block">
+              air gap
+            </span>
+          </div>
+
+          <div className="flex flex-col items-center">
+            <Device3D
+              device="esp32"
+              holdYaw={POSES[phase]}
+              screen={phase === 3 ? "signed" : "review"}
+            />
+            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              {phase === 0 && "offline · idle"}
+              {phase === 1 && "camera reads the qr"}
+              {phase === 2 && "review on the screen"}
+              {phase === 3 && "signed qr on the screen"}
             </p>
           </div>
         </div>
 
-        {/* scroll progress */}
-        <div className="mx-auto mb-8 w-full max-w-6xl px-5 sm:px-8">
-          <div className="h-px w-full bg-border">
-            <div
-              className="h-px bg-brand transition-[width] duration-300 ease-out"
-              style={{ width: `${((phase + 1) / 4) * 100}%` }}
-            />
-          </div>
+        {/* compact step rail + progress */}
+        <div className="mx-auto mb-6 w-full max-w-6xl px-5 sm:px-8">
+          <ol className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
+            {STEPS.map((step, i) => (
+              <li key={step.n} aria-current={phase === i ? "step" : undefined}>
+                <div
+                  className={`h-0.5 w-full origin-left rounded-full transition-[background-color,transform] duration-500 ${
+                    phase >= i ? "scale-x-100 bg-brand" : "scale-x-100 bg-border"
+                  }`}
+                />
+                <p
+                  className={`mt-2 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-300 ${
+                    phase === i ? "text-foreground" : "text-foreground/40"
+                  }`}
+                >
+                  {step.n} · {step.title}
+                </p>
+                <p
+                  className={`mt-0.5 hidden text-xs leading-relaxed text-foreground/60 transition-opacity duration-300 sm:block ${
+                    phase === i ? "opacity-100" : "opacity-0"
+                  }`}
+                >
+                  {step.short}
+                </p>
+              </li>
+            ))}
+          </ol>
         </div>
       </div>
     </section>
