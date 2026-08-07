@@ -69,7 +69,7 @@ function FooterCol({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/40">
+      <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/40">
         {title}
       </p>
       {children}

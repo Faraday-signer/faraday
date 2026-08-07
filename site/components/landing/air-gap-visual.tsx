@@ -22,7 +22,7 @@ function Node({
         className
       )}
     >
-      <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+      <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
         <span
           aria-hidden
           className={cn(
@@ -64,10 +64,10 @@ export function AirGapVisual({ className }: { className?: string }) {
       >
         <div className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent md:h-16 md:w-px md:flex-none md:bg-gradient-to-b" />
         <div className="flex flex-col items-center gap-1 whitespace-nowrap px-1">
-          <span className="pixel-shadow-sm font-mono text-[9px] uppercase tracking-[0.2em] text-brand">
+          <span className="pixel-shadow-sm font-mono text-[11px] uppercase tracking-[0.2em] text-brand">
             Air gap
           </span>
-          <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
+          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
             QR only
           </span>
         </div>

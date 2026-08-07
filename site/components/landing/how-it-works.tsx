@@ -41,7 +41,9 @@ export function HowItWorks() {
               key={step.n}
               className="flex flex-col gap-4 bg-background p-6 sm:p-7"
             >
-              <span className="font-mono text-sm text-brand">{step.n}</span>
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-sm bg-muted font-mono text-sm text-brand pixel-shadow-sm">
+                {step.n}
+              </span>
               <h3 className="font-display text-lg tracking-tight text-foreground">
                 {step.title}
               </h3>

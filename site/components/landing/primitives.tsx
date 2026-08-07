@@ -48,7 +48,7 @@ export function Tag({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] sm:text-[11px]",
+        "inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5 font-mono text-[11px] uppercase tracking-[0.14em] sm:text-[11px]",
         tone === "brand"
           ? "border-brand/40 text-brand"
           : "border-border text-muted-foreground",
