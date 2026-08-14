@@ -18,6 +18,7 @@ use esp_idf_svc::log::EspLogger;
 use faraday_core::ui::Theme;
 
 mod display;
+mod imu;
 mod touch;
 
 fn main() {
@@ -67,19 +68,26 @@ fn main() {
 
     let display = display::Display::new(spi_device, cs, dc, bl);
 
-    // I2C touch: SDA=48, SCL=47, INT=46.
+    // I2C bus (SDA=48, SCL=47) shared by the CST816D touch controller
+    // (INT=46) and the QMI8658 IMU.
     let i2c_config = I2cConfig::new().baudrate(400.kHz().into());
-    let i2c = I2cDriver::new(
-        peripherals.i2c0,
-        peripherals.pins.gpio48,
-        peripherals.pins.gpio47,
-        &i2c_config,
-    )
-    .expect("I2C init failed");
+    let i2c = std::rc::Rc::new(std::cell::RefCell::new(
+        I2cDriver::new(
+            peripherals.i2c0,
+            peripherals.pins.gpio48,
+            peripherals.pins.gpio47,
+            &i2c_config,
+        )
+        .expect("I2C init failed"),
+    ));
 
     let touch_int =
         PinDriver::input(peripherals.pins.gpio46, Pull::Up).expect("INT pin init failed");
-    let touch = touch::Touch::new(i2c, touch_int);
+    let touch = touch::Touch::new(i2c.clone(), touch_int);
+
+    // Motion sensor for the screensaver parallax; a board without the chip
+    // (probe fails) keeps the bouncing screensaver.
+    let imu = imu::Imu::probe(i2c);
 
     // BOOT button (GPIO0) as a soft power button — long-press → deep sleep.
     let power_btn = esp32_common::power::PowerButton::new(peripherals.pins.gpio0);
@@ -91,6 +99,7 @@ fn main() {
         touch,
         power_btn,
         None::<esp32_common::NoBattery>,
+        imu,
         Theme::faraday_320(),
     );
 }

@@ -1054,6 +1054,17 @@ impl App {
         self.camera_error.as_deref()
     }
 
+    /// Shake Easter egg: flip between the dark and light palettes. Never
+    /// persisted — the device has no storage by design, so every boot
+    /// starts dark and the light side stays a discovery.
+    pub fn toggle_theme(&mut self) {
+        if self.theme.is_light() {
+            self.theme.set_dark_palette();
+        } else {
+            self.theme.set_light_palette();
+        }
+    }
+
     pub fn has_camera_frame(&self) -> bool {
         self.latest_frame.is_some()
     }
