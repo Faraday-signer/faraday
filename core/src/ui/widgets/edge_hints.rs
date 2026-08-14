@@ -16,9 +16,11 @@
 
 use embedded_graphics::{
     geometry::{Point, Size},
+    mono_font::{ascii::FONT_9X15_BOLD, MonoTextStyle},
     pixelcolor::Rgb565,
     prelude::*,
     primitives::{Line, PrimitiveStyle, Rectangle},
+    text::{Alignment, Text},
 };
 
 use crate::ui::Theme;
@@ -54,6 +56,10 @@ pub enum EdgeIcon {
     /// pentagon "key" with an × inside. Used for K2 = "delete last
     /// character" on keyboard / char-grid screens.
     Delete,
+    /// A short text label instead of a glyph — used on commitment gates
+    /// (SIGN, CONFIRM) where a word is a heavier, clearer speed bump than
+    /// a checkmark. Keep it to ~7 characters so it fits a footer cell.
+    Label(&'static str),
 }
 
 pub struct EdgeHints {
@@ -73,6 +79,20 @@ impl EdgeHints {
 
     pub const fn k1(mut self, icon: EdgeIcon) -> Self {
         self.k1 = icon;
+        self
+    }
+
+    /// K1 hint shown only on physical-key builds. Touch builds leave the
+    /// cell empty (and the platform loop makes it inert): on tap-to-go
+    /// list screens tapping the row IS the action, so a Confirm cell is
+    /// redundant chrome (FA-21). Physical-key builds still need the icon —
+    /// K1 is how a selection commits there.
+    pub const fn k1_keys_only(mut self, icon: EdgeIcon) -> Self {
+        self.k1 = if cfg!(feature = "touch-ui") {
+            EdgeIcon::None
+        } else {
+            icon
+        };
         self
     }
 
@@ -391,6 +411,16 @@ fn draw_cell<D: DrawTarget<Color = Rgb565>>(
                 Point::new(center.x + 6, center.y - 3),
             )
             .into_styled(cross)
+            .draw(display)?;
+        }
+        EdgeIcon::Label(text) => {
+            // Baseline sits ~5px below center for FONT_9X15_BOLD's metrics.
+            Text::with_alignment(
+                text,
+                Point::new(center.x, center.y + 5),
+                MonoTextStyle::new(&FONT_9X15_BOLD, active),
+                Alignment::Center,
+            )
             .draw(display)?;
         }
     }

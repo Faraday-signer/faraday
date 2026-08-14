@@ -16,6 +16,23 @@ use crate::gui::colors;
 use crate::gui::components::draw_status_bar;
 use crate::gui::logo;
 use crate::ui::Theme;
+use crate::ui::widgets::EdgeIcon;
+
+/// Footer K1 for the signing gates: a labeled button on touch builds (a
+/// word is a heavier, clearer speed bump than a glyph), the classic Check
+/// beside the physical key elsewhere (FA-21).
+const SIGN_HINT: EdgeIcon = if cfg!(feature = "touch-ui") {
+    EdgeIcon::Label("SIGN")
+} else {
+    EdgeIcon::Check
+};
+
+/// Same, for the explicit-confirm address gate (#89).
+const CONFIRM_HINT: EdgeIcon = if cfg!(feature = "touch-ui") {
+    EdgeIcon::Label("CONFIRM")
+} else {
+    EdgeIcon::Check
+};
 
 /// Menu item. Brutalist layout: one hero label + subtitle at a time.
 struct MenuItem {
@@ -51,6 +68,31 @@ impl App {
     /// battery icon) on top.
     pub fn draw<D: DrawTarget<Color = Rgb565>>(&self, display: &mut D) -> Result<(), D::Error> {
         self.draw_screen(display)?;
+        // Press-down feedback (FA-21): outline the list row currently under
+        // the finger. Drawn over the finished screen so no per-screen
+        // plumbing is needed; the rect mirrors the tap-zone math exactly.
+        #[cfg(feature = "touch-ui")]
+        if let Some(row) = self.pressed_row {
+            use crate::ui::widgets::list::visible_start;
+            use crate::ui::widgets::FOOTER_H;
+            let footer_h = FOOTER_H as u16;
+            if let Some((max_visible, total, list_top, cur)) = self.list_geometry(footer_h) {
+                let start = visible_start(total, max_visible, cur);
+                if row >= start && row < (start + max_visible).min(total) {
+                    let slot = (row - start) as i32;
+                    let list_h = (self.theme.height as u16 - footer_h - list_top) as i32;
+                    let mv = max_visible as i32;
+                    let y0 = list_top as i32 + slot * list_h / mv;
+                    let y1 = list_top as i32 + (slot + 1) * list_h / mv;
+                    Rectangle::new(
+                        Point::new(1, y0 + 1),
+                        Size::new(self.theme.width - 2, (y1 - y0 - 2).max(0) as u32),
+                    )
+                    .into_styled(PrimitiveStyle::with_stroke(self.theme.accent, 2))
+                    .draw(display)?;
+                }
+            }
+        }
         #[cfg(feature = "touch-ui")]
         if let Some(battery) = self.battery {
             // The icon sits in the middle footer cell. Skip it where that cell
@@ -548,7 +590,7 @@ fn draw_mode_select<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 2,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check),
     }
     .draw(display, &theme)
 }
@@ -670,7 +712,7 @@ fn draw_main_menu<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -1059,7 +1101,7 @@ fn draw_export_seed_qr_menu<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -1095,7 +1137,7 @@ fn draw_load_finalize<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -1124,7 +1166,7 @@ fn draw_passphrase_prompt<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -1213,7 +1255,7 @@ fn draw_compact_address_confirm<D: DrawTarget<Color = Rgb565>>(
         body_lines: &body,
         rows: &rows,
         title_danger: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::Cross),
+        edge_hints: EdgeHints::new().k1(CONFIRM_HINT).k3(EdgeIcon::Cross),
     }
     .draw(display, &theme)
 }
@@ -1243,7 +1285,7 @@ fn draw_load_method<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -1273,7 +1315,7 @@ fn draw_create_word_count<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -1305,7 +1347,7 @@ fn draw_create_method<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -1339,7 +1381,7 @@ fn draw_settings_menu<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -1439,7 +1481,7 @@ fn draw_verify_word<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 4,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -2041,7 +2083,7 @@ fn draw_tx_review_zoned<D: DrawTarget<Color = Rgb565>>(
         .k2(next_hint)
         .k3(EdgeIcon::CrossDanger);
     if can_sign {
-        hints = hints.k1(EdgeIcon::Check);
+        hints = hints.k1(SIGN_HINT);
     }
     hints.draw(display, &theme, gutter)?;
 
@@ -2686,7 +2728,7 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
     };
     EdgeHints::new()
         .k1(if can_sign {
-            EdgeIcon::Check
+            SIGN_HINT
         } else {
             EdgeIcon::None
         })
@@ -3321,7 +3363,7 @@ fn draw_message_review<D: DrawTarget<Color = Rgb565>>(
     }
 
     EdgeHints::new()
-        .k1(EdgeIcon::Check)
+        .k1(SIGN_HINT)
         .k3(EdgeIcon::Cross)
         .draw(
             display,
@@ -4208,7 +4250,7 @@ fn draw_create_backup_warning<D: DrawTarget<Color = Rgb565>>(
         Size::new(GUTTER_W, theme.height - theme.header_h),
     );
     EdgeHints::new()
-        .k1(EdgeIcon::Check)
+        .k1_keys_only(EdgeIcon::Check)
         .k3(EdgeIcon::ArrowLeft)
         .draw(display, &theme, gutter)?;
 
@@ -4242,7 +4284,7 @@ fn draw_export_seed_warning<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -4273,7 +4315,7 @@ fn draw_reset_wallet<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
