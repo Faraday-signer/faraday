@@ -4,7 +4,7 @@ import { join } from "node:path";
 // @ts-expect-error — wawoff2 has no types
 import { decompress } from "wawoff2";
 
-export const alt = "Faraday · Air-gapped Solana signer";
+export const alt = "Faraday · Open-Source Air-Gapped Hardware Wallet for Solana";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
