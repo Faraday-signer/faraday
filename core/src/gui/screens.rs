@@ -448,7 +448,7 @@ pub fn draw_boot_splash<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     theme: &Theme,
 ) -> Result<(), D::Error> {
-    display.clear(colors::FD_BG)?;
+    display.clear(theme.bg)?;
     let screen_w = theme.width as i32;
     let screen_h = theme.height as i32;
     const SCALE: u32 = 3;
@@ -456,7 +456,7 @@ pub fn draw_boot_splash<D: DrawTarget<Color = Rgb565>>(
     let logo_h = (logo::LOGO_HEIGHT * SCALE) as i32;
     let x = (screen_w - logo_w) / 2;
     let y = (screen_h - logo_h) / 2;
-    logo::draw_logo(display, x, y, SCALE, colors::FD_ACCENT)?;
+    logo::draw_logo(display, x, y, SCALE, theme.accent)?;
     Ok(())
 }
 
@@ -469,7 +469,7 @@ pub fn draw_splash<D: DrawTarget<Color = Rgb565>>(
     theme: &Theme,
     elapsed_ms: u64,
 ) -> Result<(), D::Error> {
-    display.clear(colors::FD_BG)?;
+    display.clear(theme.bg)?;
 
     let screen_w = theme.width as i32;
     let screen_h = theme.height as i32;
@@ -487,7 +487,7 @@ pub fn draw_splash<D: DrawTarget<Color = Rgb565>>(
     // the logo climbs / falls across several rows between side bounces.
     let (x, y) = bounce(elapsed_ms, x_min, x_max, y_min, y_max, 6, 16);
 
-    logo::draw_logo(display, x, y, SCALE, colors::FD_ACCENT)?;
+    logo::draw_logo(display, x, y, SCALE, theme.accent)?;
 
     Ok(())
 }
@@ -4097,11 +4097,17 @@ fn draw_about<D: DrawTarget<Color = Rgb565>>(
     .into_styled(PrimitiveStyle::with_fill(theme.border))
     .draw(display)?;
 
-    // Key/value rows below.
+    // Key/value rows below. `touch-ui` is only set by the ESP32-S3 touch
+    // build, so it doubles as the hardware discriminator here.
+    let hardware = if cfg!(feature = "touch-ui") {
+        "ESP32-S3"
+    } else {
+        "Pi Zero 1.3"
+    };
     let rows = [
         ("VERSION", "v0.1.0"),
         ("NETWORK", "Solana"),
-        ("HARDWARE", "Pi Zero 1.3"),
+        ("HARDWARE", hardware),
         ("KEYS", "RAM only"),
     ];
     let rows_top = div_y + theme.space_md;
@@ -5157,7 +5163,7 @@ fn draw_scan_diag<D: DrawTarget<Color = Rgb565>>(
     // Thin band just under the status bar.
     let strip = Rectangle::new(Point::new(0, 28), Size::new(theme.width, 14));
     strip
-        .into_styled(PrimitiveStyle::with_fill(colors::BG_DARK))
+        .into_styled(PrimitiveStyle::with_fill(theme.bg))
         .draw(display)?;
 
     let recent = diag
@@ -5167,7 +5173,7 @@ fn draw_scan_diag<D: DrawTarget<Color = Rgb565>>(
     let dot_color = if recent {
         colors::SOLANA_GREEN
     } else {
-        colors::TEXT_MUTED
+        theme.dim
     };
     Rectangle::new(Point::new(6, 33), Size::new(6, 6))
         .into_styled(PrimitiveStyle::with_fill(dot_color))
@@ -5184,7 +5190,7 @@ fn draw_scan_diag<D: DrawTarget<Color = Rgb565>>(
         let bar_h: u32 = 4;
         let bar_w_total: u32 = 180;
         Rectangle::new(Point::new(bar_x, bar_y), Size::new(bar_w_total, bar_h))
-            .into_styled(PrimitiveStyle::with_fill(colors::BORDER_DEFAULT))
+            .into_styled(PrimitiveStyle::with_fill(theme.border))
             .draw(display)?;
         let filled = if total == 0 {
             0
@@ -5193,14 +5199,14 @@ fn draw_scan_diag<D: DrawTarget<Color = Rgb565>>(
         };
         if filled > 0 {
             Rectangle::new(Point::new(bar_x, bar_y), Size::new(filled, bar_h))
-                .into_styled(PrimitiveStyle::with_fill(colors::FD_ACCENT))
+                .into_styled(PrimitiveStyle::with_fill(theme.accent))
                 .draw(display)?;
         }
         let label = format!("{}/{}", n, total);
         let label_color = if n >= total {
-            colors::FD_ACCENT
+            theme.accent
         } else {
-            colors::TEXT_SECONDARY
+            theme.muted
         };
         let style = MonoTextStyle::new(&FONT_6X10, label_color);
         Text::with_alignment(&label, Point::new(234, 39), style, Alignment::Right).draw(display)?;

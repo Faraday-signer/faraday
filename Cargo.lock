@@ -1336,6 +1336,7 @@ name = "faraday"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "bs58",
  "embedded-graphics-core",
  "faraday-core",
  "image",

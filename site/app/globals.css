@@ -9,6 +9,7 @@
 }
 
 :root {
+  /* Warm light theme — matches main. */
   --background: oklch(0.975 0.005 85);
   --foreground: oklch(0.269 0 0);
   --muted: oklch(0.94 0.005 85);
@@ -19,6 +20,8 @@
   --primary: oklch(0.269 0 0);
   --primary-foreground: oklch(0.975 0.005 85);
   --brand: #1AF8FF;
+  /* brand cyan darkened for text on the light background (WCAG-readable) */
+  --brand-ink: #0E7580;
   --radius: 0.125rem;
 }
 
@@ -33,6 +36,7 @@
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: "Departure Mono", ui-monospace, monospace;
   --font-mono: "Departure Mono", ui-monospace, monospace;
@@ -53,4 +57,60 @@ body {
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+::selection {
+  background: var(--brand);
+  color: oklch(0.269 0 0);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* Cyan pixel-offset shadow used on emphasized display type (the wordmark look). */
+.pixel-shadow {
+  filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, 0.55));
+}
+
+/* Tighter hard offset for small cyan labels — gives bright brand text a dark
+   edge so it stays legible on the light background. Crisper as text-shadow
+   than a filter at small sizes. */
+.pixel-shadow-sm {
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+/* Ambient hero device: slow float + a 9s three-screen firmware cycle. */
+.device-float {
+  animation: device-float 7s ease-in-out infinite;
+}
+@keyframes device-float {
+  0%, 100% { transform: translateY(0) rotate(-0.6deg); }
+  50% { transform: translateY(-10px) rotate(0.6deg); }
+}
+.screen-frame {
+  opacity: 0;
+  animation: screen-cycle 9s infinite;
+}
+@keyframes screen-cycle {
+  0%, 31% { opacity: 1; }
+  33.33%, 100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .device-float { animation: none; }
+  .screen-frame { animation: none; }
+  /* show only the first firmware screen */
+  .screen-frame[style*="0s"] { opacity: 1; }
+}
+
+/* device section: tab-content swap (enter only, motion-safe gated in JSX) */
+@keyframes content-swap {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }

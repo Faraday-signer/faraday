@@ -13,9 +13,10 @@ import { Logo } from "@/components/landing/logo";
 import { MeasurementGrid } from "@/components/landing/measurement-grid";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — Faraday",
+  title: "Privacy Policy · Faraday",
   description:
     "Faraday collects no personal data. What the browser extension stores, what it sends, and where.",
+  alternates: { canonical: "/privacy" },
   robots: {
     index: true,
     follow: true,
@@ -32,7 +33,7 @@ const SECTIONS: { title: string; blocks: Block[] }[] = [
     blocks: [
       {
         kind: "p",
-        text: "Faraday collects no personal data and has no servers of its own. Your keys and settings stay on your device; the only data that leaves it is public blockchain data — your public wallet address, transactions, and token mint addresses — sent to the Solana RPC endpoint, Jupiter APIs, and token-logo image hosts described under \"Network requests\" below.",
+        text: "Faraday collects no personal data and has no servers of its own. Your keys and settings stay on your device; the only data that leaves it is public blockchain data (your public wallet address, transactions, and token mint addresses) sent to the Solana RPC endpoint, Jupiter APIs, and token-logo image hosts described under \"Network requests\" below.",
       },
     ],
   },
@@ -50,12 +51,12 @@ const SECTIONS: { title: string; blocks: Block[] }[] = [
           "A list of dapp origins you have approved for wallet connection",
           "Recent recipient addresses, used to warn you about mistyped destinations",
           "Display preferences, such as whether to show unverified tokens",
-          "Pending signing sessions, held in session storage only — they expire after five minutes and are discarded when you close the browser",
+          "Pending signing sessions, held in session storage only; they expire after five minutes and are discarded when you close the browser",
         ],
       },
       {
         kind: "p",
-        text: "None of this data is ever sent to Faraday — there are no Faraday servers. Approved origins, recipient history, preferences, and signing sessions never leave your browser at all. The one exception is your public wallet address: it is included in the requests to the Solana RPC endpoint and Jupiter APIs described under \"Network requests\" below (that is how balances and token holdings are read from the blockchain), and it is shared with a dapp when — and only when — you explicitly approve that dapp's connection request.",
+        text: "None of this data is ever sent to Faraday, because there are no Faraday servers. Approved origins, recipient history, preferences, and signing sessions never leave your browser at all. The one exception is your public wallet address: it is included in the requests to the Solana RPC endpoint and Jupiter APIs described under \"Network requests\" below (that is how balances and token holdings are read from the blockchain), and it is shared with a dapp when, and only when, you explicitly approve that dapp's connection request.",
       },
     ],
   },
@@ -65,7 +66,7 @@ const SECTIONS: { title: string; blocks: Block[] }[] = [
       {
         kind: "ul",
         items: [
-          "Private keys or seed phrases — signing happens exclusively on the air-gapped Faraday device",
+          "Private keys or seed phrases. Signing happens exclusively on the air-gapped Faraday device",
           "Browsing history, page content, or URLs",
           "Personal information such as name, email, or location",
           "Analytics, telemetry, or usage metrics",
@@ -83,9 +84,9 @@ const SECTIONS: { title: string; blocks: Block[] }[] = [
       {
         kind: "ul",
         items: [
-          "Solana RPC nodes — to fetch account balances, simulate transactions, and broadcast signed transactions",
-          "Jupiter APIs (lite-api.jup.ag, tokens.jup.ag) — to resolve token symbols, USD prices, and the verified-token list used to flag airdrop spam",
-          "Token logo images — loaded from whatever URL a token's own metadata points to, which may be any third-party host",
+          "Solana RPC nodes: to fetch account balances, simulate transactions, and broadcast signed transactions",
+          "Jupiter APIs (lite-api.jup.ag, tokens.jup.ag): to resolve token symbols, USD prices, and the verified-token list used to flag airdrop spam",
+          "Token logo images: loaded from whatever URL a token's own metadata points to, which may be any third-party host",
         ],
       },
       {
@@ -99,7 +100,7 @@ const SECTIONS: { title: string; blocks: Block[] }[] = [
     blocks: [
       {
         kind: "p",
-        text: "The extension requests access to your camera for exactly one purpose: scanning QR codes displayed by the Faraday device (pairing your public address, and reading signed transactions back from the device). Camera access is requested through the browser's standard permission prompt the first time a scanner opens, and only on the extension's own pages — never on websites you visit.",
+        text: "The extension requests access to your camera for exactly one purpose: scanning QR codes displayed by the Faraday device (pairing your public address, and reading signed transactions back from the device). Camera access is requested through the browser's standard permission prompt the first time a scanner opens, and only on the extension's own pages, never on websites you visit.",
       },
       {
         kind: "ul",
@@ -227,7 +228,7 @@ export default function PrivacyPolicy() {
                 If you have questions about this privacy policy, contact us at{" "}
                 <a
                   href="mailto:javilois@gmail.com"
-                  className="text-brand transition-colors hover:text-brand/80"
+                  className="text-brand-ink transition-colors hover:text-brand-ink/80"
                 >
                   javilois@gmail.com
                 </a>

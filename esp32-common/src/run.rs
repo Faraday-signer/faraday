@@ -12,21 +12,23 @@ use faraday_core::gui::screens;
 use faraday_core::ui::widgets::FOOTER_H;
 use faraday_core::ui::Theme;
 
-use crate::board::{BoardBattery, BoardDisplay, BoardTouch, TouchEvent};
+use crate::board::{BoardBattery, BoardDisplay, BoardImu, BoardTouch, TouchEvent};
 use crate::{camera, power};
 
 /// Run the Faraday firmware. Takes ownership of the board peripherals and never
 /// returns (it loops until BOOT long-press deep-sleeps the chip).
-pub fn run<'d, D, T, B>(
+pub fn run<'d, D, T, B, M>(
     mut display: D,
     mut touch: T,
     mut power_btn: power::PowerButton<'d>,
     mut battery: Option<B>,
+    mut imu: Option<M>,
     theme: Theme,
 ) where
     D: BoardDisplay,
     T: BoardTouch,
     B: BoardBattery,
+    M: BoardImu,
 {
     // Validate the hardware (mbedtls) BIP39 seed path against a known-answer
     // vector before any wallet can be created or loaded. The host test suite
@@ -87,6 +89,8 @@ pub fn run<'d, D, T, B>(
 
     let mut camera: Option<camera::EspCamera> = None;
     let mut last_draw = std::time::Instant::now();
+    // Shake-detection poll cadence (the light/dark theme Easter egg).
+    let mut last_shake_poll = std::time::Instant::now();
     let mut pending_tap_confirm: Option<std::time::Instant> = None;
     loop {
         // BOOT long-press → power off. Wipe the wallet (zeroizing the seed/keys),
@@ -258,6 +262,18 @@ pub fn run<'d, D, T, B>(
             if last_bat_sample.elapsed().as_secs() >= BATTERY_SAMPLE_SECS {
                 last_bat_sample = std::time::Instant::now();
                 app.battery = bat.sample();
+            }
+        }
+
+        // Shake Easter egg: a firm shake flips the theme between the dark
+        // and light palettes. Polled at ~25 Hz; detection and cooldown
+        // live in the board's IMU driver.
+        if let Some(m) = imu.as_mut() {
+            if last_shake_poll.elapsed().as_millis() >= 40 {
+                last_shake_poll = std::time::Instant::now();
+                if m.shake() {
+                    app.toggle_theme();
+                }
             }
         }
 

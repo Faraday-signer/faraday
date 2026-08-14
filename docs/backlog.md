@@ -34,10 +34,12 @@ Merge conflicts on this file are further defused by `.gitattributes` (`merge=uni
 ### 🏗 In Progress
 _(none)_
 
+### 🔬 In Review
+- **FA-16** `P1` — Landing page redesign (faraday.to) — dark instrument-panel rebuild; flasher (FA-13) slot + `/flash` stub and extension-store (FA-08) slot reserved (branch `feat/landing-redesign`, PR #117, **draft — awaiting cxalem design approval on the Vercel preview before merge**) — owner: cxalem
+
 ### 📋 To Do
 - **FA-01** `P0` — Reactivate the @faradaysigner X account
 - **FA-02** `P0` — Per-device cost estimate, dual BOM: Pi Zero **and** ESP32-S3 (hardware, case, assembly, shipping, import)
-- **FA-16** `P1` — Landing page redesign (faraday.to) — top of the new-work stack (team direction 2026-07-20); the web flasher (FA-13) lands inside it
 
 ### 🗂 Backlog
 - **FA-03** `P0` — Grant application draft (scope + budget) — depends on FA-02
@@ -53,6 +55,7 @@ _(none)_
 
 ### 🔬 In Review
 - **FA-09** `P1` — Durable-nonce transactions: signed QR-relayed txs must not expire (branch `feat/durable-nonce`, PR #112) — owner: cxalem
+- **FA-20** `P2` — IMU support + shake-to-theme Easter egg on the ESP32-S3 (branch `feat/imu-shake-theme`) — owner: cxalem
 
 ### 📋 To Do
 - **FA-08** `P1` — Publish the Chrome extension to the Web Store (permissions rework + listing) — owner: Trskel (Javi Lois)
@@ -126,7 +129,7 @@ _(none)_
 - [ ] Email capture still works end-to-end (FA-05's scope is not regressed).
 - [ ] Navigation accommodates the upcoming flasher page (FA-13) and extension listing link (FA-08).
 - [ ] Site build + typecheck green; OpenGraph/meta verified.
-**Owner:** —
+**Owner:** cxalem (branch `feat/landing-redesign`; per the claiming protocol the claim becomes visible when the draft PR titled `FA-16` opens)
 
 ### FA-11 `P2` — X content plan
 **Description:** A sustained content plan for posting about Faraday on X, beyond FA-01's reactivation burst (FA-01 gets the account alive with two weeks queued; this card is the ongoing engine). Define content pillars (air-gapped signing explainers, build-in-public firmware notes, demo clips — the 90-second Ika approver demo doubles as material), formats, and cadence, drawing on the existing drafts in the marketing pipeline (KB, `marketing/x-strategy/post-drafts/`).
@@ -255,6 +258,16 @@ _(none)_
 - [ ] Stale-nonce rebuild handled (re-fetch nonce, rebuild) on submit failure.
 - [ ] A device-signed devnet tx from mobile submits after waiting past normal blockhash expiry (2+ minutes).
 **Owner:** —
+
+### FA-20 `P2` — IMU support + shake-to-theme Easter egg on the ESP32-S3
+**Description:** The Waveshare ESP32-S3-Touch-LCD-2 ships a QMI8658 6-axis IMU that the firmware never touched. This card wires it up (new `BoardImu` board trait; driver shares the touch controller's I2C bus; passive sensor, no radio, no air-gap surface) and uses it for a shake gesture: a firm shake flips the whole UI between the dark palette and a new light palette modeled on the site's light side (paper bg, ink text, brand-ink `#0E7580` accent — bright cyan is unreadable on light). Not persisted: the device has no storage by design, every boot starts dark. QR rendering stays black-on-white in both themes. The original scope — a gyroscope parallax screensaver — was prototyped through 9 on-device iterations and dropped; the design study lives in `docs/updates/2026-08-14-01-fa20-spatial-screensaver-vs-atropos.md` and the screensaver stays the classic bounce, now theme-aware.
+**Acceptance criteria:**
+- [x] QMI8658 probed and configured on the shared I2C bus; a board without the chip simply never toggles.
+- [x] Shake detection (spike counting + cooldown) toggles the theme from any screen; verified on the device.
+- [x] Every screen renders correctly in both palettes via `Theme` tokens; QR/backup rendering stays fixed black-on-white.
+- [x] Touch, camera, and the rest of the loop unaffected by the shared bus; host tests green (339 + 340 touch-ui).
+- [x] Pi/simulator behavior unchanged (no IMU → dark theme, bouncing screensaver).
+**Owner:** cxalem
 
 ### FA-12 `P3` — Faraday MCP server *(idea — unshaped)*
 **Description:** Early-stage idea: an MCP server exposing Faraday's host-side capabilities to LLM agents/tools — e.g. building sign-requests, encoding/decoding QR (UR) payloads, running the tx risk analyzer. Unshaped: the value proposition and the surface are undefined. One boundary is already non-negotiable and must anchor any proposal: an MCP server is host-side software (extension/companion territory); `hardware/` gains no network dependencies and the device's review-what-you-sign flow is unchanged — an agent can prepare transactions, it can never approve them.
