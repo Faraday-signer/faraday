@@ -16,6 +16,7 @@ export const metadata: Metadata = {
   title: "Privacy Policy · Faraday",
   description:
     "Faraday collects no personal data. What the browser extension stores, what it sends, and where.",
+  alternates: { canonical: "/privacy" },
   robots: {
     index: true,
     follow: true,

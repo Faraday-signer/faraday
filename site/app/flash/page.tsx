@@ -17,6 +17,8 @@ export const metadata: Metadata = {
   title: "Flash your device · Faraday",
   description:
     "Install Faraday firmware on an ESP32-S3 from your browser over WebSerial. Coming soon. Pi Zero devices use the SD-card image instead.",
+  // Unlinked stub until FA-13 ships; keep it out of search results.
+  robots: { index: false, follow: false },
 };
 
 const NOTES = [
