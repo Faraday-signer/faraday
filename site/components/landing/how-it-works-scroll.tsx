@@ -47,11 +47,16 @@ export function HowItWorksScroll() {
         </div>
 
         <div className="mx-auto mt-14 flex w-full max-w-6xl flex-col items-center px-5 sm:px-8">
-          <Device3D
-            device="esp32"
-            holdYaw={POSES[phase]}
-            screen={phase === 0 ? "menu" : phase === 3 ? "signed" : "review"}
-          />
+          <div
+            role="img"
+            aria-label="3D model of the Faraday ESP32-S3 signer stepping through a signing round trip"
+          >
+            <Device3D
+              device="esp32"
+              holdYaw={POSES[phase]}
+              screen={phase === 0 ? "menu" : phase === 3 ? "signed" : "review"}
+            />
+          </div>
           <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
             {phase === 0 && "offline · idle"}
             {phase === 1 && "camera reads the extension's qr"}

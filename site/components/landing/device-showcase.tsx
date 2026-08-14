@@ -22,7 +22,14 @@ export function DeviceShowcase() {
 
   return (
     <div className="flex flex-col items-center gap-6">
-      <Device3D device={device} open={open} />
+      <div
+        role="img"
+        aria-label={`3D model of the Faraday signer on ${
+          device === "esp32" ? "an ESP32-S3 board" : "a Raspberry Pi Zero"
+        }${open ? ", case opened to show the board and camera" : ""}`}
+      >
+        <Device3D device={device} open={open} />
+      </div>
 
       <Segmented
         label="Choose device"
