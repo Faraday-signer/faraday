@@ -15,10 +15,13 @@ use faraday_core::camera::Frame;
 use faraday_core::gui::app::{BatteryStatus, InputEvent};
 
 /// What the touch driver delivers to the main loop. `Input` is a directional /
-/// action gesture; `BodyTap` is a tap at a screen coordinate.
+/// action gesture; `BodyTap` is a tap at a screen coordinate; `Press` fires
+/// once at first contact so the UI can highlight the touched control while
+/// the (lift-confirmed) tap is still pending.
 pub enum TouchEvent {
     Input(InputEvent),
     BodyTap { x: u16, y: u16 },
+    Press { x: u16, y: u16 },
 }
 
 /// The board's framebuffer/panel. The core GUI draws through the standard

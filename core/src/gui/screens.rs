@@ -16,6 +16,23 @@ use crate::gui::colors;
 use crate::gui::components::draw_status_bar;
 use crate::gui::logo;
 use crate::ui::Theme;
+use crate::ui::widgets::EdgeIcon;
+
+/// Footer K1 for the signing gates: a labeled button on touch builds (a
+/// word is a heavier, clearer speed bump than a glyph), the classic Check
+/// beside the physical key elsewhere (FA-21).
+const SIGN_HINT: EdgeIcon = if cfg!(feature = "touch-ui") {
+    EdgeIcon::Label("SIGN")
+} else {
+    EdgeIcon::Check
+};
+
+/// Same, for the explicit-confirm address gate (#89).
+const CONFIRM_HINT: EdgeIcon = if cfg!(feature = "touch-ui") {
+    EdgeIcon::Label("CONFIRM")
+} else {
+    EdgeIcon::Check
+};
 
 /// Menu item. Brutalist layout: one hero label + subtitle at a time.
 struct MenuItem {
@@ -50,6 +67,12 @@ impl App {
     /// Draw the current screen, then overlay any platform chrome (e.g. the
     /// battery icon) on top.
     pub fn draw<D: DrawTarget<Color = Rgb565>>(&self, display: &mut D) -> Result<(), D::Error> {
+        // Press-down feedback (FA-21): publish the pressed row for the list
+        // renderer, which tints that row's background under its text.
+        crate::ui::widgets::list::PRESSED_ROW.store(
+            self.pressed_row.map_or(-1, |r| r as i32),
+            core::sync::atomic::Ordering::Relaxed,
+        );
         self.draw_screen(display)?;
         #[cfg(feature = "touch-ui")]
         if let Some(battery) = self.battery {
@@ -548,7 +571,7 @@ fn draw_mode_select<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 2,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check),
     }
     .draw(display, &theme)
 }
@@ -670,7 +693,7 @@ fn draw_main_menu<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -1059,7 +1082,7 @@ fn draw_export_seed_qr_menu<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -1095,7 +1118,7 @@ fn draw_load_finalize<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -1124,7 +1147,7 @@ fn draw_passphrase_prompt<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -1213,7 +1236,7 @@ fn draw_compact_address_confirm<D: DrawTarget<Color = Rgb565>>(
         body_lines: &body,
         rows: &rows,
         title_danger: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::Cross),
+        edge_hints: EdgeHints::new().k1(CONFIRM_HINT).k3(EdgeIcon::Cross),
     }
     .draw(display, &theme)
 }
@@ -1243,7 +1266,7 @@ fn draw_load_method<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -1273,7 +1296,7 @@ fn draw_create_word_count<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -1305,7 +1328,7 @@ fn draw_create_method<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -1339,7 +1362,7 @@ fn draw_settings_menu<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -1439,7 +1462,7 @@ fn draw_verify_word<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 4,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -2041,7 +2064,7 @@ fn draw_tx_review_zoned<D: DrawTarget<Color = Rgb565>>(
         .k2(next_hint)
         .k3(EdgeIcon::CrossDanger);
     if can_sign {
-        hints = hints.k1(EdgeIcon::Check);
+        hints = hints.k1(SIGN_HINT);
     }
     hints.draw(display, &theme, gutter)?;
 
@@ -2686,7 +2709,7 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
     };
     EdgeHints::new()
         .k1(if can_sign {
-            EdgeIcon::Check
+            SIGN_HINT
         } else {
             EdgeIcon::None
         })
@@ -3321,7 +3344,7 @@ fn draw_message_review<D: DrawTarget<Color = Rgb565>>(
     }
 
     EdgeHints::new()
-        .k1(EdgeIcon::Check)
+        .k1(SIGN_HINT)
         .k3(EdgeIcon::Cross)
         .draw(
             display,
@@ -4214,7 +4237,7 @@ fn draw_create_backup_warning<D: DrawTarget<Color = Rgb565>>(
         Size::new(GUTTER_W, theme.height - theme.header_h),
     );
     EdgeHints::new()
-        .k1(EdgeIcon::Check)
+        .k1_keys_only(EdgeIcon::Check)
         .k3(EdgeIcon::ArrowLeft)
         .draw(display, &theme, gutter)?;
 
@@ -4248,7 +4271,7 @@ fn draw_export_seed_warning<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }
@@ -4279,7 +4302,7 @@ fn draw_reset_wallet<D: DrawTarget<Color = Rgb565>>(
         selected: sel,
         max_visible: 3,
         selectable: true,
-        edge_hints: EdgeHints::new().k1(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
+        edge_hints: EdgeHints::new().k1_keys_only(EdgeIcon::Check).k3(EdgeIcon::ArrowLeft),
     }
     .draw(display, &theme)
 }

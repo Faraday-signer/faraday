@@ -77,6 +77,19 @@ impl Theme {
         }
     }
 
+    /// Background for a list row under an active press: the bg nudged 30%
+    /// toward the accent — visible in either palette without swallowing
+    /// the row text (FA-21).
+    pub fn pressed_bg(&self) -> Rgb565 {
+        use embedded_graphics::prelude::RgbColor;
+        let l = |b: u8, a: u8| (b as i32 + (a as i32 - b as i32) * 30 / 100) as u8;
+        Rgb565::new(
+            l(self.bg.r(), self.accent.r()),
+            l(self.bg.g(), self.accent.g()),
+            l(self.bg.b(), self.accent.b()),
+        )
+    }
+
     /// Swap in the light palette — the site's light side on the device:
     /// paper background, ink text, and the darker brand-ink accent
     /// (#0E7580), because bright cyan is unreadable on light (the same

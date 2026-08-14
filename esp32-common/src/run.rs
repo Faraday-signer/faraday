@@ -100,6 +100,10 @@ pub fn run<'d, D, T, B, M>(
     // Shake-detection poll cadence (the light/dark theme Easter egg).
     let mut last_shake_poll = std::time::Instant::now();
     let mut pending_tap_confirm: Option<std::time::Instant> = None;
+    // Safety timer for the press-down highlight (FA-21): a press that never
+    // resolves into a tap or gesture (finger dragged a little, then lifted)
+    // would otherwise leave a row highlighted forever.
+    let mut press_started: Option<std::time::Instant> = None;
     loop {
         // BOOT long-press → power off. Wipe the wallet (zeroizing the seed/keys),
         // show a brief "powering off" frame, then deep-sleep until BOOT is pressed
@@ -147,10 +151,26 @@ pub fn run<'d, D, T, B, M>(
                     // Any directional gesture or footer tap cancels a pending
                     // tap-confirm so the two don't stack.
                     pending_tap_confirm = None;
+                    press_started = None;
                     app.handle_input(event);
                 }
             }
+            Some(TouchEvent::Press { x, y: py }) => {
+                let _ = x;
+                // Press-down feedback (FA-21): highlight the touched list row
+                // the moment contact begins; the action still fires on lift
+                // (BodyTap). Keyboards, grids, and the footer draw their own
+                // affordances — list rows are the dead-feeling case.
+                if py < footer_y {
+                    app.press_list_row(py, footer_h);
+                    if app.pressed_row.is_some() {
+                        press_started = Some(std::time::Instant::now());
+                    }
+                }
+            }
             Some(TouchEvent::BodyTap { x, y }) => {
+                app.clear_press();
+                press_started = None;
                 if app.tap_keyboard(x, y) {
                     // On-screen keyboard (passphrase / message entry): a tap
                     // on a key mutates the buffer directly. Accept and Back
@@ -175,7 +195,12 @@ pub fn run<'d, D, T, B, M>(
                     };
                     // The word picker has no Check cell (letters are tap-only),
                     // so a tap on the right third must not commit a letter.
-                    if !(event == InputEvent::Confirm && app.on_word_picker()) {
+                    // Same for tap-to-go list screens (FA-21): their Confirm
+                    // cell is empty chrome and must stay inert, or an
+                    // invisible commit lives in the corner.
+                    if !(event == InputEvent::Confirm
+                        && (app.on_word_picker() || app.footer_confirm_inert()))
+                    {
                         if event == InputEvent::Confirm && app.confirm_will_derive() {
                             let _ = screens::draw_computing(&mut display, &app.theme);
                             display.flush();
@@ -258,6 +283,14 @@ pub fn run<'d, D, T, B, M>(
             if t.elapsed().as_millis() >= TAP_CONFIRM_DELAY_MS as u128 {
                 pending_tap_confirm = None;
                 app.handle_input(InputEvent::Confirm);
+            }
+        }
+
+        // Expire an unresolved press highlight (see `press_started`).
+        if let Some(t) = press_started {
+            if t.elapsed().as_millis() >= 600 {
+                press_started = None;
+                app.clear_press();
             }
         }
 

@@ -52,6 +52,7 @@ _(none)_
 ### 🏗 In Progress
 - **FA-06** `P1` — Ika clear-msig approver demo (branch `feat/ika-approver-demo`, PR #71) — owner: cxalem
 - **FA-18** `P1` — Telegram board sync: mirror task claims to the "Faraday Signal" channel (branch `feat/telegram-board`) — owner: cxalem
+- **FA-21** `P2` — Touch UX: press feedback + honest footer (branch `feat/touch-feedback-footer`) — owner: cxalem
 
 ### 🔬 In Review
 - **FA-09** `P1` — Durable-nonce transactions: signed QR-relayed txs must not expire (branch `feat/durable-nonce`, PR #112) — owner: cxalem
@@ -258,6 +259,16 @@ _(none)_
 - [ ] Stale-nonce rebuild handled (re-fetch nonce, rebuild) on submit failure.
 - [ ] A device-signed devnet tx from mobile submits after waiting past normal blockhash expiry (2+ minutes).
 **Owner:** —
+
+### FA-21 `P2` — Touch UX: press feedback + honest footer
+**Description:** Two touch-feel problems on the ESP32-S3 UI. (1) Tapping a list row gives zero visual feedback — the screen just changes, so taps feel dead. Add a press-down highlight: the row under the finger highlights the instant contact begins (the driver already knows the press point; today it waits ~150ms to confirm the lift with nothing on screen), and the action still commits on lift. (2) The footer's Confirm cell (✓) is redundant on every tap-to-go list screen (menu, pickers, warnings — tapping the row IS the action) yet its tap zone fires even with no icon drawn. Prune it: no ✓ drawn and the cell inert on those screens; Back stays everywhere. On the real commitment gates the glyph becomes a labeled button — SIGN (tx approval), CONFIRM (the #89 no-checksum address gate). Swipe-back was considered and deferred: horizontal swipes already page the backup walkthrough and tx review, and an accidental back mid-ceremony is the worst failure mode.
+**Acceptance criteria:**
+- [ ] Pressing a list row highlights it while the finger is down; lift commits, drag/swipe cancels the highlight.
+- [ ] Tap-to-go screens draw no footer ✓ and their right footer third does nothing.
+- [ ] TX approval shows SIGN, the explicit-confirm address gate shows CONFIRM, as labeled footer buttons; keyboard accept keeps ✓.
+- [ ] Read-only advance screens (about, QR, word display) keep ✓ as the page-forward affordance.
+- [ ] Verified on the device: menu, create flow, settings, sign flow; host tests green on both feature sets.
+**Owner:** cxalem
 
 ### FA-20 `P2` — IMU support + shake-to-theme Easter egg on the ESP32-S3
 **Description:** The Waveshare ESP32-S3-Touch-LCD-2 ships a QMI8658 6-axis IMU that the firmware never touched. This card wires it up (new `BoardImu` board trait; driver shares the touch controller's I2C bus; passive sensor, no radio, no air-gap surface) and uses it for a shake gesture: a firm shake flips the whole UI between the dark palette and a new light palette modeled on the site's light side (paper bg, ink text, brand-ink `#0E7580` accent — bright cyan is unreadable on light). Not persisted: the device has no storage by design, every boot starts dark. QR rendering stays black-on-white in both themes. The original scope — a gyroscope parallax screensaver — was prototyped through 9 on-device iterations and dropped; the design study lives in `docs/updates/2026-08-14-01-fa20-spatial-screensaver-vs-atropos.md` and the screensaver stays the classic bounce, now theme-aware.

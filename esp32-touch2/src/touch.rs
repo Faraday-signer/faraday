@@ -212,11 +212,15 @@ impl<'d> BoardTouch for Touch<'d> {
                     }
                 }
                 None => {
-                    // First contact of a new touch: record the origin.
+                    // First contact of a new touch: record the origin and
+                    // surface it immediately (bypassing the gesture debounce)
+                    // so the UI can show press feedback while the tap is
+                    // still pending lift confirmation.
                     self.press_origin = Some((x, y));
                     self.moved = false;
                     self.last_gesture = None;
                     self.finger_down = true;
+                    return Some(TouchEvent::Press { x, y });
                 }
             }
         }
