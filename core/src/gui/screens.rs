@@ -4097,11 +4097,17 @@ fn draw_about<D: DrawTarget<Color = Rgb565>>(
     .into_styled(PrimitiveStyle::with_fill(theme.border))
     .draw(display)?;
 
-    // Key/value rows below.
+    // Key/value rows below. `touch-ui` is only set by the ESP32-S3 touch
+    // build, so it doubles as the hardware discriminator here.
+    let hardware = if cfg!(feature = "touch-ui") {
+        "ESP32-S3"
+    } else {
+        "Pi Zero 1.3"
+    };
     let rows = [
         ("VERSION", "v0.1.0"),
         ("NETWORK", "Solana"),
-        ("HARDWARE", "Pi Zero 1.3"),
+        ("HARDWARE", hardware),
         ("KEYS", "RAM only"),
     ];
     let rows_top = div_y + theme.space_md;
