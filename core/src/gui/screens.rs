@@ -67,32 +67,13 @@ impl App {
     /// Draw the current screen, then overlay any platform chrome (e.g. the
     /// battery icon) on top.
     pub fn draw<D: DrawTarget<Color = Rgb565>>(&self, display: &mut D) -> Result<(), D::Error> {
+        // Press-down feedback (FA-21): publish the pressed row for the list
+        // renderer, which tints that row's background under its text.
+        crate::ui::widgets::list::PRESSED_ROW.store(
+            self.pressed_row.map_or(-1, |r| r as i32),
+            core::sync::atomic::Ordering::Relaxed,
+        );
         self.draw_screen(display)?;
-        // Press-down feedback (FA-21): outline the list row currently under
-        // the finger. Drawn over the finished screen so no per-screen
-        // plumbing is needed; the rect mirrors the tap-zone math exactly.
-        #[cfg(feature = "touch-ui")]
-        if let Some(row) = self.pressed_row {
-            use crate::ui::widgets::list::visible_start;
-            use crate::ui::widgets::FOOTER_H;
-            let footer_h = FOOTER_H as u16;
-            if let Some((max_visible, total, list_top, cur)) = self.list_geometry(footer_h) {
-                let start = visible_start(total, max_visible, cur);
-                if row >= start && row < (start + max_visible).min(total) {
-                    let slot = (row - start) as i32;
-                    let list_h = (self.theme.height as u16 - footer_h - list_top) as i32;
-                    let mv = max_visible as i32;
-                    let y0 = list_top as i32 + slot * list_h / mv;
-                    let y1 = list_top as i32 + (slot + 1) * list_h / mv;
-                    Rectangle::new(
-                        Point::new(1, y0 + 1),
-                        Size::new(self.theme.width - 2, (y1 - y0 - 2).max(0) as u32),
-                    )
-                    .into_styled(PrimitiveStyle::with_stroke(self.theme.accent, 2))
-                    .draw(display)?;
-                }
-            }
-        }
         #[cfg(feature = "touch-ui")]
         if let Some(battery) = self.battery {
             // The icon sits in the middle footer cell. Skip it where that cell

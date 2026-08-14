@@ -16,6 +16,13 @@ use embedded_graphics::{
 
 use crate::ui::Theme;
 
+/// Row index currently under an active press, `-1` for none. Published by
+/// `App::draw` each frame and read here while rows render (FA-21). A static
+/// (single-threaded UI) instead of a field so the per-frame value doesn't
+/// have to thread through every `ListScreen` construction site.
+pub static PRESSED_ROW: core::sync::atomic::AtomicI32 =
+    core::sync::atomic::AtomicI32::new(-1);
+
 #[derive(Clone, Copy)]
 pub struct ListRow<'a> {
     pub label: &'a str,
@@ -115,12 +122,15 @@ impl<'a> List<'a> {
                 Size::new(rect.size.width, row_h as u32),
             );
             let is_selected = self.selectable && idx == selected;
+            let pressed_idx = PRESSED_ROW.load(core::sync::atomic::Ordering::Relaxed);
+            let is_pressed = self.selectable && pressed_idx >= 0 && idx as i32 == pressed_idx;
             self.draw_row(
                 display,
                 theme,
                 row_rect,
                 row,
                 is_selected,
+                is_pressed,
                 has_subtitle,
                 has_prefix,
             )?;
@@ -168,17 +178,25 @@ impl<'a> List<'a> {
         rect: Rectangle,
         row: ListRow<'_>,
         selected: bool,
+        pressed: bool,
         reserve_subtitle: bool,
         reserve_prefix: bool,
     ) -> Result<(), D::Error> {
-        if selected {
+        if pressed {
+            // Press-down feedback (FA-21): a light background tint under the
+            // finger. It overrides the selection fill so pressing the
+            // already-selected row still visibly responds.
+            rect.into_styled(PrimitiveStyle::with_fill(theme.pressed_bg()))
+                .draw(display)?;
+        } else if selected {
             rect.into_styled(PrimitiveStyle::with_fill(theme.accent))
                 .draw(display)?;
         }
 
-        let label_color = if selected { theme.bg } else { theme.text };
-        let subtitle_color = if selected { theme.bg } else { theme.muted };
-        let prefix_color = if selected { theme.bg } else { theme.dim };
+        let inverted = selected && !pressed;
+        let label_color = if inverted { theme.bg } else { theme.text };
+        let subtitle_color = if inverted { theme.bg } else { theme.muted };
+        let prefix_color = if inverted { theme.bg } else { theme.dim };
 
         let left = rect.top_left.x + theme.space_md;
         // When any row has a prefix, reserve a fixed column for it so labels
