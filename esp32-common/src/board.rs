@@ -64,3 +64,21 @@ impl BoardBattery for NoBattery {
         None
     }
 }
+
+/// The board's motion sensor. `shake()` is polled by the main loop and
+/// returns true at most once per detected shake gesture — the light/dark
+/// theme Easter egg. Spike detection, debouncing, and the post-toggle
+/// cooldown all live in the driver.
+pub trait BoardImu {
+    fn shake(&mut self) -> bool;
+}
+
+/// Placeholder for boards with no motion sensor — no shake, theme stays
+/// as booted. Pass `None::<NoImu>` to [`crate::run`] as the type witness.
+pub struct NoImu;
+
+impl BoardImu for NoImu {
+    fn shake(&mut self) -> bool {
+        false
+    }
+}

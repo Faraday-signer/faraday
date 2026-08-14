@@ -55,6 +55,7 @@ _(none)_
 
 ### 🔬 In Review
 - **FA-09** `P1` — Durable-nonce transactions: signed QR-relayed txs must not expire (branch `feat/durable-nonce`, PR #112) — owner: cxalem
+- **FA-20** `P2` — IMU support + shake-to-theme Easter egg on the ESP32-S3 (branch `feat/imu-shake-theme`) — owner: cxalem
 
 ### 📋 To Do
 - **FA-08** `P1` — Publish the Chrome extension to the Web Store (permissions rework + listing) — owner: Trskel (Javi Lois)
@@ -257,6 +258,16 @@ _(none)_
 - [ ] Stale-nonce rebuild handled (re-fetch nonce, rebuild) on submit failure.
 - [ ] A device-signed devnet tx from mobile submits after waiting past normal blockhash expiry (2+ minutes).
 **Owner:** —
+
+### FA-20 `P2` — IMU support + shake-to-theme Easter egg on the ESP32-S3
+**Description:** The Waveshare ESP32-S3-Touch-LCD-2 ships a QMI8658 6-axis IMU that the firmware never touched. This card wires it up (new `BoardImu` board trait; driver shares the touch controller's I2C bus; passive sensor, no radio, no air-gap surface) and uses it for a shake gesture: a firm shake flips the whole UI between the dark palette and a new light palette modeled on the site's light side (paper bg, ink text, brand-ink `#0E7580` accent — bright cyan is unreadable on light). Not persisted: the device has no storage by design, every boot starts dark. QR rendering stays black-on-white in both themes. The original scope — a gyroscope parallax screensaver — was prototyped through 9 on-device iterations and dropped; the design study lives in `docs/updates/2026-08-14-01-fa20-spatial-screensaver-vs-atropos.md` and the screensaver stays the classic bounce, now theme-aware.
+**Acceptance criteria:**
+- [x] QMI8658 probed and configured on the shared I2C bus; a board without the chip simply never toggles.
+- [x] Shake detection (spike counting + cooldown) toggles the theme from any screen; verified on the device.
+- [x] Every screen renders correctly in both palettes via `Theme` tokens; QR/backup rendering stays fixed black-on-white.
+- [x] Touch, camera, and the rest of the loop unaffected by the shared bus; host tests green (339 + 340 touch-ui).
+- [x] Pi/simulator behavior unchanged (no IMU → dark theme, bouncing screensaver).
+**Owner:** cxalem
 
 ### FA-12 `P3` — Faraday MCP server *(idea — unshaped)*
 **Description:** Early-stage idea: an MCP server exposing Faraday's host-side capabilities to LLM agents/tools — e.g. building sign-requests, encoding/decoding QR (UR) payloads, running the tx risk analyzer. Unshaped: the value proposition and the surface are undefined. One boundary is already non-negotiable and must anchor any proposal: an MCP server is host-side software (extension/companion territory); `hardware/` gains no network dependencies and the device's review-what-you-sign flow is unchanged — an agent can prepare transactions, it can never approve them.

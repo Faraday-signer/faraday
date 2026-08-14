@@ -44,6 +44,8 @@ use esp32_common::{BoardTouch, TouchEvent};
 use esp_idf_hal::gpio::{Input, InterruptType, PinDriver};
 use esp_idf_hal::i2c::I2cDriver;
 use faraday_core::gui::app::InputEvent;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -72,7 +74,8 @@ const LIFT_CONFIRM: Duration = Duration::from_millis(150);
 const TAP_SLOP: u16 = 24;
 
 pub struct Touch<'d> {
-    i2c: I2cDriver<'d>,
+    // Shared with the QMI8658 IMU driver — the board routes one I2C bus.
+    i2c: Rc<RefCell<I2cDriver<'d>>>,
     int: PinDriver<'d, Input>,
     last_event: Instant,
     finger_down: bool,
@@ -94,12 +97,12 @@ pub struct Touch<'d> {
 }
 
 impl<'d> Touch<'d> {
-    pub fn new(mut i2c: I2cDriver<'d>, mut int: PinDriver<'d, Input>) -> Self {
+    pub fn new(i2c: Rc<RefCell<I2cDriver<'d>>>, mut int: PinDriver<'d, Input>) -> Self {
         // Best-effort wake from a prior deep sleep (power-mode register 0xA5 back
         // to 0x00 = normal). We have no touch-RST line, so if the chip was put in
         // deep sleep before the device slept and its I2C is still alive, this
         // brings it back; harmless on a freshly powered chip.
-        let _ = i2c.write(CST816D_ADDR, &[0xA5, 0x00], 30);
+        let _ = i2c.borrow_mut().write(CST816D_ADDR, &[0xA5, 0x00], 30);
 
         int.set_interrupt_type(InterruptType::NegEdge)
             .expect("touch: set interrupt type");
@@ -177,7 +180,12 @@ impl<'d> BoardTouch for Touch<'d> {
         self.int.enable_interrupt().ok();
 
         let mut buf = [0u8; 6];
-        if self.i2c.write_read(CST816D_ADDR, &[0x01], &mut buf, 30).is_err() {
+        if self
+            .i2c
+            .borrow_mut()
+            .write_read(CST816D_ADDR, &[0x01], &mut buf, 30)
+            .is_err()
+        {
             return None;
         }
 
@@ -250,6 +258,6 @@ impl<'d> BoardTouch for Touch<'d> {
     /// board has no touch-RST line we drive — on wake we rely on the best-effort
     /// I2C wake in `new()`. If the panel is dead after a sleep cycle, that's why.
     fn sleep(&mut self) {
-        let _ = self.i2c.write(CST816D_ADDR, &[0xA5, 0x03], 30);
+        let _ = self.i2c.borrow_mut().write(CST816D_ADDR, &[0xA5, 0x03], 30);
     }
 }
