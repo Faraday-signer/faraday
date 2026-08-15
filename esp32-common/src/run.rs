@@ -180,7 +180,7 @@ pub fn run<'d, D, T, B, M>(
                     pending_tap_confirm = None;
                     let event = if x < footer_third {
                         InputEvent::Back
-                    } else if x < footer_third * 2 && !app.tap_pages_review() {
+                    } else if x < footer_third * 2 && !app.on_sign_review() {
                         InputEvent::Secondary
                     } else {
                         // On the TX review the sign band spans the middle +

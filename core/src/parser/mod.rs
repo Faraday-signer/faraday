@@ -42,8 +42,9 @@ pub struct ParsedTransaction {
     pub fee_lamports: u64,
     pub size: usize,
     /// True when the expanded account list contains an ALT entry we couldn't
-    /// resolve offline. Such a tx must never be signed: the user sees a
-    /// sentinel, not the account the validator will actually use.
+    /// resolve offline — the user sees a sentinel, not the account the
+    /// validator will actually use. Signing such a tx is allowed only
+    /// through the explicit offline-limit warning gate (FA-24).
     pub has_unresolved_accounts: bool,
 }
 
@@ -976,7 +977,10 @@ pub fn build_review_lines(
 ) -> (Vec<String>, bool, ParsedTransaction) {
     let parsed = parse(tx_bytes);
     let has_signer = parsed.signers.iter().any(|s| s == wallet_pubkey);
-    let can_sign = has_signer && !parsed.has_unresolved_accounts;
+    // Unresolved lookup-table accounts no longer hard-block signing: the
+    // GUI routes them through an explicit offline-limit warning gate
+    // (FA-24). `can_sign` is purely "is this wallet a required signer".
+    let can_sign = has_signer;
     let mut lines = Vec::new();
     let classification = classification::classify(tx_bytes, wallet_pubkey);
     let primary = primary_instruction(&parsed);
@@ -990,7 +994,7 @@ pub fn build_review_lines(
     }
 
     if parsed.has_unresolved_accounts {
-        lines.push("! Unresolved lookup-table account — cannot sign".to_string());
+        lines.push("! Some accounts resolve on-chain — unverifiable offline".to_string());
     }
 
     // Fund-moving legs the wallet authorizes, grouped per asset. Multiple legs
@@ -2096,7 +2100,9 @@ mod tests {
         assert!(parsed.has_unresolved_accounts);
 
         let (lines, can_sign, _) = build_review_lines(&tx, &from);
-        assert!(!can_sign, "unresolved ALT account must not be signable");
+        // Signable since FA-24 — but only through the GUI's explicit
+        // offline-limit warning gate, keyed on has_unresolved_accounts.
+        assert!(can_sign, "unresolved ALT gates, but no longer hard-blocks");
 
         // The destination renders as the marker, never the sentinel address.
         assert!(
@@ -2176,7 +2182,9 @@ mod tests {
         assert!(parsed.has_unresolved_accounts);
 
         let (lines, can_sign, _) = build_review_lines(&tx, &from);
-        assert!(!can_sign, "unresolved ALT account must not be signable");
+        // Signable since FA-24 — but only through the GUI's explicit
+        // offline-limit warning gate, keyed on has_unresolved_accounts.
+        assert!(can_sign, "unresolved ALT gates, but no longer hard-blocks");
 
         // unknown::parse renders the account — as the marker, never the sentinel.
         assert!(
