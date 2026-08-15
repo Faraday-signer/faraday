@@ -3,7 +3,10 @@
 Everything outside this repo that participates in producing a seed, a
 backup QR, or a signature — with how a compromise would manifest, what
 already mitigates it, and what hardening is still open. Companion to the
-QR predictability audit (`core/tests/qr_predictability_audit.rs`, PR #129).
+QR predictability audit (`core/tests/qr_predictability_audit.rs`, PR #129)
+and to [`failure-modes.md`](./failure-modes.md), which maps *what could
+fail* in depth — this doc answers *who do we trust*, that one answers
+*what breaks and how would we notice*.
 
 Threat question, precisely: *which external party, if compromised, could
 cause a Faraday device to produce a predictable seed, a wrong backup, or
