@@ -180,9 +180,13 @@ pub fn run<'d, D, T, B, M>(
                     pending_tap_confirm = None;
                     let event = if x < footer_third {
                         InputEvent::Back
-                    } else if x < footer_third * 2 {
+                    } else if x < footer_third * 2 && !app.tap_pages_review() {
                         InputEvent::Secondary
                     } else {
+                        // On the TX review the sign band spans the middle +
+                        // right cells (FA-23): a tap anywhere on it is the
+                        // sign action. Body taps already page, so the middle
+                        // cell's Secondary role is redundant there.
                         InputEvent::Confirm
                     };
                     // The word picker has no Check cell (letters are tap-only),
