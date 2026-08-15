@@ -42,8 +42,9 @@ pub struct ParsedTransaction {
     pub fee_lamports: u64,
     pub size: usize,
     /// True when the expanded account list contains an ALT entry we couldn't
-    /// resolve offline. Such a tx must never be signed: the user sees a
-    /// sentinel, not the account the validator will actually use.
+    /// resolve offline — display shows a sentinel, not the account the
+    /// validator will use. Doesn't block signing (FA-24): the amounts,
+    /// programs, and fees on review come from the signed bytes themselves.
     pub has_unresolved_accounts: bool,
 }
 
@@ -976,7 +977,13 @@ pub fn build_review_lines(
 ) -> (Vec<String>, bool, ParsedTransaction) {
     let parsed = parse(tx_bytes);
     let has_signer = parsed.signers.iter().any(|s| s == wallet_pubkey);
-    let can_sign = has_signer && !parsed.has_unresolved_accounts;
+    // Unresolved lookup-table accounts don't block signing (FA-24): no
+    // snapshot can track dynamically-created dapp ALTs, and warning on
+    // every swap would be noise the user can't act on. The review shows
+    // amounts/programs/fees decoded from the exact signed bytes; a line
+    // in the details notes the unverifiable accounts. `can_sign` means
+    // only "this wallet is a required signer".
+    let can_sign = has_signer;
     let mut lines = Vec::new();
     let classification = classification::classify(tx_bytes, wallet_pubkey);
     let primary = primary_instruction(&parsed);
@@ -990,7 +997,7 @@ pub fn build_review_lines(
     }
 
     if parsed.has_unresolved_accounts {
-        lines.push("! Unresolved lookup-table account — cannot sign".to_string());
+        lines.push("! Some accounts resolve on-chain — unverifiable offline".to_string());
     }
 
     // Fund-moving legs the wallet authorizes, grouped per asset. Multiple legs
@@ -2096,7 +2103,9 @@ mod tests {
         assert!(parsed.has_unresolved_accounts);
 
         let (lines, can_sign, _) = build_review_lines(&tx, &from);
-        assert!(!can_sign, "unresolved ALT account must not be signable");
+        // Signable since FA-24: unresolved ALTs note themselves in the
+        // details but don't block — see build_review_lines.
+        assert!(can_sign, "unresolved ALT must not hard-block signing");
 
         // The destination renders as the marker, never the sentinel address.
         assert!(
@@ -2176,7 +2185,9 @@ mod tests {
         assert!(parsed.has_unresolved_accounts);
 
         let (lines, can_sign, _) = build_review_lines(&tx, &from);
-        assert!(!can_sign, "unresolved ALT account must not be signable");
+        // Signable since FA-24: unresolved ALTs note themselves in the
+        // details but don't block — see build_review_lines.
+        assert!(can_sign, "unresolved ALT must not hard-block signing");
 
         // unknown::parse renders the account — as the marker, never the sentinel.
         assert!(

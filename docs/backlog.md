@@ -52,6 +52,8 @@ _(none)_
 ### 🏗 In Progress
 - **FA-06** `P1` — Ika clear-msig approver demo (branch `feat/ika-approver-demo`, PR #71) — owner: cxalem
 - **FA-18** `P1` — Telegram board sync: mirror task claims to the "Faraday Signal" channel (branch `feat/telegram-board`) — owner: cxalem
+- **FA-23** `P1` — A sign button you can't miss on the TX review (branch `feat/sign-button`) — owner: cxalem
+- **FA-24** `P1` — Lookup-table txs sign normally (branch `feat/sign-button`, PR #127) — owner: cxalem
 - **FA-22** `P2` — Camera-entropy capture feedback (branch `feat/camera-entropy-feedback`) — owner: cxalem
 - **FA-21** `P2` — Touch UX: press feedback + honest footer (branch `feat/touch-feedback-footer`) — owner: cxalem
 
@@ -281,6 +283,21 @@ _(none)_
 - [x] Pi/simulator behavior unchanged (no IMU → dark theme, bouncing screensaver).
 **Owner:** cxalem
 
+### FA-23 `P1` — A sign button you can't miss on the TX review
+**Description:** Reviewing a transaction on the touch build gives no clear way to sign: the sign affordance is a small footer cell that only shows when `can_sign` is true, the detail pages (2..K) draw their ✓ unconditionally so it silently no-ops when signing is blocked, and when `can_sign` is false (wallet not a signer, or unresolved lookup-table accounts — common for swaps) the zoned summary card drops the explanation entirely. Fix: a **sign band** spanning the footer's middle+right cells on every SignReview page — accent-filled "SIGN TRANSACTION" when signing is possible (tap anywhere on it signs; the middle cell's page-forward role is redundant, body taps page), and an explicit danger-toned blocker ("CAN'T SIGN: OTHER WALLET" / "CAN'T SIGN: LOOKUP TABLES") when it isn't. Reject ✗ stays in the left cell. Physical-key builds keep their K1 model but stop drawing the dead ✓ when signing is blocked.
+**Acceptance criteria:**
+- [ ] Every SignReview page (summary, details, raw) shows the band: SIGN TRANSACTION or the specific blocker.
+- [ ] Tapping anywhere on the band signs when allowed; taps on it when blocked do nothing (and the reason is readable).
+- [ ] The unconditional dead ✓ on detail pages is gone on both build flavors.
+- [ ] Verified on the device with a signable tx and a blocked one; host tests green.
+**Owner:** cxalem
+
+### FA-24 `P1` — Lookup-table transactions sign normally
+**Description:** Real dapp transactions (Jupiter swaps foremost) reference address lookup tables created dynamically on-chain; no firmware snapshot can keep up, so the old hard-block (`can_sign = false` on any unresolved ALT account) made swaps permanently unsignable — surfaced on-device as "CAN'T SIGN: LOOKUP TABLES" on a plain SOL→USDC swap. New policy: such transactions **review and sign exactly like any other**. A warning interstitial was built and rejected (UX decision 2026-08-15): it would fire on every ordinary swap for a condition the user can neither evaluate nor act on, training people to slam through warnings and devaluing the ones that matter (the high-risk classifier, the address gate). What the user sees is unchanged in the ways that count — amounts, programs, and fees are decoded from the exact signed bytes; a quiet line in the scrollable details notes that some accounts resolve on-chain, and unresolved entries render as a sentinel, never as a fake address. `can_sign` now means only "this wallet is a required signer". Follow-up candidate: the extension resolving table contents and embedding them in the QR payload for full account display.
+**Acceptance criteria:**
+- [ ] A live Jupiter swap reviews normally, shows SIGN TRANSACTION, and signs end-to-end (QR → extension splice → lands on-chain).
+- [ ] Non-signer wallets still hard-block with the OTHER WALLET reason.
+- [ ] Parser tests updated; sentinel accounts never display as real addresses.
 ### FA-22 `P2` — Camera-entropy capture feedback
 **Description:** Creating a wallet via camera entropy is the marquee moment of the product and currently gives near-zero feedback: the live preview fills the screen, each tap silently hashes a frame, the only signal is the tiny header counter, and the second capture teleports straight to the backup warning — the tap feels dead and nothing tells a first-time user to tap at all. Add three pieces: (1) a **shutter flash** on every capture (the commit is deferred ~120ms via the existing pending-confirm mechanism so the *final* capture's flash is visible too — otherwise the instant transition eats it); (2) an **entropy meter strip** under the header — segmented blocks filling per capture with a bits counter (256/512), matching the receipt the landing page already shows for this exact screen; (3) a **"TAP TO CAPTURE" hint** over the preview on touch builds. Security constraint: nothing on screen may derive from the entropy pool itself (screen-filming leak channel) — all feedback is driven by frame count only.
 **Acceptance criteria:**

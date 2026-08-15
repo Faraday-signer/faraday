@@ -294,6 +294,18 @@ impl App {
                 // the pagination counter (page+1)/K in the header.
                 let interesting = crate::parser::interesting_ix_indices(parsed);
                 let total_pages = 3 + interesting.len() + 1;
+                // Why signing is impossible, stated on the sign band
+                // (FA-23) — the two real cases: the loaded wallet isn't a
+                // required signer, or the tx references lookup-table
+                // accounts the device can't resolve offline (common for
+                // swaps).
+                let blocked: Option<&'static str> = if *can_sign {
+                    None
+                } else if parsed.has_unresolved_accounts {
+                    Some("CAN'T SIGN: LOOKUP TABLES")
+                } else {
+                    Some("CAN'T SIGN: OTHER WALLET")
+                };
                 match *page {
                     0 => {
                         let wallet_pk = self.wallet.as_ref().map(|w| w.keypair.public_key);
@@ -305,6 +317,7 @@ impl App {
                                 &action,
                                 wallet_pk.as_ref(),
                                 *can_sign,
+                                blocked,
                                 Some((1, total_pages)),
                             )
                         } else {
@@ -315,18 +328,19 @@ impl App {
                                 *scroll,
                                 *selected,
                                 *can_sign,
+                                blocked,
                                 self.seed_loaded(),
                                 Some((1, total_pages)),
                             )
                         }
                     }
-                    1 => draw_tx_metadata(display, &self.theme, parsed, total_pages),
-                    2 => draw_tx_ix_list(display, &self.theme, parsed, total_pages),
+                    1 => draw_tx_metadata(display, &self.theme, parsed, total_pages, blocked),
+                    2 => draw_tx_ix_list(display, &self.theme, parsed, total_pages, blocked),
                     p if p < 3 + interesting.len() => {
                         let ix_index = interesting[p - 3];
-                        draw_tx_ix_detail(display, &self.theme, parsed, ix_index, total_pages)
+                        draw_tx_ix_detail(display, &self.theme, parsed, ix_index, total_pages, blocked)
                     }
-                    _ => draw_tx_raw(display, &self.theme, tx_bytes, total_pages),
+                    _ => draw_tx_raw(display, &self.theme, tx_bytes, total_pages, blocked),
                 }
             }
             Screen::SignShowQr { data } => draw_fullscreen_qr(
@@ -1689,12 +1703,61 @@ fn draw_message<D: DrawTarget<Color = Rgb565>>(
 /// shown — no truncation — wrapped to two lines via the existing helper.
 /// Falls back to `draw_tx_review` for anything more complex (swaps,
 /// multi-step txs, unknown programs).
+/// Touch builds: the sign action as a full-width band across the footer's
+/// middle+right cells, drawn on every SignReview page (FA-23). `blocked`
+/// None = an accent SIGN TRANSACTION button (a tap anywhere on it signs);
+/// Some(reason) = signing is impossible and the band states why instead
+/// of hiding the affordance. No-op on physical-key builds (FOOTER_H = 0).
+fn draw_sign_band<D: DrawTarget<Color = Rgb565>>(
+    display: &mut D,
+    theme: &Theme,
+    blocked: Option<&str>,
+) -> Result<(), D::Error> {
+    use crate::ui::widgets::FOOTER_H;
+    let h = FOOTER_H as i32;
+    if h == 0 {
+        return Ok(());
+    }
+    let w = theme.width as i32;
+    let x = w / 3;
+    let y = theme.height as i32 - h;
+    let band = Rectangle::new(Point::new(x, y), Size::new((w - x) as u32, h as u32));
+    match blocked {
+        None => {
+            band.into_styled(PrimitiveStyle::with_fill(theme.accent))
+                .draw(display)?;
+            Text::with_alignment(
+                "SIGN TRANSACTION",
+                Point::new(x + (w - x) / 2, y + h / 2 + 5),
+                MonoTextStyle::new(&FONT_9X15, theme.bg),
+                Alignment::Center,
+            )
+            .draw(display)?;
+        }
+        Some(reason) => {
+            band.into_styled(PrimitiveStyle::with_fill(theme.bg))
+                .draw(display)?;
+            band.into_styled(PrimitiveStyle::with_stroke(theme.border, 1))
+                .draw(display)?;
+            Text::with_alignment(
+                reason,
+                Point::new(x + (w - x) / 2, y + h / 2 + 4),
+                MonoTextStyle::new(&FONT_6X10, theme.danger),
+                Alignment::Center,
+            )
+            .draw(display)?;
+        }
+    }
+    Ok(())
+}
+
 fn draw_tx_review_zoned<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     theme: &Theme,
     action: &crate::parser::ZonedAction,
     wallet_pubkey: Option<&[u8; 32]>,
     can_sign: bool,
+    blocked: Option<&str>,
     page_counter: Option<(usize, usize)>,
 ) -> Result<(), D::Error> {
     use crate::ui::layout::split_top;
@@ -2068,6 +2131,7 @@ fn draw_tx_review_zoned<D: DrawTarget<Color = Rgb565>>(
         hints = hints.k1(SIGN_HINT);
     }
     hints.draw(display, &theme, gutter)?;
+    draw_sign_band(display, theme, blocked)?;
 
     Ok(())
 }
@@ -2411,6 +2475,7 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
     scroll: usize,
     _selected: usize,
     can_sign: bool,
+    blocked: Option<&str>,
     _seed_loaded: bool,
     // `page_counter`: when `Some((page, total))` the header counter shows
     // page navigation (e.g. "1/8") instead of the in-page scroll counter
@@ -2724,6 +2789,7 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
                 Size::new(GUTTER_W, theme.height - theme.header_h),
             ),
         )?;
+    draw_sign_band(display, theme, blocked)?;
 
     Ok(())
 }
@@ -2755,6 +2821,7 @@ fn draw_detail_shell<D: DrawTarget<Color = Rgb565>>(
     page_one_indexed: usize,
     total_pages: usize,
     rows: &[DetailRow<'_>],
+    blocked: Option<&str>,
 ) -> Result<(), D::Error> {
     use crate::ui::layout::split_top;
     use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, FOOTER_H, GUTTER_W};
@@ -2841,10 +2908,16 @@ fn draw_detail_shell<D: DrawTarget<Color = Rgb565>>(
         EdgeIcon::ArrowRight
     };
     EdgeHints::new()
-        .k1(EdgeIcon::Check)
+        // A dead Check is worse than none: only hint sign when it works.
+        .k1(if blocked.is_none() {
+            SIGN_HINT
+        } else {
+            EdgeIcon::None
+        })
         .k2(next_hint)
         .k3(EdgeIcon::CrossDanger)
         .draw(display, &theme, gutter)?;
+    draw_sign_band(display, theme, blocked)?;
 
     Ok(())
 }
@@ -2898,6 +2971,7 @@ fn draw_tx_metadata<D: DrawTarget<Color = Rgb565>>(
     theme: &Theme,
     parsed: &crate::parser::ParsedTransaction,
     total_pages: usize,
+    blocked: Option<&str>,
 ) -> Result<(), D::Error> {
     let version = match &parsed.version {
         crate::parser::TransactionVersion::Legacy => "Legacy".to_string(),
@@ -2936,7 +3010,7 @@ fn draw_tx_metadata<D: DrawTarget<Color = Rgb565>>(
         },
     ];
 
-    draw_detail_shell(display, theme, "TX METADATA", 2, total_pages, &rows)
+    draw_detail_shell(display, theme, "TX METADATA", 2, total_pages, &rows, blocked)
 }
 
 /// Page 2 — Instructions overview. One row per top-level instruction
@@ -2947,6 +3021,7 @@ fn draw_tx_ix_list<D: DrawTarget<Color = Rgb565>>(
     theme: &Theme,
     parsed: &crate::parser::ParsedTransaction,
     total_pages: usize,
+    blocked: Option<&str>,
 ) -> Result<(), D::Error> {
     let rows: Vec<DetailRow<'_>> = parsed
         .instructions
@@ -2958,7 +3033,7 @@ fn draw_tx_ix_list<D: DrawTarget<Color = Rgb565>>(
         })
         .collect();
 
-    draw_detail_shell(display, theme, "INSTRUCTIONS", 3, total_pages, &rows)
+    draw_detail_shell(display, theme, "INSTRUCTIONS", 3, total_pages, &rows, blocked)
 }
 
 /// Pages 3..3+N — single-instruction detail. Renders the program name as
@@ -2971,6 +3046,7 @@ fn draw_tx_ix_detail<D: DrawTarget<Color = Rgb565>>(
     parsed: &crate::parser::ParsedTransaction,
     ix_index: usize,
     total_pages: usize,
+    blocked: Option<&str>,
 ) -> Result<(), D::Error> {
     let Some(ix) = parsed.instructions.get(ix_index) else {
         // Defensive — should not happen since the input handler bounds page
@@ -2986,6 +3062,7 @@ fn draw_tx_ix_detail<D: DrawTarget<Color = Rgb565>>(
                 label: "ERROR",
                 value: "no instruction".to_string(),
             }],
+            blocked,
         );
     };
 
@@ -3029,7 +3106,7 @@ fn draw_tx_ix_detail<D: DrawTarget<Color = Rgb565>>(
     // the firmware redraws on event, not 60Hz. If it becomes hot, swap to a
     // fixed-size stack buffer.
     let title_static: &'static str = Box::leak(title.into_boxed_str());
-    draw_detail_shell(display, theme, title_static, ix_index + 4, total_pages, &rows)
+    draw_detail_shell(display, theme, title_static, ix_index + 4, total_pages, &rows, blocked)
 }
 
 /// Last page — raw bytes preview. Shows length, signing hash, and
@@ -3042,6 +3119,7 @@ fn draw_tx_raw<D: DrawTarget<Color = Rgb565>>(
     theme: &Theme,
     tx_bytes: &[u8],
     total_pages: usize,
+    blocked: Option<&str>,
 ) -> Result<(), D::Error> {
     let len = tx_bytes.len();
     // 6 bytes per HEAD/TAIL line: each byte renders as "ff " (3 chars), so
@@ -3081,7 +3159,7 @@ fn draw_tx_raw<D: DrawTarget<Color = Rgb565>>(
         });
     }
 
-    draw_detail_shell(display, theme, "RAW", total_pages, total_pages, &rows)
+    draw_detail_shell(display, theme, "RAW", total_pages, total_pages, &rows, blocked)
 }
 
 #[derive(Clone, Copy)]
