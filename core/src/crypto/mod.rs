@@ -10,3 +10,4 @@ pub mod slip0010;
 pub mod derivation;
 #[allow(dead_code)]
 pub mod pda;
+pub mod rng_health;

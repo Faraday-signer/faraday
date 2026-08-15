@@ -54,15 +54,7 @@ pub fn run<'d, D, T, B, M>(
     }
     unsafe { bootloader_random_enable() };
 
-    // Fail-closed RNG liveness check, mirroring the seed self-test above: two
-    // samples must differ and not both be zero, catching a dead or stuck RNG at
-    // boot before any entropy is drawn for a wallet.
-    let r1 = unsafe { esp_idf_sys::esp_random() };
-    let r2 = unsafe { esp_idf_sys::esp_random() };
-    assert!(
-        r1 != r2 && !(r1 == 0 && r2 == 0),
-        "esp_random self-test failed — hardware RNG entropy source not live"
-    );
+    rng_health_check();
 
     // Back-date so the first loop iteration samples immediately. `checked_sub`
     // guards against underflow early in boot (the monotonic clock is still near
@@ -403,6 +395,32 @@ pub fn run<'d, D, T, B, M>(
 
         FreeRtos::delay_ms(5);
     }
+}
+
+/// Boot RNG liveness check: 256 samples through the statistical tests in
+/// `faraday_core::crypto::rng_health` (repetition count at the SP 800-90B
+/// §4.4.1 cutoff, monobit, distinct-values). Fail-closed: a rejected RNG
+/// panics before any wallet code can draw entropy.
+///
+/// Honest scope (see the core module docs): this catches a dead, stuck,
+/// cycling, or grossly biased generator. It cannot detect a conditioned
+/// source whose true entropy input silently failed — `esp_random` output
+/// stays statistically plausible in that state. That gap is covered by
+/// wallet creation XORing camera entropy with the RNG, so a seed is never
+/// weaker than the stronger source.
+fn rng_health_check() {
+    use faraday_core::crypto::rng_health::{check_samples, RNG_HEALTH_SAMPLES};
+
+    let mut samples = [0u32; RNG_HEALTH_SAMPLES];
+    for v in samples.iter_mut() {
+        *v = unsafe { esp_idf_sys::esp_random() };
+    }
+    if let Err(reason) = check_samples(&samples) {
+        panic!("RNG health check failed — {reason}");
+    }
+    // Success is otherwise silent; one line makes the check observable over
+    // serial instead of invisible.
+    log::info!("rng health: {} samples ok", RNG_HEALTH_SAMPLES);
 }
 
 // How often to re-sample the battery. The pack voltage moves slowly, so a
