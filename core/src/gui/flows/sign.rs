@@ -68,7 +68,6 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                             scroll: 0,
                             selected: if can_sign { 0 } else { 1 },
                             can_sign,
-                            alt_warning: false,
                         };
                     }
                 }
@@ -92,7 +91,6 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
             mut scroll,
             mut selected,
             can_sign,
-            mut alt_warning,
         } => {
             // Page 0 = summary, 1 = metadata, 2 = ix overview, then one per
             // *interesting* ix (ComputeBudget pages skipped), then raw bytes.
@@ -105,11 +103,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 // the next page, wrapping back to the first after the last. The
                 // SIGN footer cell (Confirm) signs directly — there is no
                 // Sign/Reject selection toggle.
-                InputEvent::Up | InputEvent::Left if app.touch_input() && !alt_warning => {
+                InputEvent::Up | InputEvent::Left if app.touch_input() => {
                     page = page.saturating_sub(1);
                 }
                 InputEvent::Down | InputEvent::Right | InputEvent::Secondary
-                    if app.touch_input() && !alt_warning =>
+                    if app.touch_input() =>
                 {
                     page = (page + 1) % total_pages;
                 }
@@ -118,11 +116,11 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 // the summary after the last page. Up steps backward. Left/Right
                 // toggle the Sign/Reject selection. The navigation model stays
                 // "K1 = sign, K2 = next, K3 = cancel".
-                InputEvent::Down if !alt_warning => {
+                InputEvent::Down => {
                     page = (page + 1) % total_pages;
                     scroll = 0;
                 }
-                InputEvent::Up if !alt_warning => {
+                InputEvent::Up => {
                     // Step backward through pages — symmetric with Down so
                     // the user can correct a misclick without cycling all
                     // the way around. Wraps to the last page from page 0.
@@ -144,23 +142,6 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                     } else {
                         selected == 0 && can_sign
                     };
-                    // Offline-limit gate (FA-24): a tx with lookup-table
-                    // accounts we can't verify offline signs only through
-                    // the explicit warning page — first Confirm shows it,
-                    // the Confirm on that page signs.
-                    if want_sign && parsed.has_unresolved_accounts && !alt_warning {
-                        return Screen::SignReview {
-                            tx_bytes,
-                            tx_base64,
-                            info_lines,
-                            parsed,
-                            page,
-                            scroll,
-                            selected,
-                            can_sign,
-                            alt_warning: true,
-                        };
-                    }
                     if want_sign {
                         if let Some(wallet) = &app.wallet {
                             if let Ok(signed) = crate::signer::sign_transaction_base64(
@@ -207,20 +188,12 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                                 scroll,
                                 selected: 1,
                                 can_sign,
-                                alt_warning,
                             };
                         }
                         return Screen::MainMenu { selected: app.menu_index_of(2) };
                     }
                 }
-                InputEvent::Back => {
-                    if alt_warning {
-                        // Back out of the warning page, not the whole review.
-                        alt_warning = false;
-                    } else {
-                        return Screen::MainMenu { selected: app.menu_index_of(2) };
-                    }
-                }
+                InputEvent::Back => return Screen::MainMenu { selected: app.menu_index_of(2) },
                 _ => {}
             }
             Screen::SignReview {
@@ -232,7 +205,6 @@ pub fn handle(app: &mut App, screen: Screen, event: InputEvent) -> Screen {
                 scroll,
                 selected,
                 can_sign,
-                alt_warning,
             }
         }
 
@@ -430,7 +402,6 @@ mod input_model_tests {
             scroll: 0,
             selected,
             can_sign,
-            alt_warning: false,
         }
     }
 

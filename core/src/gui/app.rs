@@ -339,11 +339,6 @@ pub enum Screen {
         /// False when the loaded wallet's pubkey is not in the tx's required
         /// signer set — Sign is disabled in that case.
         can_sign: bool,
-        /// Offline-limit gate (FA-24): true while the "accounts resolve
-        /// on-chain" warning page is showing. First Confirm on a tx with
-        /// unresolved lookup-table accounts sets this; the next Confirm
-        /// signs; Back returns to the review.
-        alt_warning: bool,
     },
     SignShowQr {
         data: String,
@@ -961,16 +956,7 @@ impl App {
     /// the wallet. Currently the checksum-less CompactSeedQR address confirm
     /// (#89), where the whole point is forcing the user to read the address.
     pub fn requires_explicit_confirm(&self) -> bool {
-        matches!(
-            self.screen,
-            Screen::LoadAddressConfirm { .. }
-                // The offline-limit warning page (FA-24): a body tap must
-                // not sign — only the explicit footer action does.
-                | Screen::SignReview {
-                    alt_warning: true,
-                    ..
-                }
-        )
+        matches!(self.screen, Screen::LoadAddressConfirm { .. })
     }
 
     /// True when the current screen uses the middle footer cell (`k2`) for a
@@ -1338,18 +1324,6 @@ impl App {
     /// uses this on touch builds: tapping advances to the next review page,
     /// leaving `Confirm` (the SIGN footer cell) to actually sign.
     pub fn tap_pages_review(&self) -> bool {
-        matches!(
-            self.screen,
-            Screen::SignReview {
-                alt_warning: false,
-                ..
-            }
-        )
-    }
-
-    /// Any SignReview mode — the platform loop merges the footer's middle
-    /// and right cells into the sign band there (FA-23/FA-24).
-    pub fn on_sign_review(&self) -> bool {
         matches!(self.screen, Screen::SignReview { .. })
     }
 

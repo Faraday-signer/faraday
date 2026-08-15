@@ -284,7 +284,6 @@ impl App {
                 scroll,
                 selected,
                 can_sign,
-                alt_warning,
                 ..
             } => {
                 // Page 0 is the existing summary (hero + chunked details).
@@ -295,24 +294,17 @@ impl App {
                 let interesting = crate::parser::interesting_ix_indices(parsed);
                 let total_pages = 3 + interesting.len() + 1;
                 // Why signing is impossible, stated on the sign band
-                // (FA-23). Unresolved lookup tables no longer block —
-                // they route through the offline-limit warning page
-                // (FA-24) — so the only hard blocker left is a wallet
-                // that isn't a required signer.
+                // (FA-23) — the two real cases: the loaded wallet isn't a
+                // required signer, or the tx references lookup-table
+                // accounts the device can't resolve offline (common for
+                // swaps).
                 let blocked: Option<&'static str> = if *can_sign {
                     None
+                } else if parsed.has_unresolved_accounts {
+                    Some("CAN'T SIGN: LOOKUP TABLES")
                 } else {
                     Some("CAN'T SIGN: OTHER WALLET")
                 };
-                if *alt_warning {
-                    let tables = match parsed.version {
-                        crate::parser::TransactionVersion::V0 {
-                            address_table_lookups,
-                        } => address_table_lookups,
-                        crate::parser::TransactionVersion::Legacy => 0,
-                    };
-                    return draw_alt_warning(display, &self.theme, tables);
-                }
                 match *page {
                     0 => {
                         let wallet_pk = self.wallet.as_ref().map(|w| w.keypair.public_key);
@@ -1710,84 +1702,6 @@ fn draw_message<D: DrawTarget<Color = Rgb565>>(
 /// shown — no truncation — wrapped to two lines via the existing helper.
 /// Falls back to `draw_tx_review` for anything more complex (swaps,
 /// multi-step txs, unknown programs).
-/// The offline-limit warning page (FA-24): shown between the review and
-/// the signature when a tx references lookup-table accounts the device
-/// cannot verify offline. States plainly what is and isn't verified;
-/// the explicit footer action signs, ✗/Back returns to the review.
-fn draw_alt_warning<D: DrawTarget<Color = Rgb565>>(
-    display: &mut D,
-    theme: &Theme,
-    table_count: usize,
-) -> Result<(), D::Error> {
-    use crate::ui::layout::split_top;
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
-
-    let screen = Rectangle::new(Point::zero(), Size::new(theme.width, theme.height));
-    display.fill_solid(&screen, theme.bg)?;
-    let (header_rect, body_rect) = split_top(screen, theme.header_h as i32);
-    Header {
-        kind: HeaderKind::Title("OFFLINE LIMIT"),
-        counter: None,
-        right_label: None,
-    }
-    .draw(display, theme, header_rect)?;
-
-    let tables = if table_count == 1 {
-        "1 on-chain lookup table.".to_string()
-    } else {
-        format!("{table_count} on-chain lookup tables.")
-    };
-    let first = format!("This transaction uses {tables}");
-    // Pre-wrapped for style_sm on a 240px body. Empty strings are spacers.
-    let mut lines: Vec<&str> = vec![&first];
-    lines.extend([
-        "",
-        "Accounts referenced through",
-        "them cannot be verified on",
-        "this device while offline.",
-        "",
-        "Amounts, programs, and fees",
-        "shown were decoded from the",
-        "exact bytes you are signing.",
-        "",
-        "Continue only if you trust",
-        "the connected app.",
-    ]);
-    let left = body_rect.top_left.x + theme.space_md;
-    let mut y = body_rect.top_left.y + 24;
-    for line in lines {
-        if !line.is_empty() {
-            Text::with_alignment(
-                line,
-                Point::new(left, y),
-                theme.style_sm(if y == body_rect.top_left.y + 24 {
-                    theme.danger
-                } else {
-                    theme.text
-                }),
-                Alignment::Left,
-            )
-            .draw(display)?;
-        }
-        y += if line.is_empty() { 10 } else { 19 };
-    }
-
-    EdgeHints::new()
-        .k1(SIGN_HINT)
-        .k3(EdgeIcon::Cross)
-        .draw(
-            display,
-            theme,
-            Rectangle::new(
-                Point::new(theme.width as i32 - GUTTER_W as i32, theme.header_h as i32),
-                Size::new(GUTTER_W, theme.height - theme.header_h),
-            ),
-        )?;
-    draw_sign_band(display, theme, None, "SIGN ANYWAY")?;
-
-    Ok(())
-}
-
 /// Touch builds: the sign action as a full-width band across the footer's
 /// middle+right cells, drawn on every SignReview page (FA-23). `blocked`
 /// None = an accent SIGN TRANSACTION button (a tap anywhere on it signs);
@@ -1797,7 +1711,6 @@ fn draw_sign_band<D: DrawTarget<Color = Rgb565>>(
     display: &mut D,
     theme: &Theme,
     blocked: Option<&str>,
-    label: &str,
 ) -> Result<(), D::Error> {
     use crate::ui::widgets::FOOTER_H;
     let h = FOOTER_H as i32;
@@ -1813,7 +1726,7 @@ fn draw_sign_band<D: DrawTarget<Color = Rgb565>>(
             band.into_styled(PrimitiveStyle::with_fill(theme.accent))
                 .draw(display)?;
             Text::with_alignment(
-                label,
+                "SIGN TRANSACTION",
                 Point::new(x + (w - x) / 2, y + h / 2 + 5),
                 MonoTextStyle::new(&FONT_9X15, theme.bg),
                 Alignment::Center,
@@ -2217,7 +2130,7 @@ fn draw_tx_review_zoned<D: DrawTarget<Color = Rgb565>>(
         hints = hints.k1(SIGN_HINT);
     }
     hints.draw(display, &theme, gutter)?;
-    draw_sign_band(display, theme, blocked, "SIGN TRANSACTION")?;
+    draw_sign_band(display, theme, blocked)?;
 
     Ok(())
 }
@@ -2875,7 +2788,7 @@ fn draw_tx_review<D: DrawTarget<Color = Rgb565>>(
                 Size::new(GUTTER_W, theme.height - theme.header_h),
             ),
         )?;
-    draw_sign_band(display, theme, blocked, "SIGN TRANSACTION")?;
+    draw_sign_band(display, theme, blocked)?;
 
     Ok(())
 }
@@ -3003,7 +2916,7 @@ fn draw_detail_shell<D: DrawTarget<Color = Rgb565>>(
         .k2(next_hint)
         .k3(EdgeIcon::CrossDanger)
         .draw(display, &theme, gutter)?;
-    draw_sign_band(display, theme, blocked, "SIGN TRANSACTION")?;
+    draw_sign_band(display, theme, blocked)?;
 
     Ok(())
 }

@@ -53,7 +53,7 @@ _(none)_
 - **FA-06** `P1` — Ika clear-msig approver demo (branch `feat/ika-approver-demo`, PR #71) — owner: cxalem
 - **FA-18** `P1` — Telegram board sync: mirror task claims to the "Faraday Signal" channel (branch `feat/telegram-board`) — owner: cxalem
 - **FA-23** `P1` — A sign button you can't miss on the TX review (branch `feat/sign-button`) — owner: cxalem
-- **FA-24** `P1` — Offline-limit signing policy for lookup-table txs (branch `feat/sign-button`, PR #127) — owner: cxalem
+- **FA-24** `P1` — Lookup-table txs sign normally (branch `feat/sign-button`, PR #127) — owner: cxalem
 - **FA-21** `P2` — Touch UX: press feedback + honest footer (branch `feat/touch-feedback-footer`) — owner: cxalem
 
 ### 🔬 In Review
@@ -291,13 +291,12 @@ _(none)_
 - [ ] Verified on the device with a signable tx and a blocked one; host tests green.
 **Owner:** cxalem
 
-### FA-24 `P1` — Offline-limit signing policy for lookup-table transactions
-**Description:** Real-world dapp transactions (Jupiter swaps foremost) reference address lookup tables created dynamically on-chain; no firmware snapshot can keep up, so the previous hard-block (`can_sign = false` on any unresolved ALT account) made swaps permanently unsignable — surfaced on-device as "CAN'T SIGN: LOOKUP TABLES" on a plain SOL→USDC swap. New policy, the standard hardware-wallet compromise: signing is allowed through an **explicit offline-limit warning gate**. First Confirm on such a tx shows a dedicated page stating what is verified (amounts, programs, fees — decoded from the exact signed bytes) and what is not (accounts referenced through N lookup tables), with SIGN ANYWAY as the explicit action and Back returning to the review. Body taps cannot skip the gate. `can_sign` now means only "this wallet is a required signer". Follow-up (separate card when wanted): the extension resolving table contents and embedding them in the QR payload so the device can display the accounts, labeled host-supplied.
+### FA-24 `P1` — Lookup-table transactions sign normally
+**Description:** Real dapp transactions (Jupiter swaps foremost) reference address lookup tables created dynamically on-chain; no firmware snapshot can keep up, so the old hard-block (`can_sign = false` on any unresolved ALT account) made swaps permanently unsignable — surfaced on-device as "CAN'T SIGN: LOOKUP TABLES" on a plain SOL→USDC swap. New policy: such transactions **review and sign exactly like any other**. A warning interstitial was built and rejected (UX decision 2026-08-15): it would fire on every ordinary swap for a condition the user can neither evaluate nor act on, training people to slam through warnings and devaluing the ones that matter (the high-risk classifier, the address gate). What the user sees is unchanged in the ways that count — amounts, programs, and fees are decoded from the exact signed bytes; a quiet line in the scrollable details notes that some accounts resolve on-chain, and unresolved entries render as a sentinel, never as a fake address. `can_sign` now means only "this wallet is a required signer". Follow-up candidate: the extension resolving table contents and embedding them in the QR payload for full account display.
 **Acceptance criteria:**
-- [ ] A lookup-table tx reviews normally and signs after the warning gate; the gate cannot be skipped by body taps.
-- [ ] Back from the gate returns to the review, not the menu; non-signer wallets still hard-block with the OTHER WALLET reason.
-- [ ] Parser tests updated: unresolved ALT ⇒ signable-with-gate, sentinel never displayed as a real account.
-- [ ] Verified on the device with a live Jupiter swap end-to-end (sign → QR → extension splice → lands on-chain).
+- [ ] A live Jupiter swap reviews normally, shows SIGN TRANSACTION, and signs end-to-end (QR → extension splice → lands on-chain).
+- [ ] Non-signer wallets still hard-block with the OTHER WALLET reason.
+- [ ] Parser tests updated; sentinel accounts never display as real addresses.
 **Owner:** cxalem
 
 ### FA-12 `P3` — Faraday MCP server *(idea — unshaped)*
