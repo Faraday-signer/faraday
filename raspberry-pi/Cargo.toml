@@ -50,8 +50,13 @@ bs58 = "0.5"
 
 # QR decoding + image buffer. `rxing` is paired with an Otsu binarize pass
 # (core/src/qr/threshold.rs) so it copes with hand-drawn CompactSeedQR
-# sheets (where rxing-only and rqrr both fail).
-rxing = { version = "0.7", default-features = false, features = ["image"] }
+# sheets (where rxing-only and rqrr both fail). Decoding goes through
+# `rxing::helpers::detect_in_luma_with_hints` on a raw luma buffer
+# (camera.rs) — no `image`-crate types cross this boundary, so rxing's
+# "image" feature isn't needed; leaving it on pulled in `imageproc` and,
+# through its defaults, a full AV1 encoder (`ravif`/`rav1e`) that this
+# decoder never exercises.
+rxing = { version = "0.7", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 # Desktop simulator (optional)
