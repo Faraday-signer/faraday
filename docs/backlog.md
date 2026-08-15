@@ -52,6 +52,7 @@ _(none)_
 ### 🏗 In Progress
 - **FA-06** `P1` — Ika clear-msig approver demo (branch `feat/ika-approver-demo`, PR #71) — owner: cxalem
 - **FA-18** `P1` — Telegram board sync: mirror task claims to the "Faraday Signal" channel (branch `feat/telegram-board`) — owner: cxalem
+- **FA-23** `P1` — A sign button you can't miss on the TX review (branch `feat/sign-button`) — owner: cxalem
 - **FA-21** `P2` — Touch UX: press feedback + honest footer (branch `feat/touch-feedback-footer`) — owner: cxalem
 
 ### 🔬 In Review
@@ -278,6 +279,15 @@ _(none)_
 - [x] Every screen renders correctly in both palettes via `Theme` tokens; QR/backup rendering stays fixed black-on-white.
 - [x] Touch, camera, and the rest of the loop unaffected by the shared bus; host tests green (339 + 340 touch-ui).
 - [x] Pi/simulator behavior unchanged (no IMU → dark theme, bouncing screensaver).
+**Owner:** cxalem
+
+### FA-23 `P1` — A sign button you can't miss on the TX review
+**Description:** Reviewing a transaction on the touch build gives no clear way to sign: the sign affordance is a small footer cell that only shows when `can_sign` is true, the detail pages (2..K) draw their ✓ unconditionally so it silently no-ops when signing is blocked, and when `can_sign` is false (wallet not a signer, or unresolved lookup-table accounts — common for swaps) the zoned summary card drops the explanation entirely. Fix: a **sign band** spanning the footer's middle+right cells on every SignReview page — accent-filled "SIGN TRANSACTION" when signing is possible (tap anywhere on it signs; the middle cell's page-forward role is redundant, body taps page), and an explicit danger-toned blocker ("CAN'T SIGN: OTHER WALLET" / "CAN'T SIGN: LOOKUP TABLES") when it isn't. Reject ✗ stays in the left cell. Physical-key builds keep their K1 model but stop drawing the dead ✓ when signing is blocked.
+**Acceptance criteria:**
+- [ ] Every SignReview page (summary, details, raw) shows the band: SIGN TRANSACTION or the specific blocker.
+- [ ] Tapping anywhere on the band signs when allowed; taps on it when blocked do nothing (and the reason is readable).
+- [ ] The unconditional dead ✓ on detail pages is gone on both build flavors.
+- [ ] Verified on the device with a signable tx and a blocked one; host tests green.
 **Owner:** cxalem
 
 ### FA-12 `P3` — Faraday MCP server *(idea — unshaped)*
