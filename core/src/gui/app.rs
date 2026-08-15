@@ -894,6 +894,10 @@ pub struct App {
     /// begins. Cleared by any input, tap, or the platform loop's safety
     /// timeout (FA-21).
     pub pressed_row: Option<usize>,
+    /// Shutter-flash frame for the camera-entropy screen (FA-22): set by
+    /// the platform loop when a capture is requested, drawn as a bright
+    /// overlay for the deferred-commit window, cleared by `handle_input`.
+    pub shutter_flash: bool,
     /// How input is interpreted by shared flow logic (keys vs touch). Defaults
     /// to the build's feature but is a plain runtime value so host tests can
     /// exercise either interpretation. See [`InputModel`] / [`App::touch_input`].
@@ -936,6 +940,7 @@ impl App {
             battery: None,
             verify_flash: false,
             pressed_row: None,
+            shutter_flash: false,
             input_model: InputModel::default_for_build(),
         }
     }
@@ -1020,6 +1025,8 @@ impl App {
         // Any input also ends a press highlight — the press either became
         // this action or was abandoned for a swipe.
         self.pressed_row = None;
+        // And ends a shutter flash — the deferred capture is committing now.
+        self.shutter_flash = false;
         let was_blanked = self.is_blanked();
         self.last_activity = std::time::Instant::now();
         if was_blanked {
@@ -1317,6 +1324,14 @@ impl App {
             | Screen::CreateBackupWarning { selected, .. } => *selected = row,
             _ => {}
         }
+    }
+
+    /// True on the camera-entropy capture screen. Touch builds route taps
+    /// here through a deferred commit with a shutter flash (FA-22) so every
+    /// capture — including the final one, which immediately transitions —
+    /// is visibly acknowledged.
+    pub fn on_camera_entropy(&self) -> bool {
+        matches!(self.screen, Screen::CreateCameraEntropy { .. })
     }
 
     /// True when a body tap on the current screen should page forward through

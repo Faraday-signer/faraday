@@ -54,6 +54,7 @@ _(none)_
 - **FA-18** `P1` — Telegram board sync: mirror task claims to the "Faraday Signal" channel (branch `feat/telegram-board`) — owner: cxalem
 - **FA-23** `P1` — A sign button you can't miss on the TX review (branch `feat/sign-button`) — owner: cxalem
 - **FA-24** `P1` — Lookup-table txs sign normally (branch `feat/sign-button`, PR #127) — owner: cxalem
+- **FA-22** `P2` — Camera-entropy capture feedback (branch `feat/camera-entropy-feedback`) — owner: cxalem
 - **FA-21** `P2` — Touch UX: press feedback + honest footer (branch `feat/touch-feedback-footer`) — owner: cxalem
 
 ### 🔬 In Review
@@ -297,6 +298,13 @@ _(none)_
 - [ ] A live Jupiter swap reviews normally, shows SIGN TRANSACTION, and signs end-to-end (QR → extension splice → lands on-chain).
 - [ ] Non-signer wallets still hard-block with the OTHER WALLET reason.
 - [ ] Parser tests updated; sentinel accounts never display as real addresses.
+### FA-22 `P2` — Camera-entropy capture feedback
+**Description:** Creating a wallet via camera entropy is the marquee moment of the product and currently gives near-zero feedback: the live preview fills the screen, each tap silently hashes a frame, the only signal is the tiny header counter, and the second capture teleports straight to the backup warning — the tap feels dead and nothing tells a first-time user to tap at all. Add three pieces: (1) a **shutter flash** on every capture (the commit is deferred ~120ms via the existing pending-confirm mechanism so the *final* capture's flash is visible too — otherwise the instant transition eats it); (2) an **entropy meter strip** under the header — segmented blocks filling per capture with a bits counter (256/512), matching the receipt the landing page already shows for this exact screen; (3) a **"TAP TO CAPTURE" hint** over the preview on touch builds. Security constraint: nothing on screen may derive from the entropy pool itself (screen-filming leak channel) — all feedback is driven by frame count only.
+**Acceptance criteria:**
+- [ ] Every capture (including the final one) shows a visible shutter flash before the screen advances.
+- [ ] Meter strip fills per capture with a bits label; matches the actual pool math (256 bits/frame).
+- [ ] Touch builds show a capture hint; physical-key builds unchanged apart from the meter.
+- [ ] No UI element derives from entropy-pool bytes; verified on the device; host tests green.
 **Owner:** cxalem
 
 ### FA-12 `P3` — Faraday MCP server *(idea — unshaped)*
