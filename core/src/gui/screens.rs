@@ -116,6 +116,7 @@ impl App {
                 *frames_collected,
                 self.seed_loaded(),
                 self.has_camera_frame(),
+                self.shutter_flash,
             ),
             Screen::CreateCoinFlips {
                 word_count,
@@ -4745,9 +4746,10 @@ fn draw_camera_entropy<D: DrawTarget<Color = Rgb565>>(
     frames_collected: usize,
     _seed_loaded: bool,
     has_frame: bool,
+    shutter_flash: bool,
 ) -> Result<(), D::Error> {
     use crate::ui::layout::split_top;
-    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, GUTTER_W};
+    use crate::ui::widgets::{EdgeHints, EdgeIcon, Header, HeaderKind, FOOTER_H, GUTTER_W};
 
     use embedded_graphics::{
         geometry::{Point, Size},
@@ -4790,6 +4792,80 @@ fn draw_camera_entropy<D: DrawTarget<Color = Rgb565>>(
             Alignment::Center,
         )
         .draw(display)?;
+    }
+
+    // Entropy meter (FA-22): a strip under the header — 8 segment blocks,
+    // 4 filling per captured frame, with a bits counter. Mirrors the
+    // "GATHERING RANDOMNESS" receipt the landing page shows for this
+    // screen. Driven by frame COUNT only: nothing here may derive from
+    // the entropy pool itself (a filmed screen must learn nothing).
+    {
+        const METER_H: i32 = 20;
+        const BLOCKS: i32 = 8;
+        let meter = Rectangle::new(
+            Point::new(0, theme.header_h as i32),
+            Size::new(theme.width, METER_H as u32),
+        );
+        display.fill_solid(&meter, theme.bg)?;
+        let filled = (frames_collected as i32 * BLOCKS / 2).min(BLOCKS);
+        let pad = theme.space_sm;
+        let label_w = 76;
+        let block_span = theme.width as i32 - pad * 2 - label_w;
+        let gap = 3;
+        let bw = (block_span - gap * (BLOCKS - 1)) / BLOCKS;
+        for i in 0..BLOCKS {
+            let x = pad + i * (bw + gap);
+            let rect = Rectangle::new(
+                Point::new(x, theme.header_h as i32 + 5),
+                Size::new(bw as u32, (METER_H - 10) as u32),
+            );
+            if i < filled {
+                rect.into_styled(PrimitiveStyle::with_fill(theme.accent))
+                    .draw(display)?;
+            } else {
+                rect.into_styled(PrimitiveStyle::with_stroke(theme.border, 1))
+                    .draw(display)?;
+            }
+        }
+        let bits = format!("{}/512", frames_collected * 256);
+        Text::with_alignment(
+            &bits,
+            Point::new(theme.width as i32 - pad, theme.header_h as i32 + 14),
+            theme.style_sm(theme.muted),
+            Alignment::Right,
+        )
+        .draw(display)?;
+    }
+
+    // Capture hint (touch builds): the viewfinder otherwise never says
+    // that tapping is what takes the shot.
+    if cfg!(feature = "touch-ui") && has_frame {
+        const HINT_H: i32 = 20;
+        let hint_y = theme.height as i32 - FOOTER_H as i32 - HINT_H;
+        let band = Rectangle::new(Point::new(0, hint_y), Size::new(theme.width, HINT_H as u32));
+        display.fill_solid(&band, theme.bg)?;
+        Text::with_alignment(
+            "TAP TO CAPTURE",
+            Point::new(theme.width as i32 / 2, hint_y + 14),
+            theme.style_sm(theme.dim),
+            Alignment::Center,
+        )
+        .draw(display)?;
+    }
+
+    // Shutter flash (FA-22): bright overlay across the preview for the
+    // deferred-commit window, so every capture — including the final one —
+    // is visibly acknowledged.
+    if shutter_flash {
+        let flash_top = theme.header_h as i32;
+        let flash_h = theme.height as i32 - flash_top - FOOTER_H as i32;
+        display.fill_solid(
+            &Rectangle::new(
+                Point::new(0, flash_top),
+                Size::new(theme.width, flash_h.max(0) as u32),
+            ),
+            Rgb565::WHITE,
+        )?;
     }
 
     EdgeHints::new()

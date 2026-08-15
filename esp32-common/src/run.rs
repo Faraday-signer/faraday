@@ -79,6 +79,11 @@ pub fn run<'d, D, T, B, M>(
     // screens): one step per this interval, i.e. ~3 positions/second.
     const SWIPE_REPEAT_MS: u64 = 300;
 
+    // Camera-entropy shutter flash duration before the deferred capture
+    // commits — long enough for the ~30 Hz draw loop to render the flash
+    // at least twice (FA-22).
+    const SHUTTER_DELAY_MS: u64 = 120;
+
     // Footer action bar: bottom FOOTER_H strip, divided into three equal
     // thirds — Back (left) / Secondary (middle) / Confirm (right), matching
     // the glyphs drawn by EdgeHints. Applied only when the tap doesn't fall
@@ -91,7 +96,9 @@ pub fn run<'d, D, T, B, M>(
     let mut last_draw = std::time::Instant::now();
     // Shake-detection poll cadence (the light/dark theme Easter egg).
     let mut last_shake_poll = std::time::Instant::now();
-    let mut pending_tap_confirm: Option<std::time::Instant> = None;
+    // (started, delay_ms): a Confirm deferred so a one-frame visual (quiz
+    // flash, shutter flash) renders before the commit.
+    let mut pending_tap_confirm: Option<(std::time::Instant, u64)> = None;
     // Safety timer for the press-down highlight (FA-21): a press that never
     // resolves into a tap or gesture (finger dragged a little, then lifted)
     // would otherwise leave a row highlighted forever.
@@ -190,7 +197,13 @@ pub fn run<'d, D, T, B, M>(
                     // Same for tap-to-go list screens (FA-21): their Confirm
                     // cell is empty chrome and must stay inert, or an
                     // invisible commit lives in the corner.
-                    if !(event == InputEvent::Confirm
+                    if event == InputEvent::Confirm && app.on_camera_entropy() {
+                        // Footer Check on the camera screen: same shutter
+                        // beat as a body tap (FA-22).
+                        app.shutter_flash = true;
+                        pending_tap_confirm =
+                            Some((std::time::Instant::now(), SHUTTER_DELAY_MS));
+                    } else if !(event == InputEvent::Confirm
                         && (app.on_word_picker() || app.footer_confirm_inert()))
                     {
                         if event == InputEvent::Confirm && app.confirm_will_derive() {
@@ -211,7 +224,8 @@ pub fn run<'d, D, T, B, M>(
                             pending_tap_confirm = None;
                             if app.on_verify_quiz() {
                                 app.verify_flash = true;
-                                pending_tap_confirm = Some(std::time::Instant::now());
+                                pending_tap_confirm =
+                                    Some((std::time::Instant::now(), TAP_CONFIRM_DELAY_MS));
                             } else {
                                 if app.confirm_will_derive() {
                                     let _ = screens::draw_computing(&mut display, &app.theme);
@@ -252,6 +266,15 @@ pub fn run<'d, D, T, B, M>(
                                 // can't double-tap past the address without
                                 // reading it.
                                 pending_tap_confirm = None;
+                            } else if app.on_camera_entropy() {
+                                // Shutter beat (FA-22): flash the preview,
+                                // commit the capture after SHUTTER_DELAY_MS.
+                                // Without the deferral the final capture
+                                // transitions instantly and its tap reads as
+                                // dead.
+                                app.shutter_flash = true;
+                                pending_tap_confirm =
+                                    Some((std::time::Instant::now(), SHUTTER_DELAY_MS));
                             } else if !app.on_word_picker() {
                                 // Read-only / advance-only screen (word display,
                                 // card confirm, QR view, about, errors…): tap
@@ -271,8 +294,8 @@ pub fn run<'d, D, T, B, M>(
         // Only the seed-verification flash defers a Confirm now: hold the
         // green/red highlight for one frame, then commit (advance or reset).
         // `handle_input` clears `verify_flash`, ending the flash.
-        if let Some(t) = pending_tap_confirm {
-            if t.elapsed().as_millis() >= TAP_CONFIRM_DELAY_MS as u128 {
+        if let Some((t, delay_ms)) = pending_tap_confirm {
+            if t.elapsed().as_millis() >= delay_ms as u128 {
                 pending_tap_confirm = None;
                 app.handle_input(InputEvent::Confirm);
             }
