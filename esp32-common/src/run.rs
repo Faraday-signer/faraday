@@ -364,58 +364,30 @@ pub fn run<'d, D, T, B, M>(
     }
 }
 
-/// NIST SP 800-90B health tests on the hardware RNG, run once at boot.
+/// Boot RNG liveness check: 256 samples through the statistical tests in
+/// `faraday_core::crypto::rng_health` (repetition count at the SP 800-90B
+/// §4.4.1 cutoff, monobit, distinct-values). Fail-closed: a rejected RNG
+/// panics before any wallet code can draw entropy.
 ///
-/// Two tests:
-/// 1. Repetition Count Test (RCT) — catches a stuck RNG producing constant or
-///    near-constant output (the Coldcard Mk4 failure mode).
-/// 2. Monobit test — catches a catastrophically biased RNG.
-///
-/// For a conditioned 32-bit source (`esp_random` after `bootloader_random_enable`),
-/// an RCT cutoff of 2 (three consecutive identical values = failure) has a
-/// false-positive probability < 2⁻⁶⁴ per position — effectively zero over 256
-/// samples. The monobit test uses a 6σ window on 8192 bits, giving a ~2×10⁻⁹
-/// false-positive rate.
+/// Honest scope (see the core module docs): this catches a dead, stuck,
+/// cycling, or grossly biased generator. It cannot detect a conditioned
+/// source whose true entropy input silently failed — `esp_random` output
+/// stays statistically plausible in that state. That gap is covered by
+/// wallet creation XORing camera entropy with the RNG, so a seed is never
+/// weaker than the stronger source.
 fn rng_health_check() {
-    const SAMPLES: usize = 256;
-    const BITS: f64 = (SAMPLES * 32) as f64;
-    const SIGMA: f64 = 6.0;
-    let expected = BITS / 2.0;
-    let stddev = (BITS * 0.25).sqrt();
+    use faraday_core::crypto::rng_health::{check_samples, RNG_HEALTH_SAMPLES};
 
-    let mut prev: u32 = 0;
-    let mut run: u32 = 1;
-    let mut max_run: u32 = 1;
-    let mut ones: u64 = 0;
-
-    for i in 0..SAMPLES {
-        let v = unsafe { esp_idf_sys::esp_random() };
-        if i > 0 {
-            if v == prev {
-                run += 1;
-            } else {
-                run = 1;
-            }
-            if run > max_run {
-                max_run = run;
-            }
-        }
-        prev = v;
-        ones += v.count_ones() as u64;
+    let mut samples = [0u32; RNG_HEALTH_SAMPLES];
+    for v in samples.iter_mut() {
+        *v = unsafe { esp_idf_sys::esp_random() };
     }
-
-    assert!(
-        max_run <= 2,
-        "RNG health: repetition count test failed — max run of {max_run} consecutive identical values"
-    );
-
-    let diff = (ones as f64 - expected).abs();
-    assert!(
-        diff < SIGMA * stddev,
-        "RNG health: monobit test failed — {ones} ones, expected ≈ {e} (σ ≈ {s:.1})",
-        e = expected as u64,
-        s = stddev,
-    );
+    if let Err(reason) = check_samples(&samples) {
+        panic!("RNG health check failed — {reason}");
+    }
+    // Success is otherwise silent; one line makes the check observable over
+    // serial instead of invisible.
+    log::info!("rng health: {} samples ok", RNG_HEALTH_SAMPLES);
 }
 
 // How often to re-sample the battery. The pack voltage moves slowly, so a
