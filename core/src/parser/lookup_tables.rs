@@ -92,104 +92,178 @@ fn pubkey_from_b58(s: &str) -> [u8; 32] {
 // ── Jupiter main routing table ──────────────────────────────────────────────
 // ALT: 3oy9ojnsDzqmMNi87Gs7Hn5v3MPVqnWjG9k8BmzKR7yW (97 entries)
 
+// Snapshot 2026-08-15 (169 entries; append-only growth from the 97-entry
+// 2026-05 snapshot — prefix verified identical at refresh time).
 const JUPITER_MAIN: &[&str] = &[
-    "D8cy77BBepLMngZx6ZukaTff5hCt1HrWyKk3Hnd9oitf", // 0
+    "D8cy77BBepLMngZx6ZukaTff5hCt1HrWyKk3Hnd9oitf",  // 0
     "jitodontfront11111111111JustUseJupiterU1tra",  // 1
     "jitodontfront1111111111111111JustUseJupiter",  // 2
-    "GGztQqQ6pCPaJQnNpXBgELr5cs3WwDakRbh1iEMzjgSJ", // 3
-    "2MFoS3MPtvyQ4Wh4M9pdfPjz6UhVoNbFbGJAskCPCj3h", // 4
-    "BQ72nSv9f3PRyRKCBnHLVrerrv37CYTHm5h3s9VSGQDV", // 5
-    "6U91aKa8pmMxkJwBCfPTmUEfZi6dHe7DcFq2ALvB2tbB", // 6
-    "4xDsmeTWPNjgSVSS1VTfzFq3iHZhp77ffPkAmkZkdu71", // 7
-    "CapuXNQoDviLvU1PxFiizLgPNQCxrsag1uMeyk6zLVps", // 8
-    "9nnLbotNTcUhvbrsA6Mdkx45Sm82G35zo28AqUvjExn8", // 9
-    "6LXutJvKUw8Q5ue2gCgKHQdAN4suWW8awzFVC6XCguFx", // 10
-    "HFqp6ErWHY6Uzhj8rFyjYuDya2mXUpYEk8VW75K9PSiY", // 11
-    "DSN3j1ykL3obAVNv7ZX49VsFCPe4LqzxHnmtLiPwY6xg", // 12
-    "69yhtoJR4JYPPABZcSNkzuqbaFbwHsCkja1sP1Q2aVT5", // 13
-    "HU23r7UoZbqTUuh3vA7emAGztFtqwTeVips789vqxxBw", // 14
-    "3LoAYHuSd7Gh8d7RTFnhvYtiTiefdZ5ByamU42vkzd76", // 15
-    "3CgvbiM3op4vjrrjH2zcrQUwsqh5veNVRjFCB9N6sRoD", // 16
-    "GP8StUXNYSZjPikyRsvkTbvRV1GBxMErb59cpeCJnDf1", // 17
-    "7iWnBRRhBCiNXXPhqiGzvvBkKrvFSWqqmxRyu9VyYBxE", // 18
-    "11111111111111111111111111111111",             // 19
+    "GGztQqQ6pCPaJQnNpXBgELr5cs3WwDakRbh1iEMzjgSJ",  // 3
+    "2MFoS3MPtvyQ4Wh4M9pdfPjz6UhVoNbFbGJAskCPCj3h",  // 4
+    "BQ72nSv9f3PRyRKCBnHLVrerrv37CYTHm5h3s9VSGQDV",  // 5
+    "6U91aKa8pmMxkJwBCfPTmUEfZi6dHe7DcFq2ALvB2tbB",  // 6
+    "4xDsmeTWPNjgSVSS1VTfzFq3iHZhp77ffPkAmkZkdu71",  // 7
+    "CapuXNQoDviLvU1PxFiizLgPNQCxrsag1uMeyk6zLVps",  // 8
+    "9nnLbotNTcUhvbrsA6Mdkx45Sm82G35zo28AqUvjExn8",  // 9
+    "6LXutJvKUw8Q5ue2gCgKHQdAN4suWW8awzFVC6XCguFx",  // 10
+    "HFqp6ErWHY6Uzhj8rFyjYuDya2mXUpYEk8VW75K9PSiY",  // 11
+    "DSN3j1ykL3obAVNv7ZX49VsFCPe4LqzxHnmtLiPwY6xg",  // 12
+    "69yhtoJR4JYPPABZcSNkzuqbaFbwHsCkja1sP1Q2aVT5",  // 13
+    "HU23r7UoZbqTUuh3vA7emAGztFtqwTeVips789vqxxBw",  // 14
+    "3LoAYHuSd7Gh8d7RTFnhvYtiTiefdZ5ByamU42vkzd76",  // 15
+    "3CgvbiM3op4vjrrjH2zcrQUwsqh5veNVRjFCB9N6sRoD",  // 16
+    "GP8StUXNYSZjPikyRsvkTbvRV1GBxMErb59cpeCJnDf1",  // 17
+    "7iWnBRRhBCiNXXPhqiGzvvBkKrvFSWqqmxRyu9VyYBxE",  // 18
+    "11111111111111111111111111111111",  // 19
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",  // 20
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",  // 21
-    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL", // 22
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",  // 22
     "So11111111111111111111111111111111111111112",  // 23
     "g7dD1FHSemkUQrX1Eak37wzvDjscgBW2pFCENwjLdMX",  // 24
-    "H1qQ6Hent1C5wa4Hc3GK2V1sgg4grvDBbmKd5H8dsTmo", // 25
-    "8ctcHN52LY21FEipCjr1MVWtoZa1irJQTPyAaTj72h7S", // 26
-    "7x4VcEX8aLd3kFsNWULTp1qFgVtDwyWSxpTGQkoMM6XX", // 27
-    "6zAcFYmxkaH25qWZW5ek4dk4SyQNpSza3ydSoUxjTudD", // 28
-    "91bUbswo6Di8235jAPwim1At4cPZLbG2pkpneyqKg4NQ", // 29
-    "A8kEy5wWgdW4FG593fQJ5QPVbqx1wkfXw9c4L9bPo2CN", // 30
-    "BuqEDKUwyAotZuK37V4JYEykZVKY8qo1zKbpfU9gkJMo", // 31
-    "2p29nqD7DN1PczBMmgrFdtYKTfv6rJ7H3yMut4eu7nYT", // 32
-    "EUvpCGh4qiMtq9wKgp28f9Bjv5Xz2WJqrM83XmYAqkEq", // 33
+    "H1qQ6Hent1C5wa4Hc3GK2V1sgg4grvDBbmKd5H8dsTmo",  // 25
+    "8ctcHN52LY21FEipCjr1MVWtoZa1irJQTPyAaTj72h7S",  // 26
+    "7x4VcEX8aLd3kFsNWULTp1qFgVtDwyWSxpTGQkoMM6XX",  // 27
+    "6zAcFYmxkaH25qWZW5ek4dk4SyQNpSza3ydSoUxjTudD",  // 28
+    "91bUbswo6Di8235jAPwim1At4cPZLbG2pkpneyqKg4NQ",  // 29
+    "A8kEy5wWgdW4FG593fQJ5QPVbqx1wkfXw9c4L9bPo2CN",  // 30
+    "BuqEDKUwyAotZuK37V4JYEykZVKY8qo1zKbpfU9gkJMo",  // 31
+    "2p29nqD7DN1PczBMmgrFdtYKTfv6rJ7H3yMut4eu7nYT",  // 32
+    "EUvpCGh4qiMtq9wKgp28f9Bjv5Xz2WJqrM83XmYAqkEq",  // 33
     "qqdJ4z1yu4sTbAitwXZsGNDoGZFgL2HfVKSVwAXWCfq",  // 34
-    "EaUghZfmuhgtZEEwaZwX5EBroz4WyH8VM5NSXi4tam5A", // 35
-    "6AMWTvaL1pscDo5CAaBhPfv7xnSLjJ3ZXScV9yt5Gr5G", // 36
-    "39FWQJxqTmUkFqHKjEs3CawQ1b1rqLcKmHfJ1FWMAWdu", // 37
-    "GyY4VgEpJQhiKZRAJJmoM4hv5Q2xC4pvX68MGrGidxyG", // 38
-    "2oL6my4QDDCfpgJZX1bZV1NgbmuNptKdgcE8wJm6efgk", // 39
-    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // 40 (USDC)
-    "DVCeozFGbe6ew3eWTnZByjHeYqTq1cvbrB7JJhkLxaRJ", // 41
+    "EaUghZfmuhgtZEEwaZwX5EBroz4WyH8VM5NSXi4tam5A",  // 35
+    "6AMWTvaL1pscDo5CAaBhPfv7xnSLjJ3ZXScV9yt5Gr5G",  // 36
+    "39FWQJxqTmUkFqHKjEs3CawQ1b1rqLcKmHfJ1FWMAWdu",  // 37
+    "GyY4VgEpJQhiKZRAJJmoM4hv5Q2xC4pvX68MGrGidxyG",  // 38
+    "2oL6my4QDDCfpgJZX1bZV1NgbmuNptKdgcE8wJm6efgk",  // 39
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  // 40
+    "DVCeozFGbe6ew3eWTnZByjHeYqTq1cvbrB7JJhkLxaRJ",  // 41
     "JSvtokJbtGsYhneKomFBjnJh4djEQLdHV2kAeS43bBZ",  // 42
-    "7u7cD7NxcZEuzRCBaYo8uVpotRdqZwez47vvuwzCov43", // 43
-    "59v2cSbCsnyaWymLnsq6TWzE6cEN5KJYNTBNrcP4smRH", // 44
+    "7u7cD7NxcZEuzRCBaYo8uVpotRdqZwez47vvuwzCov43",  // 43
+    "59v2cSbCsnyaWymLnsq6TWzE6cEN5KJYNTBNrcP4smRH",  // 44
     "m3BrPbv2TFmZZTPpyB9NgsCXqGNujpXvzvGqj8ksars",  // 45
-    "Gjmjory7TWKJXD2Jc6hKzAG991wWutFhtbXudzJqgx3p", // 46
-    "EXrqY7jLTLp83H38L8Zw3GvGkk1KoQbYTckPGBghwD8X", // 47
-    "G4CD7aqqZZ6QKCNHrc1MPdS9Aw8BWmQ5ZkDd54W6mAEG", // 48
-    "5SPztfEn1VAaWDBAXjQKwVrGbr6e8g3F6JJnUc9eCuSe", // 49
-    "FbruxBVHi463Agw2B3Vy27cBkGnEN5g1f4NcHe3REXfe", // 50
-    "E6LAwCLSHLkDCoMXZPtnDtpcvCYWcs3ZZLHLreiFwjUi", // 51
-    "DY6pE7aiDafuk35REZF9p9av3vbV2VQrvdZ4YyB1pZ4C", // 52
-    "819hAmNKJ4MyEF9fEYc31vzqsnwfxN7NtrM2QpovgvtS", // 53
-    "4pCDJv3V4P4WtvK5x4f64DS4wDctkMZDAjz6CxTdqPGj", // 54
-    "HoBCz6z9AG92GGozMWEkBPE9UhQWGZ5cXhYcjoGJvwP2", // 55
-    "EpdaePzdqRkMtdZJquVPUWgyoJ5YEEpYALki6dv9VBrt", // 56
-    "6zQecXhjYTifDGYxbW7vRTQBrBYsi1Uac6BEJ4WzefWS", // 57
-    "GgY8theL9n9hQPoz2keQM8y6z8T6G6BH9FPLjBtkF9Hd", // 58
-    "G4FUwFD1h4tb4R6jkZXuoyst7YNbYTcJH3MvCUguss6E", // 59
-    "F2Xjd4ZJYz6SfszyUVGzLUzAHRRhfU2iJacCfW5GCJHM", // 60
-    "3cHRcBKWbJeL2qyjgQ8wdSYxmRYW1ZyC2nVqTakAj57G", // 61
-    "6Ugimjtgk7rk5SbZNzcYvZiM3P6ki4Uq3QGtTHWNn8co", // 62
-    "4QKRxAfawktf6szGUP456AqBvaKSnmuGy91QnqdBDSke", // 63
-    "9kiYqGSb1nbYMc5xxZQHhKvJR57LLAHVyDvSQ3FHjDPK", // 64
-    "5xgh5nvdQivmBPCsK3oCLGTQFyQHytQ8BWox7zpXAuye", // 65
-    "5eGuZuVysi3Uksa5jRujq9XWWyNiNsosAme4xX8GM216", // 66
+    "Gjmjory7TWKJXD2Jc6hKzAG991wWutFhtbXudzJqgx3p",  // 46
+    "EXrqY7jLTLp83H38L8Zw3GvGkk1KoQbYTckPGBghwD8X",  // 47
+    "G4CD7aqqZZ6QKCNHrc1MPdS9Aw8BWmQ5ZkDd54W6mAEG",  // 48
+    "5SPztfEn1VAaWDBAXjQKwVrGbr6e8g3F6JJnUc9eCuSe",  // 49
+    "FbruxBVHi463Agw2B3Vy27cBkGnEN5g1f4NcHe3REXfe",  // 50
+    "E6LAwCLSHLkDCoMXZPtnDtpcvCYWcs3ZZLHLreiFwjUi",  // 51
+    "DY6pE7aiDafuk35REZF9p9av3vbV2VQrvdZ4YyB1pZ4C",  // 52
+    "819hAmNKJ4MyEF9fEYc31vzqsnwfxN7NtrM2QpovgvtS",  // 53
+    "4pCDJv3V4P4WtvK5x4f64DS4wDctkMZDAjz6CxTdqPGj",  // 54
+    "HoBCz6z9AG92GGozMWEkBPE9UhQWGZ5cXhYcjoGJvwP2",  // 55
+    "EpdaePzdqRkMtdZJquVPUWgyoJ5YEEpYALki6dv9VBrt",  // 56
+    "6zQecXhjYTifDGYxbW7vRTQBrBYsi1Uac6BEJ4WzefWS",  // 57
+    "GgY8theL9n9hQPoz2keQM8y6z8T6G6BH9FPLjBtkF9Hd",  // 58
+    "G4FUwFD1h4tb4R6jkZXuoyst7YNbYTcJH3MvCUguss6E",  // 59
+    "F2Xjd4ZJYz6SfszyUVGzLUzAHRRhfU2iJacCfW5GCJHM",  // 60
+    "3cHRcBKWbJeL2qyjgQ8wdSYxmRYW1ZyC2nVqTakAj57G",  // 61
+    "6Ugimjtgk7rk5SbZNzcYvZiM3P6ki4Uq3QGtTHWNn8co",  // 62
+    "4QKRxAfawktf6szGUP456AqBvaKSnmuGy91QnqdBDSke",  // 63
+    "9kiYqGSb1nbYMc5xxZQHhKvJR57LLAHVyDvSQ3FHjDPK",  // 64
+    "5xgh5nvdQivmBPCsK3oCLGTQFyQHytQ8BWox7zpXAuye",  // 65
+    "5eGuZuVysi3Uksa5jRujq9XWWyNiNsosAme4xX8GM216",  // 66
     "6NC5sEHoBEyhJTW6mUxzT3CRerMNyjsxK21yjVBMqFY",  // 67
-    "J3Up4p7i5LncgWbwytNsH4vrwco3qWoBTVQZnMJYxe7W", // 68
-    "75P62FyYr8sHjwUCCcUc2bT1MDrAVcsC6GkwkDyMoVVn", // 69
-    "GzSCp13VYUj2kpCBVpHnXaPS7SVE6R5Bq7D7tCbZckxP", // 70
-    "75YeSeaeVKiNvskBNZqmZ5EeuktgkfUq8YBqXoF4cTYu", // 71
-    "5xgSuPHiMxnvw38P8MxFJJN56WdSYTLBeq8XrUfKWaJE", // 72
-    "7hZdUKF3mNFm8NxYfBruNBEUHa8zwHr8SGk2jzP8W3zz", // 73
-    "GnqhCoAp1LbSbB5Vti7eHX3sZmFeQVV4y8aPy6sjsMeQ", // 74
-    "EDnz8jbGoLNTwxbHyT7cDvDqYLrgZrYzZS19kszebzVt", // 75
-    "7Svve3shNti3WaY2MdKtFY4H7eNYRiF9nLCXX6KBhGrq", // 76
-    "A2Kj8EzBSif36NNvs2i35GjdYGcs1RAwuXRrLpzfwnFF", // 77
-    "Ec6y749opoW5JKbJEip3PuJaZhusQHQtUxtDzWysmTPi", // 78
-    "Fja7LBfyWbnZQxrnQnw2UHKzknXyUNFWXXdQVibnrzBk", // 79
-    "GBRPRss7LgMQf4rxXyP8YCjHpdpEWM5BDXUCHHt6unEa", // 80
-    "EkV7V23YfHztteeNz1tfC4Um3MwWfVwMC9bhotoZtJKv", // 81
+    "J3Up4p7i5LncgWbwytNsH4vrwco3qWoBTVQZnMJYxe7W",  // 68
+    "75P62FyYr8sHjwUCCcUc2bT1MDrAVcsC6GkwkDyMoVVn",  // 69
+    "GzSCp13VYUj2kpCBVpHnXaPS7SVE6R5Bq7D7tCbZckxP",  // 70
+    "75YeSeaeVKiNvskBNZqmZ5EeuktgkfUq8YBqXoF4cTYu",  // 71
+    "5xgSuPHiMxnvw38P8MxFJJN56WdSYTLBeq8XrUfKWaJE",  // 72
+    "7hZdUKF3mNFm8NxYfBruNBEUHa8zwHr8SGk2jzP8W3zz",  // 73
+    "GnqhCoAp1LbSbB5Vti7eHX3sZmFeQVV4y8aPy6sjsMeQ",  // 74
+    "EDnz8jbGoLNTwxbHyT7cDvDqYLrgZrYzZS19kszebzVt",  // 75
+    "7Svve3shNti3WaY2MdKtFY4H7eNYRiF9nLCXX6KBhGrq",  // 76
+    "A2Kj8EzBSif36NNvs2i35GjdYGcs1RAwuXRrLpzfwnFF",  // 77
+    "Ec6y749opoW5JKbJEip3PuJaZhusQHQtUxtDzWysmTPi",  // 78
+    "Fja7LBfyWbnZQxrnQnw2UHKzknXyUNFWXXdQVibnrzBk",  // 79
+    "GBRPRss7LgMQf4rxXyP8YCjHpdpEWM5BDXUCHHt6unEa",  // 80
+    "EkV7V23YfHztteeNz1tfC4Um3MwWfVwMC9bhotoZtJKv",  // 81
     "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",  // 82
-    "4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf", // 83
-    "Hq2wp8uJ9jCPsYgNHex8RtqdvMPfVGoYwjvF1ATiwn2Y", // 84
-    "8Wf5TiAheLUqBrKXeYg2JtAFFMWtKdG2BSFgqUcPVwTt", // 85
+    "4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf",  // 83
+    "Hq2wp8uJ9jCPsYgNHex8RtqdvMPfVGoYwjvF1ATiwn2Y",  // 84
+    "8Wf5TiAheLUqBrKXeYg2JtAFFMWtKdG2BSFgqUcPVwTt",  // 85
     "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",  // 86
-    "Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1", // 87
+    "Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1",  // 87
     "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN",  // 88
-    "FhVo3mqL8PW5pH5U2CN4XE33DokiyZnUwuGpH2hmHLuM", // 89
-    "8Ks12pbrD6PXxfty1hVQiE9sc289zgU1zHkvXhrSdriF", // 90
+    "FhVo3mqL8PW5pH5U2CN4XE33DokiyZnUwuGpH2hmHLuM",  // 89
+    "8Ks12pbrD6PXxfty1hVQiE9sc289zgU1zHkvXhrSdriF",  // 90
     "LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj",  // 91
     "WLHv2UAZm6z4KyaaELi5pjdbJh6RESMva1Rnn8pJVVh",  // 92
-    "2DPAtwB8L12vrMRExbLuyGnC7n2J5LNoZQSejeQGpwkr", // 93
+    "2DPAtwB8L12vrMRExbLuyGnC7n2J5LNoZQSejeQGpwkr",  // 93
     "LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj",  // 94
     "WLHv2UAZm6z4KyaaELi5pjdbJh6RESMva1Rnn8pJVVh",  // 95
-    "2DPAtwB8L12vrMRExbLuyGnC7n2J5LNoZQSejeQGpwkr", // 96
+    "2DPAtwB8L12vrMRExbLuyGnC7n2J5LNoZQSejeQGpwkr",  // 96
+    "62qc2CNXwrYqQScmEdiZFFAnJR262PxWEuNQtxfafNgV",  // 97
+    "7VtfL8fvgNfhz17qKRMjzQEXgbdpnHHHQRh54R9jP2RJ",  // 98
+    "7hTckgnGnLQR6sdH7YkqFTAA7VwTfYFaZ6EhEsU3saCX",  // 99
+    "9rPYyANsfQZw3DnDmKE3YCQF5E8oD89UXoHn9JFEhJUz",  // 100
+    "AVmoTthdrX6tKt4nDjco2D775W2YK3sDhxPcMmzUAmTY",  // 101
+    "CebN5WGQ4jvEPvsVU4EoHEpgzq1VV7AbicfhtW4xC9iM",  // 102
+    "FWsW1xNtWscwNmKv6wVsU1iTzRN6wmmk3MjxRP5tT7hz",  // 103
+    "G5UZAVbAf46s7cKWoyKu8kYTip9DGTpbLZ2qa9Aq69dP",  // 104
+    "GesfTA3X2arioaHp8bbKdjG9vJtskViWACZoYvxp4twS",  // 105
+    "4budycTjhs9fD6xw62VBducVTNgMgJJ5BgtKq7mAZwn6",  // 106
+    "8SBKzEQU4nLSzcwF4a74F2iaUDQyTfjGndn6qUWBnrpR",  // 107
+    "4UQeTP1T39KZ9Sfxzo3WR5skgsaP6NZa87BAkuazLEKH",  // 108
+    "8sNeir4QsLsJdYpc9RZacohhK1Y5FLU3nC5LXgYB4aa6",  // 109
+    "Fh9HmeLNUMVCvejxCtCL2DbYaRyBFVJ5xrWkLnMH6fdk",  // 110
+    "463MEnMeGyJekNZFQSTUABBEbLnvMTALbT6ZmsxAbAdq",  // 111
+    "6AUH3WEHucYZyC61hqpqYUWVto5qA5hjHuNQ32GNnNxA",  // 112
+    "5YxQFdt3Tr9zJLvkFccqXVUwhdTWJQc1fFg2YPbxvxeD",  // 113
+    "9M4giFFMxmFGXtc3feFzRai56WbBqehoSeRE5GK7gf7",  // 114
+    "GXPFM2caqTtQYC2cJ5yJRi9VDkpsYZXzYdwYpGnLmtDL",  // 115
+    "3BpXnfJaUTiwXnJNe7Ej1rcbzqTTQUvLShZaWazebsVR",  // 116
+    "5cjcW9wExnJJiqgLjq7DEG75Pm6JBgE1hNv4B2vHXUW6",  // 117
+    "EHAAiTxcdDwQ3U4bU6YcMsQGaekdzLS3B5SmYo46kJtL",  // 118
+    "5eHhjP8JaYkz83CWwvGU2uMUXefd3AazWGx4gpcuEEYD",  // 119
+    "A7hAgCzFw14fejgCp387JUJRMNyz4j89JKnhtKU8piqW",  // 120
+    "94qWNrtmfn42h3ZjUZwWvK1MEo9uVmmrBPd2hpNjYDjb",  // 121
+    "7GFUN3bWzJMKMRZ34JLsvcqdssDbXnp589SiE33KVwcC",  // 122
+    "X5QPJcpph4mBAJDzc4hRziFftSbcygV59kRb2Fu6Je1",  // 123
+    "Bvtgim23rfocUzxVX9j9QFxTbBnH8JZxnaGLCEkXvjKS",  // 124
+    "FGptqdxjahafaCzpZ1T6EDtCzYMv7Dyn5MgBLyB3VUFW",  // 125
+    "CGEWR6pxwgQvYKeX4pZDqpZtWYPvyTjiAsw86SNzJtGy",  // 126
+    "7xQYoUjUJF1Kg6WVczoTAkaNhn5syQYcbvjmFrhjWpx",  // 127
+    "BWXT6RUhit9FfJQM3pBmqeFLPYmuxgmyhMGC5sGr8RbA",  // 128
+    "C93K8DX4YsABYJtHX9awzgZW3LWzBqBVezEbbLJH4yet",  // 129
+    "Bckr4rY4rUGvWtwqC9mnWN35LKzfPRcmsoMRYq6DFEjN",  // 130
+    "9tvBjCQ4m3954ESgxW9PnBPvW8afHEjKpkNEAdfN2D8U",  // 131
+    "CoRuMWRuDAsjB5SDMmYEcDuyQyaH3L2vVFvwBy1FF8Kr",  // 132
+    "21L1QB6DJ9HBvePgwN6jFuK3UT9mq2SgTq1oJ7D6cNiV",  // 133
+    "2i3uCDzDhr3pSvMPF5uBpUckLAv7XGdo2a8soiqNJMHk",  // 134
+    "BZeq7y8ajn5Pjpy5KjEhF6eBY2H9ippTpqCtQLQPsmJf",  // 135
+    "ghSBUgyxyvyurm1vJBkU4rUyLJoUipCZhFeiBogKCSy",  // 136
+    "HjQjngTDqoHE6aaGhUqfz9aQ7WZcBRjy5xB8PScLSr8i",  // 137
+    "GAFuhgcd328SkkBYHpfadzmef9hTGAFRCi9QoCnsZQug",  // 138
+    "AktftA98kSWAxn6kVSoqBXBELUArjKu2H9WmKB48ULFY",  // 139
+    "6rVkF4HSgy1jrnC3HogfRgPHrq4CtLg5f11URpsC4i9D",  // 140
+    "GYH1Gae1wJytMSvMvw8JVcv7nuAbxi8i9erNVbERnzXd",  // 141
+    "CA7v8gHfbquYXyDnDx6QxWW8hmL1H7X6Y2RYDrGLnuck",  // 142
+    "CASRL2zkwDnppxEFQ4LgdwgR9pdz5Q8R8nEMKVZ9QoLp",  // 143
+    "qkYdTGRPHbWTWuBMz45bCiU6a23axRqf6sBHm9295WY",  // 144
+    "BqcWAXkSdknwQxvqXYVGKtttZynYNHACPVJmTaoqgfv8",  // 145
+    "3beutiWC6iV5Hz2RC711oXTqWa93rHUwsS58xWBHyTd6",  // 146
+    "FC6zaBZjnJ1tF5nY4b2nrPgu62thjXdRkk2sEtjxU16E",  // 147
+    "C5bwoYa7RD7Prc2u36idJ3hDjTvvoXPdBdx4iYeDVaQj",  // 148
+    "APnwGpYPQJqpndpjZFUFUrzsSU2sd2SG9qKtpXQgRimu",  // 149
+    "CN371Div8bqcEqq2grrGQfBX7geFLgHATEFMNLEuQs1U",  // 150
+    "2yC9PAQvtxFjdV2G79N7cGsFhitbNiEQmZ3Z6dmLWfQg",  // 151
+    "BMqY71czEnfwxTp7zTc3Wdkushpn8VfSJ6NGZX11djM1",  // 152
+    "41xY1DU1zzo893bEg2HzTFxPVVM84UvDCNsQm6aKRq8Z",  // 153
+    "GYahGz4ts13NYJBJfwFfMsN7aWv6mcT5D5Jd9znx18QW",  // 154
+    "Gzc5K38syMVA8V7Q7czVJqQGxBiWhJ3iUqZdGGdSvqEP",  // 155
+    "AupmCV3PGYcm5efdXS7Yd9TvvzfUP4wKabvmFoDe9LAf",  // 156
+    "EQkDDtyzVwY3RCBNJSd68F8c1WQP6njSbcPLpnYFoMxU",  // 157
+    "A9KuWNQUZBT5ZTp3HB5tKxCkSwxjUrW5fFqvk6JcKyo6",  // 158
+    "D3ANwvaijotpP2BZJTxHs7mdhKaNDZ8JgWAZRAGX5wva",  // 159
+    "8i5djNGuUXSAqang3mcQMPfAg7ynPdLLyecDx1D393od",  // 160
+    "6oCkp6gpyjxVTeL6ahMYcekN2x2pzt1KY8g2LqemaTNE",  // 161
+    "DxvbV1rR2hmFJ2gYGXmz7jnMPsvf39M1BWd3Ejshd3Zj",  // 162
+    "H2CUXP4v2ZSWEFvnj9C6RbbD8cNNZPLK3H374nKARN1t",  // 163
+    "9JR4rG7BK32TVENGAcKMseS7tdoz3Y5pXeSq234MEowH",  // 164
+    "4EcDKGwpgYLVnMmjJCDrUN2DVLQKSpSKyMhqU1GbuMsv",  // 165
+    "EZbmj4jpfk9GGgRNfzX3e13Zo4ZaNMHQ5UUmRVcZQyEF",  // 166
+    "BJQ1HTx43bBDF1ba8GfZAfxSMZneTmQNr5m9yUfx6vAu",  // 167
+    "fewxWzSMHpHhDT9c5FysEXnHXtxvWVeHPvFVTyZdPwh",  // 168
 ];
 
 // ── Jupiter routing table 2 ────────────────────────────────────────────────
