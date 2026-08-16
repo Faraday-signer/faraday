@@ -60,9 +60,6 @@ _(none)_
 ### 🔬 In Review
 - **FA-09** `P1` — Durable-nonce transactions: signed QR-relayed txs must not expire (branch `feat/durable-nonce`, PR #112) — owner: cxalem
 - **FA-20** `P2` — IMU support + shake-to-theme Easter egg on the ESP32-S3 (branch `feat/imu-shake-theme`) — owner: cxalem
-- **FA-26** `P1` — Durable nonce for dapp transactions (branch `feat/dapp-nonce-rewrite`, PR #134) — owner: cxalem
-- **FA-27** `P2` — Ika heroes survive a leading nonce-advance (branch `feat/ika-nonce-skip`, PR #133) — owner: cxalem
-- **FA-28** `P2` — Token balances update instantly after a swap/receive (branch `feat/live-token-refresh`, PR #135) — owner: cxalem
 
 ### 📋 To Do
 - **FA-08** `P1` — Publish the Chrome extension to the Web Store (permissions rework + listing) — owner: Trskel (Javi Lois)
@@ -76,6 +73,7 @@ _(none)_
 - **FA-15** `P2` — Mobile app **epic** — first child card: scoping spike
 - **FA-19** `P2` — Durable-nonce for the mobile send flow — follow-up to FA-09 (extension only)
 - **FA-12** `P3` — Faraday MCP server *(idea — unshaped; needs a proposal before any build card)*
+- **FA-25** `P2` — Verify-backup falsely reports "MISMATCH" on a decode failure, not just a real content mismatch
 
 > **New-work ordering (team direction, 2026-07-20):** FA-16 (landing redesign, with FA-13 inside it; FA-17 unblocks the flasher) → FA-08 (extension publish) → FA-09 (durable nonce) → then FA-10 / FA-14 / FA-11. FA-12 stays iced; FA-15 gets scoped but is not a near-term priority.
 
@@ -328,6 +326,14 @@ _(none)_
 - [x] No extra DAS calls when no push fires (idle behavior identical).
 - [x] Typecheck + vitest + MV3 build green.
 **Owner:** cxalem
+
+### FA-25 `P2` — Verify-backup falsely reports "MISMATCH" on a decode failure, not just a real content mismatch
+**Description:** Caught on camera during the marketing demo shoot (`2026-08-16 00-58-01.mov`, ~20:00–20:03): right after finishing a hand-drawn paper backup and entering Verify Backup, the very first scan showed "MISMATCH — Paper doesn't match / The scanned QR is not this wallet's seed" — while the paper was still being brought into frame (visibly in motion in the footage). The same physical paper then scanned correctly on every later attempt (4–5 reloads since), which a genuine content mismatch can't explain — a wrong mnemonic would keep mismatching. `core/src/gui/flows/verify.rs::handle` (`Screen::VerifyBackupScan`) explains it: `decode_qr::detect_and_decode` returning `None` (couldn't read a QR at all — blur, motion, partial frame) and returning `Some(mnemonic)` that doesn't match the loaded wallet both route to the identical `Screen::VerifyBackupSeedMismatch` screen. A plain "couldn't read it, try again" is being shown to the user as "these are the wrong seeds," which is a much scarier and more specific claim than the evidence supports.
+**Acceptance criteria:**
+- [ ] Decode failure (`None`) and content mismatch (`Some(m)` where `m != wallet.mnemonic`) route to distinct screens/messages — the no-read case reads as a scan retry prompt, not a seed-mismatch accusation.
+- [ ] Regression/unit test covering both branches of `VerifyBackupScan`'s `Confirm` handling.
+- [ ] Manual check: a deliberately blurred/partial scan shows the new "couldn't read it" screen, not MISMATCH.
+**Owner:** —
 
 ### FA-12 `P3` — Faraday MCP server *(idea — unshaped)*
 **Description:** Early-stage idea: an MCP server exposing Faraday's host-side capabilities to LLM agents/tools — e.g. building sign-requests, encoding/decoding QR (UR) payloads, running the tx risk analyzer. Unshaped: the value proposition and the surface are undefined. One boundary is already non-negotiable and must anchor any proposal: an MCP server is host-side software (extension/companion territory); `hardware/` gains no network dependencies and the device's review-what-you-sign flow is unchanged — an agent can prepare transactions, it can never approve them.
