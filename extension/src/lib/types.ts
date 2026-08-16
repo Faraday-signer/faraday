@@ -14,6 +14,13 @@ export interface ExtensionState {
    * the resulting address is stored here.
    */
   nonceAccounts: Record<string, string>;
+  /**
+   * Kill-switch for the dapp durable-nonce rewrite (`nonce-rewrite.ts`).
+   * `undefined` means ON (the default) — a dapp that broadcasts its own
+   * original copy of the transaction instead of the signed bytes we return
+   * is the one scenario this toggle exists for.
+   */
+  dappNonceRewrite?: boolean;
 }
 
 export interface SignSession {
@@ -31,6 +38,14 @@ export interface SignSession {
   signatureHex?: string;
   error?: string;
   riskReport?: TxRiskReport;
+  /** True once `txBase64` has been rewritten to durable-nonce form (`nonce-rewrite.ts`). */
+  rewritten?: boolean;
+  /**
+   * The dapp's tx couldn't be rewritten because the wallet has no nonce
+   * account yet. The sign popup shows a one-time provisioning interstitial
+   * before the real tx, then retries the rewrite.
+   */
+  needsNonceProvision?: boolean;
 }
 
 export type RuntimeRequest =
@@ -54,7 +69,11 @@ export type RuntimeRequest =
   | { type: "faraday:get-sign-result"; sessionId: string }
   | { type: "faraday:complete-sign-session"; sessionId: string; signedTxBase64: string }
   | { type: "faraday:complete-sign-message-session"; sessionId: string; signatureHex: string }
-  | { type: "faraday:cancel-sign-session"; sessionId: string; reason?: string };
+  | { type: "faraday:cancel-sign-session"; sessionId: string; reason?: string }
+  /// Re-runs the dapp durable-nonce rewrite on a session's stored tx after
+  /// the one-time provisioning interstitial creates a nonce account.
+  | { type: "faraday:rewrite-session-nonce"; sessionId: string }
+  | { type: "faraday:set-dapp-nonce-rewrite"; enabled: boolean };
 
 export type RuntimeResponse<T = unknown> =
   | {
@@ -86,6 +105,8 @@ export interface GetSignSessionResult {
   status: SignSessionStatus;
   error?: string;
   riskReport?: TxRiskReport;
+  rewritten?: boolean;
+  needsNonceProvision?: boolean;
 }
 
 export interface GetSignResult {

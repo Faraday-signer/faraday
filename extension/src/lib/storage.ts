@@ -32,7 +32,8 @@ export async function getExtensionState(): Promise<ExtensionState> {
     nonceAccounts:
       state.nonceAccounts && typeof state.nonceAccounts === "object"
         ? { ...state.nonceAccounts }
-        : {}
+        : {},
+    dappNonceRewrite: typeof state.dappNonceRewrite === "boolean" ? state.dappNonceRewrite : undefined
   };
 }
 
@@ -40,7 +41,8 @@ async function setExtensionState(next: ExtensionState): Promise<ExtensionState> 
   const normalized: ExtensionState = {
     pairedPubkey: next.pairedPubkey,
     approvedOrigins: [...new Set(next.approvedOrigins)],
-    nonceAccounts: { ...next.nonceAccounts }
+    nonceAccounts: { ...next.nonceAccounts },
+    dappNonceRewrite: typeof next.dappNonceRewrite === "boolean" ? next.dappNonceRewrite : undefined
   };
   await storageSet(STATE_KEY, normalized);
   return normalized;
@@ -61,6 +63,15 @@ export async function setNonceAccount(
   return setExtensionState({
     ...current,
     nonceAccounts: { ...current.nonceAccounts, [walletPubkey]: nonceAccount }
+  });
+}
+
+/** Toggle the dapp durable-nonce rewrite kill-switch (default ON, see `types.ts`). */
+export async function setDappNonceRewrite(enabled: boolean): Promise<ExtensionState> {
+  const current = await getExtensionState();
+  return setExtensionState({
+    ...current,
+    dappNonceRewrite: enabled
   });
 }
 
