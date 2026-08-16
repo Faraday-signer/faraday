@@ -56,6 +56,7 @@ _(none)_
 - **FA-24** `P1` — Lookup-table txs sign normally (branch `feat/sign-button`, PR #127) — owner: cxalem
 - **FA-22** `P2` — Camera-entropy capture feedback (branch `feat/camera-entropy-feedback`) — owner: cxalem
 - **FA-21** `P2` — Touch UX: press feedback + honest footer (branch `feat/touch-feedback-footer`) — owner: cxalem
+- **FA-26** `P1` — Durable nonce for dapp transactions (branch `feat/dapp-nonce-rewrite`) — owner: cxalem
 
 ### 🔬 In Review
 - **FA-09** `P1` — Durable-nonce transactions: signed QR-relayed txs must not expire (branch `feat/durable-nonce`, PR #112) — owner: cxalem
@@ -306,6 +307,16 @@ _(none)_
 - [ ] Touch builds show a capture hint; physical-key builds unchanged apart from the meter.
 - [ ] No UI element derives from entropy-pool bytes; verified on the device; host tests green.
 **Owner:** cxalem
+
+### FA-26 `P1` — Durable nonce for dapp transactions
+**Description:** FA-09 (PR #112) gave durable-nonce lifetimes to transfers Faraday itself builds, but left dapp-built transactions (Jupiter swaps, playground, the Ika demo) on a perishable blockhash — and those are exactly the big animated-QR relays that take longest, and the ones a real user has already hit expiring mid-scan. Rewrite dapp transactions to durable-nonce form in the background sign-session handler when it's safe to do so; byte-exact passthrough on any unsafe case — a dapp sign must never hard-fail because of the rewrite. Wallets with no nonce account yet get a one-time setup interstitial in the sign popup, with graceful fallback to plain signing on skip or any failure. Default ON with a settings kill-switch (escape hatch for dapps that broadcast their own original copy of the transaction instead of the signed bytes Faraday returns).
+**Acceptance criteria:**
+- [ ] A dapp-signed devnet transaction submits successfully 2+ minutes after signing (past normal blockhash expiry).
+- [ ] A v0 transaction referencing an address lookup table round-trips through the rewrite; a fixture test asserts `addressTableLookups` and account indices at the byte level.
+- [ ] Every unsafe case (partial signatures, fee payer isn't the wallet, already durable-nonce, oversize, RPC failure/timeout) passes through byte-exact with the reason logged; toggle OFF ⇒ byte-exact passthrough for every dapp tx.
+- [ ] Provisioning interstitial: Set up flows through create-nonce-account + the real tx; Skip or any provisioning failure signs the original transaction normally, never blocking.
+- [ ] Typecheck, vitest, and the MV3 build are green.
+**Owner:** cxalem (assigned; per the claiming protocol, the claim becomes real when the draft PR titled `FA-26` opens)
 
 ### FA-12 `P3` — Faraday MCP server *(idea — unshaped)*
 **Description:** Early-stage idea: an MCP server exposing Faraday's host-side capabilities to LLM agents/tools — e.g. building sign-requests, encoding/decoding QR (UR) payloads, running the tx risk analyzer. Unshaped: the value proposition and the surface are undefined. One boundary is already non-negotiable and must anchor any proposal: an MCP server is host-side software (extension/companion territory); `hardware/` gains no network dependencies and the device's review-what-you-sign flow is unchanged — an agent can prepare transactions, it can never approve them.
