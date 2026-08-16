@@ -1,7 +1,9 @@
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 
 import { PanelShell } from "@/components/panel-shell";
+import { sendRuntimeMessage } from "@/lib/runtime";
 import { CLUSTER_LABEL, IS_PUBLIC_RPC, RPC_URL, redactRpcUrl } from "@/lib/sol-client";
+import type { ExtensionState } from "@/lib/types";
 import { useTokenSettings } from "@/lib/use-tokens";
 import { colors, fontFamily, font, letterSpacing, radius, space } from "@/lib/theme";
 
@@ -90,6 +92,28 @@ const toggleKnobStyle = (on: boolean): CSSProperties => ({
 export function SettingsNetworkScreen() {
   const displayUrl = redactRpcUrl(RPC_URL);
   const { settings, setShowUnverified } = useTokenSettings();
+  // undefined ⇒ ON (see `types.ts`), so default the local switch to true
+  // until the background responds.
+  const [dappNonceRewrite, setDappNonceRewriteState] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const response = await sendRuntimeMessage<ExtensionState>({ type: "faraday:get-state" });
+      if (!cancelled && response.ok) {
+        setDappNonceRewriteState(response.data.dappNonceRewrite !== false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function toggleDappNonceRewrite() {
+    const next = !dappNonceRewrite;
+    setDappNonceRewriteState(next);
+    await sendRuntimeMessage({ type: "faraday:set-dapp-nonce-rewrite", enabled: next });
+  }
 
   return (
     <PanelShell eyebrow="Settings" title="Network">
@@ -135,6 +159,28 @@ export function SettingsNetworkScreen() {
             Hidden tokens use the Jupiter verified-tag list. Unverified mints are
             often airdrop spam — keep this off unless you're expecting a token
             that hasn't been picked up yet.
+          </span>
+        </div>
+
+        <div style={cardStyle}>
+          <div style={toggleRowStyle}>
+            <span style={labelStyle}>Durable nonce for dapp transactions</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={dappNonceRewrite}
+              aria-label="Durable nonce for dapp transactions"
+              onClick={() => void toggleDappNonceRewrite()}
+              style={toggleSwitchStyle(dappNonceRewrite)}
+            >
+              <span style={toggleKnobStyle(dappNonceRewrite)} />
+            </button>
+          </div>
+          <span style={{ ...footnoteStyle, marginTop: 2 }}>
+            When on, a dapp transaction that's safe to rewrite gets a durable-nonce
+            lifetime before you sign, so it can't expire mid-QR-relay. Turn this off if
+            a dapp broadcasts its own copy of the transaction instead of the signed
+            bytes Faraday returns.
           </span>
         </div>
 

@@ -8,8 +8,14 @@
 //! valid until the nonce next advances — however long the relay takes.
 //!
 //! Design (owner decision, cxalem): durable nonce **always, wherever Faraday
-//! builds the transaction**. Dapp-built transaction messages are never
-//! modified — altering them would break what the dapp expects to submit.
+//! builds the transaction**.
+//!
+//! Dapp-built transaction messages were originally left untouched (FA-09) —
+//! altering them risked breaking what the dapp expects to submit. That
+//! decision is revised by FA-26 (`nonce-rewrite.ts`): dapp transactions are
+//! now rewritten to durable-nonce form in the background sign-session
+//! handler *when it's safe to do so*, with byte-exact passthrough as the
+//! fallback for every case that isn't. See `nonce-rewrite.ts` for the gates.
 //!
 //! Lifecycle:
 //!   1. One-time: `buildCreateNonceAccountTx` funds + initializes a nonce

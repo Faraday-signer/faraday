@@ -17,6 +17,7 @@ import {
   getCameraPermissionState,
 } from "@/lib/camera-permission";
 import { FaradayLogo } from "@/lib/brand";
+import { prepareNonceAccountCreation, waitForNonceAccountReady } from "@/lib/nonce";
 import { sendRuntimeMessage } from "@/lib/runtime";
 import {
   decodeSignMessageQrPayload,
@@ -24,12 +25,20 @@ import {
   FARADAY_SIG_PREFIX,
   spliceFaradaySignature
 } from "@/lib/solana";
+import { broadcastSignedTx } from "@/lib/sol-transfer";
+import { setNonceAccount } from "@/lib/storage";
 import { colors, fontFamily, font, radius, space } from "@/lib/theme";
 import { type TxRiskReport } from "@/lib/tx-risk";
 import type { GetSignSessionResult } from "@/lib/types";
 import { encodeTxForQr } from "@/lib/ur-encode";
 
-type Step = "risk" | "display" | "scan";
+type Step =
+  | "provision-explain"
+  | "provision-display"
+  | "provision-scan"
+  | "risk"
+  | "display"
+  | "scan";
 type ScanState = "starting" | "scanning" | "success" | "error";
 
 const LOG_PREFIX = "[Faraday][sign]";
@@ -360,11 +369,17 @@ function RiskScreen({
 function DisplayScreen({
   session,
   onAdvance,
-  onCancel
+  onCancel,
+  headingOverride,
+  showRewrittenBadge = false
 }: {
   session: GetSignSessionResult;
   onAdvance: () => void;
   onCancel: () => void;
+  /** Provisioning reuses this screen for the create-nonce-account tx. */
+  headingOverride?: string;
+  /** Small badge noting the durable-nonce rewrite (FA-26). */
+  showRewrittenBadge?: boolean;
 }) {
   const isMessage = session.kind === "message";
   const qrValue = isMessage ? session.messageQrBase64 : session.txBase64;
@@ -419,7 +434,7 @@ function DisplayScreen({
   return (
     <>
       <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: space.xs }}>
-        <h1 style={titleStyle}>{isMessage ? "Sign Message" : "Sign Transaction"}</h1>
+        <h1 style={titleStyle}>{headingOverride ?? (isMessage ? "Sign Message" : "Sign Transaction")}</h1>
         <p style={subtitleStyle}>
           {isSidepanelOrigin(session.origin) ? (
             <>from <strong style={{ color: colors.text }}>Faraday wallet</strong></>
@@ -428,6 +443,9 @@ function DisplayScreen({
           )}
         </p>
         <span style={accentBadgeStyle}>{shortAddress(session.expectedPubkey)}</span>
+        {showRewrittenBadge ? (
+          <span style={accentBadgeStyle}>Won&apos;t expire mid-scan</span>
+        ) : null}
       </div>
 
       <div style={qrCardStyle}>
@@ -478,6 +496,51 @@ function DisplayScreen({
         </button>
         <button type="button" onClick={onCancel} style={secondaryLinkStyle}>
           Cancel
+        </button>
+      </div>
+    </>
+  );
+}
+
+/**
+ * One-time interstitial shown when a dapp transaction couldn't be rewritten
+ * to durable-nonce form because this wallet has no nonce account yet
+ * (`session.needsNonceProvision`). Setting up reuses the same Display/Scan
+ * QR screens for the create-nonce-account tx; skipping (or any failure
+ * during setup) falls through to signing the original transaction normally.
+ */
+function ProvisionExplainScreen({
+  origin,
+  busy,
+  onSetup,
+  onSkip
+}: {
+  origin: string;
+  busy: boolean;
+  onSetup: () => void;
+  onSkip: () => void;
+}) {
+  return (
+    <>
+      <div style={{ textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: space.xs }}>
+        <h1 style={titleStyle}>Set Up Durable Nonce</h1>
+        <p style={subtitleStyle}>
+          from <strong style={{ color: colors.text }}>{hostFromOrigin(origin)}</strong>
+        </p>
+      </div>
+
+      <p style={{ ...subtitleStyle, textAlign: "center", maxWidth: 380 }}>
+        QR-relayed transactions can expire while you scan. A one-time setup creates a
+        durable-nonce account for your wallet so signed transactions like this one
+        don&apos;t expire before they reach the network.
+      </p>
+
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: space.sm }}>
+        <button type="button" onClick={onSetup} style={primaryButtonStyle} disabled={busy}>
+          {busy ? "Preparing…" : "Set up"}
+        </button>
+        <button type="button" onClick={onSkip} style={secondaryLinkStyle} disabled={busy}>
+          Skip — sign normally
         </button>
       </div>
     </>
@@ -725,11 +788,37 @@ function ScanScreen({
   );
 }
 
+/**
+ * Risk report comes pre-computed from background. Show the risk step only
+ * when the analyzer flagged the tx as WARNING or DANGER — for SAFE (or
+ * sign-message / no-report sessions) skip straight to the QR display so the
+ * user doesn't pay an extra click on the common path. Used both for the
+ * initial load and for proceeding to the real tx after the provisioning
+ * interstitial is skipped, fails, or completes.
+ */
+function stepForRiskOrDisplay(session: GetSignSessionResult): Step {
+  const report = session.riskReport;
+  const needsRiskReview = session.kind === "tx" && !!report && report.level !== "SAFE";
+  return needsRiskReview ? "risk" : "display";
+}
+
+function initialStepFor(session: GetSignSessionResult): Step {
+  if (session.kind === "tx" && session.needsNonceProvision) {
+    return "provision-explain";
+  }
+  return stepForRiskOrDisplay(session);
+}
+
 export function SignApp() {
   const sessionId = useMemo(() => getSessionId(), []);
   const [session, setSession] = useState<GetSignSessionResult | null>(null);
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("risk");
+  const [provisionTx, setProvisionTx] = useState<{
+    txBase64: string;
+    nonceAccountAddress: string;
+  } | null>(null);
+  const [provisionBusy, setProvisionBusy] = useState(false);
 
   useEffect(() => {
     if (!sessionId) {
@@ -764,21 +853,87 @@ export function SignApp() {
         origin: response.data.origin
       });
       setSession(response.data);
-      // Risk report comes pre-computed from background. Show the risk
-      // step only when the analyzer flagged the tx as WARNING or DANGER —
-      // for SAFE (or sign-message / no-report sessions) skip straight to
-      // the QR display so the user doesn't pay an extra click on the
-      // common path.
-      const report = response.data.riskReport;
-      const needsRiskReview =
-        response.data.kind === "tx" && !!report && report.level !== "SAFE";
-      setStep(needsRiskReview ? "risk" : "display");
+      setStep(initialStepFor(response.data));
     })();
 
     return () => {
       cancelled = true;
     };
   }, [sessionId]);
+
+  /**
+   * Kick off the one-time nonce-account creation tx. Any failure here (RPC
+   * down, blockhash fetch failed, …) falls straight through to signing the
+   * real transaction normally — provisioning must never block a dapp sign.
+   */
+  async function startProvisioning(): Promise<void> {
+    if (!session) return;
+    setProvisionBusy(true);
+    try {
+      const { txBase64, nonceAccountAddress } = await prepareNonceAccountCreation(
+        session.expectedPubkey
+      );
+      setProvisionTx({ txBase64, nonceAccountAddress });
+      setStep("provision-display");
+    } catch (err) {
+      warn("Nonce provisioning setup failed, signing normally", {
+        error: err instanceof Error ? err.message : String(err)
+      });
+      setStep(stepForRiskOrDisplay(session));
+    } finally {
+      setProvisionBusy(false);
+    }
+  }
+
+  function skipProvisioning(): void {
+    if (!session) return;
+    setStep(stepForRiskOrDisplay(session));
+  }
+
+  /**
+   * Signed create-nonce-account QR came back. Broadcast it (Faraday-built,
+   * so the extension broadcasts it directly — unlike the dapp's own tx),
+   * wait for the account to confirm, persist it, ask background to retry
+   * the rewrite on the real tx, then reload the session and proceed.
+   *
+   * Any failure at any step falls through to signing the original,
+   * unrewritten transaction — never blocks, and is never surfaced as a scan
+   * error (the QR itself decoded fine; it's the follow-up work that failed).
+   */
+  async function completeProvisioning(rawValue: string): Promise<boolean> {
+    if (!session || !provisionTx) return false;
+    try {
+      const trimmed = rawValue.trim();
+      const signedTxBase64 = trimmed.startsWith(FARADAY_SIG_PREFIX)
+        ? spliceFaradaySignature(provisionTx.txBase64, trimmed, session.expectedPubkey)
+        : trimmed;
+
+      await broadcastSignedTx(signedTxBase64);
+      await waitForNonceAccountReady(provisionTx.nonceAccountAddress);
+      await setNonceAccount(session.expectedPubkey, provisionTx.nonceAccountAddress);
+      await sendRuntimeMessage({
+        type: "faraday:rewrite-session-nonce",
+        sessionId: session.sessionId
+      });
+
+      const reloaded = await sendRuntimeMessage<GetSignSessionResult>({
+        type: "faraday:get-sign-session",
+        sessionId: session.sessionId
+      });
+      if (reloaded.ok) {
+        setSession(reloaded.data);
+        setStep(stepForRiskOrDisplay(reloaded.data));
+      } else {
+        setStep(stepForRiskOrDisplay(session));
+      }
+    } catch (err) {
+      warn("Nonce provisioning failed, signing normally", {
+        error: err instanceof Error ? err.message : String(err)
+      });
+      setStep(stepForRiskOrDisplay(session));
+    }
+    return true;
+  }
 
   async function completeSession(signedPayload: string): Promise<boolean> {
     if (!sessionId || !session) {
@@ -876,7 +1031,34 @@ export function SignApp() {
 
   return (
     <Shell onCancel={() => void cancelSession()}>
-      {step === "risk" && session.riskReport ? (
+      {step === "provision-explain" ? (
+        <ProvisionExplainScreen
+          origin={session.origin}
+          busy={provisionBusy}
+          onSetup={() => void startProvisioning()}
+          onSkip={skipProvisioning}
+        />
+      ) : step === "provision-display" && provisionTx ? (
+        <DisplayScreen
+          session={{
+            sessionId: session.sessionId,
+            origin: session.origin,
+            kind: "tx",
+            txBase64: provisionTx.txBase64,
+            expectedPubkey: session.expectedPubkey,
+            status: "pending"
+          }}
+          headingOverride="Set Up Durable Nonce"
+          onAdvance={() => setStep("provision-scan")}
+          onCancel={() => void cancelSession()}
+        />
+      ) : step === "provision-scan" ? (
+        <ScanScreen
+          onDecoded={(raw) => completeProvisioning(raw)}
+          onBack={() => setStep("provision-display")}
+          onCancel={() => void cancelSession()}
+        />
+      ) : step === "risk" && session.riskReport ? (
         <RiskScreen
           session={session}
           report={session.riskReport}
@@ -886,6 +1068,7 @@ export function SignApp() {
       ) : step === "display" ? (
         <DisplayScreen
           session={session}
+          showRewrittenBadge={!!session.rewritten}
           onAdvance={() => setStep("scan")}
           onCancel={() => void cancelSession()}
         />
