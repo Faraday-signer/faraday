@@ -221,6 +221,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ),
         ),
         (
+            // FA-27: the same `execute` ix as `tx_execute`, but with a
+            // leading System::AdvanceNonceAccount — the shape FA-26 produces
+            // when the extension rewrites an Ika tx for durable-nonce QR
+            // relay. Proves extract_ika still lifts the hero past a leading
+            // nonce-advance instead of falling to the generic list review.
+            "tx_execute_with_nonce",
+            execute_with_nonce_tx(
+                &signer_pubkey,
+                &ika_program,
+                &vault,
+                &intent,
+                &proposal,
+                &system_program,
+            ),
+        ),
+        (
             "tx_cleanup",
             // disc 5 only. Accounts: [proposal, rent_refund]
             build_tx(
@@ -440,6 +456,82 @@ fn build_tx(
     tx.extend_from_slice(&ix_indices);
     tx.extend_from_slice(&encode_compact_u16(ix_data.len() as u16));
     tx.extend_from_slice(ix_data);
+
+    tx
+}
+
+/// FA-27: `tx_execute` (the simplest Ika ix — disc 4, no payload past the
+/// discriminant) prefixed with `System::AdvanceNonceAccount`, mirroring the
+/// advance+transfer shape `gen_nonce_fixtures.rs` builds for the SEND path.
+/// Two programs means `build_tx`'s single-program account layout doesn't
+/// fit, so this assembles the message by hand the same way.
+fn execute_with_nonce_tx(
+    signer_pubkey: &[u8; 32],
+    ika_program: &[u8; 32],
+    vault: &[u8; 32],
+    intent: &[u8; 32],
+    proposal: &[u8; 32],
+    system_program: &[u8; 32],
+) -> Vec<u8> {
+    let nonce_account = filler(0x30);
+    let recent_blockhashes: [u8; 32] = bs58::decode("SysvarRecentB1ockHashes11111111111111111111")
+        .into_vec()
+        .expect("valid base58")
+        .try_into()
+        .expect("32-byte pubkey");
+
+    // Master account layout:
+    //   [0] signer   [1] ika_program   [2] system_program
+    //   [3] nonce_account   [4] recent_blockhashes
+    //   [5] vault   [6] intent   [7] proposal
+    let master: [[u8; 32]; 8] = [
+        *signer_pubkey,
+        *ika_program,
+        *system_program,
+        nonce_account,
+        recent_blockhashes,
+        *vault,
+        *intent,
+        *proposal,
+    ];
+    let num_accounts = master.len();
+
+    let mut tx = Vec::new();
+    tx.push(1u8); // signature count
+    tx.extend_from_slice(&[0u8; 64]); // placeholder signature
+
+    // Header: everything but the signer (slot 0) is readonly-unsigned.
+    tx.push(1u8); // num_required_signatures
+    tx.push(0u8); // num_readonly_signed
+    tx.push((num_accounts - 1) as u8); // num_readonly_unsigned
+
+    tx.extend_from_slice(&encode_compact_u16(num_accounts as u16));
+    for key in &master {
+        tx.extend_from_slice(key);
+    }
+
+    tx.extend_from_slice(&[0x11u8; 32]); // recent blockhash slot (placeholder)
+
+    // Instructions — AdvanceNonceAccount MUST lead.
+    tx.push(2u8); // ix count
+
+    // 1) AdvanceNonceAccount — program = system_program(2).
+    //    accounts: [nonce_account(3), recent_blockhashes(4), signer(0)].
+    //    data: u32 LE discriminant 4, no trailing bytes.
+    tx.push(2u8); // program_id_index
+    tx.extend_from_slice(&encode_compact_u16(3));
+    tx.extend_from_slice(&[3, 4, 0]);
+    tx.extend_from_slice(&encode_compact_u16(4));
+    tx.extend_from_slice(&[4, 0, 0, 0]);
+
+    // 2) execute — program = ika_program(1). Same account shape as
+    //    tx_execute.bin: [wallet=signer(0), vault(5), intent(6),
+    //    proposal(7), system_program(2)]. data: disc 4 only.
+    tx.push(1u8); // program_id_index
+    tx.extend_from_slice(&encode_compact_u16(5));
+    tx.extend_from_slice(&[0, 5, 6, 7, 2]);
+    tx.extend_from_slice(&encode_compact_u16(1));
+    tx.push(4u8);
 
     tx
 }

@@ -61,6 +61,7 @@ _(none)_
 - **FA-09** `P1` — Durable-nonce transactions: signed QR-relayed txs must not expire (branch `feat/durable-nonce`, PR #112) — owner: cxalem
 - **FA-20** `P2` — IMU support + shake-to-theme Easter egg on the ESP32-S3 (branch `feat/imu-shake-theme`) — owner: cxalem
 - **FA-26** `P1` — Durable nonce for dapp transactions (branch `feat/dapp-nonce-rewrite`, PR #134) — owner: cxalem
+- **FA-27** `P2` — Ika heroes survive a leading nonce-advance (branch `feat/ika-nonce-skip`, PR #133) — owner: cxalem
 
 ### 📋 To Do
 - **FA-08** `P1` — Publish the Chrome extension to the Web Store (permissions rework + listing) — owner: Trskel (Javi Lois)
@@ -324,3 +325,11 @@ _(none)_
 - [ ] A one-page proposal in `docs/proposals/` covering: concrete use cases, the tool surface, and an explicit off-limits list (no key material access, no `hardware/` involvement, device approval stays human).
 - [ ] Team decision recorded (adopt as roadmap work / defer / drop), folded into `roadmap.md` like FA-07.
 **Owner:** —
+
+### FA-27 `P2` — Ika heroes survive a leading nonce-advance
+**Description:** FA-09 taught `extract_send` to skip a leading `AdvanceNonceAccount` but `extract_ika` still rejects any non-Ika instruction, so durable-nonce-rewritten Ika transactions (FA-26) lose their hero screen and fall to the generic instruction list — still signable, just unlabeled. Add the same disc-4 skip to `extract_ika`, back it with an Ika+nonce fixture, and fix the stale `just nonce-fixtures` recipe (says `cd hardware`, crate lives in `raspberry-pi/`).
+**Acceptance criteria:**
+- [x] An Ika tx with a leading `AdvanceNonceAccount` still produces its zoned hero (fixture-backed test).
+- [x] `just nonce-fixtures` runs from repo root.
+- [x] `cargo test --features simulator` green (verified via `cd core && cargo test` / `--features touch-ui`, which is where the parser tests live — `raspberry-pi/`'s own `cargo test --features simulator` has 0 unit tests of its own).
+**Owner:** cxalem

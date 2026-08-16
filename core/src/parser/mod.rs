@@ -657,6 +657,19 @@ fn extract_ika(tx_bytes: &[u8], parsed: &ParsedTransaction) -> Option<ZonedActio
         let pid = all_accounts.get(ix.program_id_index)?;
         match programs::identify(pid).as_ref().map(|p| p.name) {
             Some("ComputeBudget") => continue,
+            Some("System") if ix.data.len() >= 4 => {
+                let ix_type =
+                    u32::from_le_bytes([ix.data[0], ix.data[1], ix.data[2], ix.data[3]]);
+                // AdvanceNonceAccount leads every Faraday-built durable-nonce
+                // transaction (FA-09); FA-27 extends the tolerance the SEND
+                // path already had to Ika clear-msig txs the extension may
+                // now prepend a nonce-advance to (FA-26). It moves no funds
+                // and identifies no msig state, so it doesn't affect the zone.
+                if ix_type == 4 {
+                    continue;
+                }
+                return None;
+            }
             Some("Ika clear-msig") => {
                 if ika_ix.is_some() {
                     return None;
@@ -2262,6 +2275,11 @@ mod tests {
     const TX_CREATE: &[u8] = include_bytes!("../../../hardware/testdata/examples/ika/tx_create_wallet.bin");
     const TX_PROPOSE: &[u8] = include_bytes!("../../../hardware/testdata/examples/ika/tx_propose.bin");
     const TX_CLEANUP: &[u8] = include_bytes!("../../../hardware/testdata/examples/ika/tx_cleanup.bin");
+    // FA-27: same `execute` ix as TX_EXECUTE, prefixed with a
+    // System::AdvanceNonceAccount — the shape FA-26 produces when the
+    // extension rewrites an Ika tx for durable-nonce QR relay.
+    const TX_EXECUTE_WITH_NONCE: &[u8] =
+        include_bytes!("../../../hardware/testdata/examples/ika/tx_execute_with_nonce.bin");
 
     // ── durable-nonce fixtures ───────────────────────────────────────────
     // Legacy + v0 transactions whose FIRST instruction is
@@ -2378,6 +2396,30 @@ mod tests {
             extract_zoned(TX_EXECUTE, &parsed),
             Some(ZonedAction::IkaExecute { .. })
         ));
+    }
+
+    #[test]
+    fn extract_zoned_lifts_ika_execute_past_leading_nonce_advance() {
+        // FA-27: a leading AdvanceNonceAccount must not knock an Ika tx off
+        // its zoned hero — it's the shape FA-26 produces for durable-nonce
+        // QR relay, same as extract_send already tolerates for plain SOL
+        // transfers.
+        let parsed = parse(TX_EXECUTE_WITH_NONCE);
+        assert!(
+            matches!(
+                extract_zoned(TX_EXECUTE_WITH_NONCE, &parsed),
+                Some(ZonedAction::IkaExecute { .. })
+            ),
+            "expected IkaExecute, got {:?}",
+            variant_name(&extract_zoned(TX_EXECUTE_WITH_NONCE, &parsed))
+        );
+        // The advance-nonce instruction itself still gets labeled, not the
+        // unknown-instruction warning path.
+        assert_eq!(parsed.instructions.len(), 2);
+        assert!(
+            has_header(&parsed.instructions[0], "Advance Nonce"),
+            "leading instruction must be labeled 'Advance Nonce'"
+        );
     }
 
     #[test]
