@@ -35,8 +35,15 @@ ika-fixtures:
     cd hardware && cargo run --features simulator --bin gen-ika-fixtures
 
 # Generate durable-nonce tx fixtures (legacy + v0) into testdata/examples/nonce/.
+# CWD must stay `hardware/` — that's what anchors the relative
+# `testdata/examples/nonce/` the generator writes to the location
+# core/src/parser/mod.rs's include_bytes! reads from. `--manifest-path`
+# points cargo at the crate (which now lives in raspberry-pi/) without
+# moving the CWD, and without it cargo can't resolve a "current package"
+# from bare `hardware/` and falls back to building the whole workspace
+# (including the ESP32 target, which fails to build here).
 nonce-fixtures:
-    cd hardware && cargo run --features simulator --bin gen-nonce-fixtures
+    cd hardware && cargo run --manifest-path ../raspberry-pi/Cargo.toml --features simulator --bin gen-nonce-fixtures
 
 # Run cargo tests.
 test:
