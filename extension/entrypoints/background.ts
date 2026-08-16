@@ -4,6 +4,7 @@ import {
   clearPairedPubkey,
   getExtensionState,
   revokeOrigin,
+  setDappNonceRewrite,
   setPairedPubkey
 } from "@/lib/storage";
 import {
@@ -15,6 +16,7 @@ import {
   validateSignedTransactionMatch,
   validateUnsignedTransactionPayload
 } from "@/lib/solana";
+import { rewriteDappTxToDurableNonce, type NonceRewriteResult } from "@/lib/nonce-rewrite";
 import { RPC_URL } from "@/lib/sol-client";
 import { analyzeTxRisk } from "@/lib/tx-risk";
 import { getRecipientHistory } from "@/lib/recipient-history";
@@ -323,13 +325,28 @@ async function handleMessage(
         return { ok: false, error: msg };
       }
 
+      // Rewrite to durable-nonce form when safe (FA-26) — dapp-built txs are
+      // the biggest, slowest-relaying QR payloads and the ones most likely
+      // to expire mid-scan. `rewriteDappTxToDurableNonce` never throws; any
+      // unsafe case returns the original bytes byte-exact.
+      const rewriteResult: NonceRewriteResult =
+        state.dappNonceRewrite === false
+          ? { txBase64: message.txBase64, rewritten: false, reason: "disabled" }
+          : await rewriteDappTxToDurableNonce(message.txBase64, state.pairedPubkey);
+      if (rewriteResult.reason !== "rewritten") {
+        warn("Dapp tx nonce rewrite skipped", { reason: rewriteResult.reason });
+      }
+      const sessionTxBase64 = rewriteResult.txBase64;
+
       // Analyze the transaction for fraud signals before creating the session.
-      // Errors are swallowed — a failed analysis must never block signing.
+      // Runs on the (possibly rewritten) bytes the device will actually sign,
+      // so the report describes what's really being signed. Errors are
+      // swallowed — a failed analysis must never block signing.
       let riskReport: Awaited<ReturnType<typeof analyzeTxRisk>> | undefined;
       try {
         const recipientHistory = await getRecipientHistory().catch(() => []);
         riskReport = await analyzeTxRisk(
-          message.txBase64,
+          sessionTxBase64,
           RPC_URL,
           state.pairedPubkey,
           { recipientHistory },
@@ -343,12 +360,14 @@ async function handleMessage(
         id: sessionId,
         origin: message.origin,
         kind: "tx",
-        txBase64: message.txBase64,
+        txBase64: sessionTxBase64,
         expectedPubkey: state.pairedPubkey,
         status: "pending",
         createdAt: Date.now(),
         expiresAt: Date.now() + SESSION_TTL_MS,
         riskReport,
+        rewritten: rewriteResult.rewritten,
+        needsNonceProvision: rewriteResult.reason === "no-nonce-account" ? true : undefined,
       };
       await sessions.set(sessionId, session);
 
@@ -548,8 +567,45 @@ async function handleMessage(
         status: session.status,
         error: session.error,
         riskReport: session.riskReport,
+        rewritten: session.rewritten,
+        needsNonceProvision: session.needsNonceProvision,
       };
       return { ok: true, data };
+    }
+
+    case "faraday:rewrite-session-nonce": {
+      const session = await sessions.get(message.sessionId);
+      if (!session) {
+        return { ok: false, error: "Signing session not found." };
+      }
+      if (session.status !== "pending" || session.kind !== "tx" || !session.txBase64) {
+        return { ok: false, error: "Session is not a pending transaction session." };
+      }
+
+      const rewriteResult = await rewriteDappTxToDurableNonce(
+        session.txBase64,
+        session.expectedPubkey
+      );
+      if (rewriteResult.reason !== "rewritten") {
+        warn("Post-provisioning nonce rewrite skipped", {
+          sessionId: session.id,
+          reason: rewriteResult.reason,
+        });
+      }
+
+      await sessions.set(session.id, {
+        ...session,
+        txBase64: rewriteResult.txBase64,
+        rewritten: rewriteResult.rewritten,
+        needsNonceProvision: false,
+      });
+      return { ok: true, data: { rewritten: rewriteResult.rewritten } };
+    }
+
+    case "faraday:set-dapp-nonce-rewrite": {
+      assertExtensionSender(sender);
+      const state = await setDappNonceRewrite(message.enabled);
+      return { ok: true, data: state };
     }
 
     case "faraday:get-sign-result": {

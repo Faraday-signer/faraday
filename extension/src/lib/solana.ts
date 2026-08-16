@@ -25,7 +25,7 @@ interface ShortVec {
   bytesRead: number;
 }
 
-interface TxEnvelope {
+export interface TxEnvelope {
   signatureCount: number;
   signatures: Uint8Array[];
   messageBytes: Uint8Array;
@@ -513,7 +513,14 @@ function parseSignerAddresses(messageBytes: Uint8Array): string[] {
   return signers;
 }
 
-function parseEnvelope(txBytes: Uint8Array): TxEnvelope {
+/**
+ * Parse the wire-format envelope (signature slots + message bytes + signer
+ * account list) shared by legacy and v0 transactions alike. Exported so
+ * `nonce-rewrite.ts` can reuse the same signature/signer read used for the
+ * unsigned-payload gates here — a dapp tx that already carries a non-zero
+ * signature, or whose fee payer isn't the paired wallet, is never rewritten.
+ */
+export function parseEnvelope(txBytes: Uint8Array): TxEnvelope {
   const sigCountInfo = readShortVec(txBytes, 0);
   const signatureCount = sigCountInfo.value;
   const signaturesStart = sigCountInfo.bytesRead;

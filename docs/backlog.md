@@ -60,6 +60,7 @@ _(none)_
 ### 🔬 In Review
 - **FA-09** `P1` — Durable-nonce transactions: signed QR-relayed txs must not expire (branch `feat/durable-nonce`, PR #112) — owner: cxalem
 - **FA-20** `P2` — IMU support + shake-to-theme Easter egg on the ESP32-S3 (branch `feat/imu-shake-theme`) — owner: cxalem
+- **FA-26** `P1` — Durable nonce for dapp transactions (branch `feat/dapp-nonce-rewrite`, PR #134) — owner: cxalem
 
 ### 📋 To Do
 - **FA-08** `P1` — Publish the Chrome extension to the Web Store (permissions rework + listing) — owner: Trskel (Javi Lois)
@@ -305,6 +306,16 @@ _(none)_
 - [ ] Meter strip fills per capture with a bits label; matches the actual pool math (256 bits/frame).
 - [ ] Touch builds show a capture hint; physical-key builds unchanged apart from the meter.
 - [ ] No UI element derives from entropy-pool bytes; verified on the device; host tests green.
+**Owner:** cxalem
+
+### FA-26 `P1` — Durable nonce for dapp transactions
+**Description:** FA-09 (PR #112) gave durable-nonce lifetimes to transfers Faraday itself builds, but left dapp-built transactions (Jupiter swaps, playground, the Ika demo) on a perishable blockhash — and those are exactly the big animated-QR relays that take longest, and the ones a real user has already hit expiring mid-scan. Rewrite dapp transactions to durable-nonce form in the background sign-session handler when it's safe to do so; byte-exact passthrough on any unsafe case — a dapp sign must never hard-fail because of the rewrite. Wallets with no nonce account yet get a one-time setup interstitial in the sign popup, with graceful fallback to plain signing on skip or any failure. Default ON with a settings kill-switch (escape hatch for dapps that broadcast their own original copy of the transaction instead of the signed bytes Faraday returns).
+**Acceptance criteria:**
+- [ ] A dapp-signed devnet transaction submits successfully 2+ minutes after signing (past normal blockhash expiry).
+- [ ] A v0 transaction referencing an address lookup table round-trips through the rewrite; a fixture test asserts `addressTableLookups` and account indices at the byte level.
+- [ ] Every unsafe case (partial signatures, fee payer isn't the wallet, already durable-nonce, oversize, RPC failure/timeout) passes through byte-exact with the reason logged; toggle OFF ⇒ byte-exact passthrough for every dapp tx.
+- [ ] Provisioning interstitial: Set up flows through create-nonce-account + the real tx; Skip or any provisioning failure signs the original transaction normally, never blocking.
+- [ ] Typecheck, vitest, and the MV3 build are green.
 **Owner:** cxalem
 
 ### FA-12 `P3` — Faraday MCP server *(idea — unshaped)*
