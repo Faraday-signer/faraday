@@ -56,11 +56,11 @@ _(none)_
 - **FA-24** `P1` — Lookup-table txs sign normally (branch `feat/sign-button`, PR #127) — owner: cxalem
 - **FA-22** `P2` — Camera-entropy capture feedback (branch `feat/camera-entropy-feedback`) — owner: cxalem
 - **FA-21** `P2` — Touch UX: press feedback + honest footer (branch `feat/touch-feedback-footer`) — owner: cxalem
-- **FA-27** `P2` — Ika heroes survive a leading nonce-advance (branch `feat/ika-nonce-skip`) — owner: cxalem
 
 ### 🔬 In Review
 - **FA-09** `P1` — Durable-nonce transactions: signed QR-relayed txs must not expire (branch `feat/durable-nonce`, PR #112) — owner: cxalem
 - **FA-20** `P2` — IMU support + shake-to-theme Easter egg on the ESP32-S3 (branch `feat/imu-shake-theme`) — owner: cxalem
+- **FA-27** `P2` — Ika heroes survive a leading nonce-advance (branch `feat/ika-nonce-skip`, PR #133) — owner: cxalem
 
 ### 📋 To Do
 - **FA-08** `P1` — Publish the Chrome extension to the Web Store (permissions rework + listing) — owner: Trskel (Javi Lois)
@@ -318,7 +318,7 @@ _(none)_
 ### FA-27 `P2` — Ika heroes survive a leading nonce-advance
 **Description:** FA-09 taught `extract_send` to skip a leading `AdvanceNonceAccount` but `extract_ika` still rejects any non-Ika instruction, so durable-nonce-rewritten Ika transactions (FA-26) lose their hero screen and fall to the generic instruction list — still signable, just unlabeled. Add the same disc-4 skip to `extract_ika`, back it with an Ika+nonce fixture, and fix the stale `just nonce-fixtures` recipe (says `cd hardware`, crate lives in `raspberry-pi/`).
 **Acceptance criteria:**
-- [ ] An Ika tx with a leading `AdvanceNonceAccount` still produces its zoned hero (fixture-backed test).
-- [ ] `just nonce-fixtures` runs from repo root.
-- [ ] `cargo test --features simulator` green.
-**Owner:** cxalem (assigned; per the claiming protocol, the claim becomes real when the draft PR titled `FA-27` opens)
+- [x] An Ika tx with a leading `AdvanceNonceAccount` still produces its zoned hero (fixture-backed test).
+- [x] `just nonce-fixtures` runs from repo root.
+- [x] `cargo test --features simulator` green (verified via `cd core && cargo test` / `--features touch-ui`, which is where the parser tests live — `raspberry-pi/`'s own `cargo test --features simulator` has 0 unit tests of its own).
+**Owner:** cxalem
