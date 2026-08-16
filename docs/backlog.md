@@ -56,11 +56,11 @@ _(none)_
 - **FA-24** `P1` — Lookup-table txs sign normally (branch `feat/sign-button`, PR #127) — owner: cxalem
 - **FA-22** `P2` — Camera-entropy capture feedback (branch `feat/camera-entropy-feedback`) — owner: cxalem
 - **FA-21** `P2` — Touch UX: press feedback + honest footer (branch `feat/touch-feedback-footer`) — owner: cxalem
-- **FA-26** `P1` — Durable nonce for dapp transactions (branch `feat/dapp-nonce-rewrite`) — owner: cxalem
 
 ### 🔬 In Review
 - **FA-09** `P1` — Durable-nonce transactions: signed QR-relayed txs must not expire (branch `feat/durable-nonce`, PR #112) — owner: cxalem
 - **FA-20** `P2` — IMU support + shake-to-theme Easter egg on the ESP32-S3 (branch `feat/imu-shake-theme`) — owner: cxalem
+- **FA-26** `P1` — Durable nonce for dapp transactions (branch `feat/dapp-nonce-rewrite`, PR #134) — owner: cxalem
 
 ### 📋 To Do
 - **FA-08** `P1` — Publish the Chrome extension to the Web Store (permissions rework + listing) — owner: Trskel (Javi Lois)
@@ -316,7 +316,7 @@ _(none)_
 - [ ] Every unsafe case (partial signatures, fee payer isn't the wallet, already durable-nonce, oversize, RPC failure/timeout) passes through byte-exact with the reason logged; toggle OFF ⇒ byte-exact passthrough for every dapp tx.
 - [ ] Provisioning interstitial: Set up flows through create-nonce-account + the real tx; Skip or any provisioning failure signs the original transaction normally, never blocking.
 - [ ] Typecheck, vitest, and the MV3 build are green.
-**Owner:** cxalem (assigned; per the claiming protocol, the claim becomes real when the draft PR titled `FA-26` opens)
+**Owner:** cxalem
 
 ### FA-12 `P3` — Faraday MCP server *(idea — unshaped)*
 **Description:** Early-stage idea: an MCP server exposing Faraday's host-side capabilities to LLM agents/tools — e.g. building sign-requests, encoding/decoding QR (UR) payloads, running the tx risk analyzer. Unshaped: the value proposition and the surface are undefined. One boundary is already non-negotiable and must anchor any proposal: an MCP server is host-side software (extension/companion territory); `hardware/` gains no network dependencies and the device's review-what-you-sign flow is unchanged — an agent can prepare transactions, it can never approve them.
