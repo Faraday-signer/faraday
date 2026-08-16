@@ -10,7 +10,7 @@
 //!   3. Unverified tokens (only when the toggle is on), same scheme.
 
 import { useCallback, useEffect, useState } from "react";
-import useSWR from "swr";
+import useSWR, { mutate as globalMutate } from "swr";
 
 import {
   fetchJupiterPrices,
@@ -118,6 +118,20 @@ function describeError(error: unknown): string {
   }
 }
 
+function tokensKey(pubkey: string): readonly [string, string] {
+  return ["tokens", pubkey] as const;
+}
+
+/**
+ * Revalidate the token list for `pubkey` from outside `useTokens` — e.g. a
+ * live account-change push. Uses the same SWR cache key `useTokens` fetches
+ * with, so it's a no-op unless a mounted `useTokens(pubkey)` has registered
+ * that key's fetcher.
+ */
+export function refreshTokens(pubkey: string): void {
+  void globalMutate(tokensKey(pubkey));
+}
+
 function compareForSort(a: Token, b: Token): number {
   // Verified first, unverified last.
   if (a.verified !== b.verified) return a.verified ? -1 : 1;
@@ -157,7 +171,7 @@ export function useTokens(pairedPubkey: string | null): TokenListSnapshot {
   const { settings } = useTokenSettings();
 
   const { data, error, isValidating, mutate } = useSWR(
-    pairedPubkey ? ["tokens", pairedPubkey] : null,
+    pairedPubkey ? tokensKey(pairedPubkey) : null,
     async ([, addr]: readonly [string, string]) => fetchOwnedTokens(addr),
     {
       refreshInterval: TOKENS_REFRESH_MS,

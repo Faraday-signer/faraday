@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 
 import { address as toAddress } from "@solana/kit";
@@ -7,10 +7,19 @@ import { sendRuntimeMessage } from "./runtime";
 import { solanaRpc } from "./sol-client";
 import type { ExtensionState } from "./types";
 import { useLiveBalance, type LiveConnectionState } from "./use-live-balance";
+import { refreshTokens } from "./use-tokens";
 
 /** SWR poll interval — backstop for when the WebSocket subscription is down. */
 const BALANCE_REFRESH_MS = 120_000;
 const LAMPORTS_PER_SOL = 1_000_000_000n;
+/**
+ * Debounce window for token-list refreshes triggered by the live push.
+ * A burst of account notifications (e.g. a swap's several account writes)
+ * should cost one DAS call, not one per notification — and DAS indexing
+ * can lag the account push slightly, so waiting out a trailing window
+ * gives it a moment to catch up.
+ */
+const TOKENS_LIVE_REFRESH_DEBOUNCE_MS = 2_000;
 
 export interface WalletSnapshot {
   pairedPubkey: string | null;
@@ -104,10 +113,35 @@ export function useWallet(): WalletSnapshot {
     void mutate();
   }, [mutate]);
 
+  // Debounced token-list refresh, triggered by the same live push (see
+  // onLivePush below). Trailing-only: a burst of notifications resets the
+  // timer instead of firing once per notification.
+  const tokensDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (tokensDebounceRef.current !== null) {
+        clearTimeout(tokensDebounceRef.current);
+      }
+    };
+  }, []);
+
   // Live push notifications via WebSocket. Each on-chain change triggers
   // an SWR revalidation so `lamports` stays current within 1–2 seconds
-  // instead of the poll interval.
-  const liveState = useLiveBalance(pairedPubkey, refreshBalance);
+  // instead of the poll interval, plus a debounced token-list refresh so
+  // SPL balances don't sit on the slower poll after a swap/receive.
+  const onLivePush = useCallback(() => {
+    refreshBalance();
+    if (!pairedPubkey) return;
+    if (tokensDebounceRef.current !== null) {
+      clearTimeout(tokensDebounceRef.current);
+    }
+    tokensDebounceRef.current = setTimeout(() => {
+      tokensDebounceRef.current = null;
+      refreshTokens(pairedPubkey);
+    }, TOKENS_LIVE_REFRESH_DEBOUNCE_MS);
+  }, [refreshBalance, pairedPubkey]);
+
+  const liveState = useLiveBalance(pairedPubkey, onLivePush);
 
   const solLamports = lamports ?? null;
   const solUiAmount =
