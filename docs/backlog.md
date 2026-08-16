@@ -56,12 +56,12 @@ _(none)_
 - **FA-24** `P1` — Lookup-table txs sign normally (branch `feat/sign-button`, PR #127) — owner: cxalem
 - **FA-22** `P2` — Camera-entropy capture feedback (branch `feat/camera-entropy-feedback`) — owner: cxalem
 - **FA-21** `P2` — Touch UX: press feedback + honest footer (branch `feat/touch-feedback-footer`) — owner: cxalem
-- **FA-28** `P2` — Token balances update instantly after a swap/receive (branch `feat/live-token-refresh`) — owner: cxalem
 
 ### 🔬 In Review
 - **FA-09** `P1` — Durable-nonce transactions: signed QR-relayed txs must not expire (branch `feat/durable-nonce`, PR #112) — owner: cxalem
 - **FA-20** `P2` — IMU support + shake-to-theme Easter egg on the ESP32-S3 (branch `feat/imu-shake-theme`) — owner: cxalem
 - **FA-26** `P1` — Durable nonce for dapp transactions (branch `feat/dapp-nonce-rewrite`, PR #134) — owner: cxalem
+- **FA-28** `P2` — Token balances update instantly after a swap/receive (branch `feat/live-token-refresh`, PR #135) — owner: cxalem
 
 ### 📋 To Do
 - **FA-08** `P1` — Publish the Chrome extension to the Web Store (permissions rework + listing) — owner: Trskel (Javi Lois)
@@ -322,10 +322,10 @@ _(none)_
 ### FA-28 `P2` — Token balances update instantly after a swap/receive
 **Description:** The sidepanel already holds a live WebSocket on the wallet account, but a push only revalidates the SOL balance — the SPL token list stays on a 60s poll, so a token you just swapped into can show stale for up to a minute. Wire the same push to a debounced token-list refresh (single trailing call, ~2s) so balances feel immediate; SOL path and reconnect logic untouched.
 **Acceptance criteria:**
-- [ ] A live push triggers exactly one debounced token refresh (unit-testable seam if reasonable, else verified by typecheck + code review in PR).
-- [ ] SOL refresh behavior unchanged.
-- [ ] No extra DAS calls when no push fires (idle behavior identical).
-- [ ] Typecheck + vitest + MV3 build green.
+- [x] A live push triggers exactly one debounced token refresh (no React hook-testing infra in this repo — verified by typecheck + code review in PR #135, not a unit test).
+- [x] SOL refresh behavior unchanged.
+- [x] No extra DAS calls when no push fires (idle behavior identical).
+- [x] Typecheck + vitest + MV3 build green.
 **Owner:** cxalem
 
 ### FA-12 `P3` — Faraday MCP server *(idea — unshaped)*
