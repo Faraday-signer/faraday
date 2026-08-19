@@ -32,8 +32,7 @@ Merge conflicts on this file are further defused by `.gitattributes` (`merge=uni
 ## Board — Grant push
 
 ### 🏗 In Progress
-_(none)_
-
+- **FA-17** `P1` — ESP32-S3 release artifact: versioned firmware image + ESP Web Tools manifest from the release workflow — unblocks FA-13. Owner: trskel
 ### 🔬 In Review
 - **FA-16** `P1` — Landing page redesign (faraday.to) — dark instrument-panel rebuild; flasher (FA-13) slot + `/flash` stub and extension-store (FA-08) slot reserved (branch `feat/landing-redesign`, PR #117, **draft — awaiting cxalem design approval on the Vercel preview before merge**) — owner: cxalem
 
@@ -67,7 +66,6 @@ _(none)_
 ### 🗂 Backlog
 - **FA-07** `P2` — Decide direction on the verify proposals (`docs/proposals/`)
 - **FA-10** `P2` — QR scan latency: benchmark Pi vs ESP32, then reach parity or better
-- **FA-17** `P1` — ESP32-S3 release artifact: versioned firmware image + ESP Web Tools manifest from the release workflow — unblocks FA-13
 - **FA-13** `P1` — Web-based firmware flasher (ESP32-S3 / ESP Web Tools) — lands within the FA-16 site; depends on FA-16, FA-17, and ESP32 support (PRs #73/#93)
 - **FA-14** `P2` — Optimize CI wall-clock time
 - **FA-15** `P2` — Mobile app **epic** — first child card: scoping spike

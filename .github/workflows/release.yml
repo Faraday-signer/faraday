@@ -39,11 +39,11 @@ jobs:
         with:
           targets: arm-unknown-linux-gnueabihf
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: raspberry-pi
-          key: arm
-
+      # No rust-cache here: this job must emit the final linked `faraday`
+      # binary for the Buildroot image, and a cache restore (shared `key: arm`
+      # with ci.yml) can report everything "fresh" without re-linking the
+      # executable — leaving the compose bind-mount pointing at nothing. A
+      # release is a clean, reproducible build; cold-compile on purpose.
       - uses: mlugg/setup-zig@v2
 
       - uses: taiki-e/install-action@v2
@@ -52,7 +52,13 @@ jobs:
 
       - name: Cross-compile ARM binary
         working-directory: raspberry-pi
-        run: cargo zigbuild --release --target arm-unknown-linux-gnueabihf
+        run: |
+          cargo zigbuild --release --target arm-unknown-linux-gnueabihf
+          test -f target/arm-unknown-linux-gnueabihf/release/faraday || {
+            echo "::error::ARM binary missing after cross-compile"
+            exit 1
+          }
+          ls -lh target/arm-unknown-linux-gnueabihf/release/faraday
 
       - name: Build Pi OS image (Buildroot via Docker)
         run: docker compose up --exit-code-from build-images
