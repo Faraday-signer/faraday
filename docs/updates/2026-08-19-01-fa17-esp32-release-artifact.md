@@ -3,10 +3,23 @@
 The release workflow can now build and publish a browser-flashable ESP32-S3
 image. `release.yml` gained an `esp32-image` job (parallel to the Pi job) plus a
 `publish` job that ships every asset in one `action-gh-release` call (no race
-between the two parallel build jobs). Also fixed a latent Pi bug: the release
-job shared `Swatinem/rust-cache` (`key: arm`) with CI, which could report the
-build "fresh" without re-linking `faraday`, leaving the Buildroot bind-mount
-pointing at nothing ("Faraday binary not found at /opt/faraday-bin").
+between the two parallel build jobs).
+
+## Two bugs found and fixed along the way
+
+**Pi: the ARM binary was never where the mount looked.** `raspberry-pi` is a
+workspace member, so `cargo zigbuild` writes the binary to the *workspace-root*
+`target/`, not `raspberry-pi/target/`. The compose bind-mount (and the
+`test -f` guard) pointed at `raspberry-pi/target/…` — an empty path — so the
+Buildroot container died with "Faraday binary not found at /opt/faraday-bin".
+Fixed by repointing both the `docker-compose.yml` mount and the workflow guard
+at `./target/arm-unknown-linux-gnueabihf/release/faraday`.
+
+**ESP32-S3: firmware (~2.4 MB) doesn't fit the default 1 MB factory partition.**
+`espflash save-image` errored `image_too_big`. Fixed with a custom
+`partitions.csv` (4 MB factory) passed to espflash via `--partition-table`, and
+`CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y` in `sdkconfig.defaults` so the bootloader's
+flash-size header matches the board.
 
 ## Spike findings (image format, toolchain, manifest)
 
@@ -15,18 +28,21 @@ firmware must be packed into a single binary before flashing from the browser.
 Produced with:
 
 ```
-cargo espflash save-image --release --merge --skip-padding --chip esp32s3 out.bin
+cargo espflash save-image --release --merge --skip-padding \
+  --chip esp32s3 --partition-table partitions.csv out.bin
 ```
 
 - `--merge` concatenates bootloader + partition table + app at their ESP-IDF
-  offsets; espflash derives the offsets from the build's partition table, so
-  none are hand-coded in the workflow.
+  offsets (derived from the partition table, not hand-coded).
+- `--partition-table partitions.csv` overrides the 1 MB default factory
+  partition (esp-idf-sys convention: no `CONFIG_PARTITION_TABLE_*` in
+  `sdkconfig.defaults` — pass the CSV to espflash instead).
 - `--skip-padding` drops the trailing pad-to-flash-size, keeping the asset small
-  (~ app size + bootloader/partition-table, well under 2 MB); ESP Web Tools
-  erases before writing, so the full-flash 0xFF tail is unnecessary.
+  (bootloader + partition table + app ≈ 2.5 MB); ESP Web Tools erases before
+  writing, so the full-flash 0xFF tail is unnecessary.
 - ESP32-S3 layout for reference: bootloader @ `0x0`, partition table @ `0x8000`,
-  app @ `0x10000`. We do **not** list these in the manifest — one part at
-  offset `0` (the merged image) is enough.
+  app @ `0x10000`. The manifest still lists just one part at offset `0` (the
+  merged image).
 
 **CI toolchain.** Same as `ci.yml`'s `esp32-build` job (`esp-rs/xtensa-toolchain@v1.5.3`,
 `buildtargets: esp32s3`, `ldproxy: true`) plus a host-stable `dtolnay/rust-toolchain@stable`
@@ -52,21 +68,19 @@ assets live side by side in `releases/download/v<tag>/`, so no absolute URL is
 needed. GitHub release assets serve `Access-Control-Allow-Origin: *`, so the
 page at faraday.to can fetch both.
 
-## Not yet verified (needs hardware)
+## Not yet verified
 
-- **Flash size / mode.** The merged image inherits them from the ESP-IDF
-  `sdkconfig` baked into the bootloader (`sdkconfig.defaults` does not pin
-  `CONFIG_ESPTOOLPY_FLASHSIZE` or `CONFIG_ESPTOOLPY_FLASHMODE`). The Waveshare
-  ESP32-S3-Touch-LCD-2 has **16 MB** flash (ESP32-S3R8, 8 MB PSRAM). If the
-  ESP-IDF default (4 MB/DIO) works for the boot, fine — but this should be
-  confirmed on hardware, and if needed pinned via
-  `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y` (+ the correct `CONFIG_ESPTOOLPY_FLASHMODE_*`)
-  in `sdkconfig.defaults`. Cargo note: `espflash save-image` also honors an
-  `espflash.toml` `[flash]` block if we decide the CLI-level size matters.
+- **Flash mode.** Pinned size to 16 MB (board-accurate); flash *mode* is left at
+  the ESP-IDF default (DIO), which is the compatible baseline. If the board's
+  flash supports QIO and we want the throughput, pin `CONFIG_ESPTOOLPY_FLASHMODE_QIO`
+  — but confirm the physical part first; setting QIO on a DIO-only part fails to
+  boot.
 - **Acceptance #2 — flash a real board** from the *published* release assets
   (not a local build) and confirm it boots. Not runnable here (no device).
 
 ## Files
 
-- `.github/workflows/release.yml` — 3-job restructuring (`pi-image`,
-  `esp32-image`, `publish`).
+- `.github/workflows/release.yml` — 3 jobs (`pi-image`, `esp32-image`, `publish`).
+- `docker-compose.yml` — ARM binary mount repointed at the workspace-root target dir.
+- `esp32-touch2/partitions.csv` — new: 4 MB factory partition table.
+- `esp32-touch2/sdkconfig.defaults` — pins 16 MB flash.

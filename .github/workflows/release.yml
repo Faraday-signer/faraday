@@ -53,11 +53,13 @@ jobs:
         working-directory: raspberry-pi
         run: |
           cargo zigbuild --release --target arm-unknown-linux-gnueabihf
-          test -f target/arm-unknown-linux-gnueabihf/release/faraday || {
+          # raspberry-pi is a workspace member, so the binary lands in the
+          # workspace-root target dir (../target), not in raspberry-pi/target/.
+          test -f ../target/arm-unknown-linux-gnueabihf/release/faraday || {
             echo "::error::ARM binary missing after cross-compile"
             exit 1
           }
-          ls -lh target/arm-unknown-linux-gnueabihf/release/faraday
+          ls -lh ../target/arm-unknown-linux-gnueabihf/release/faraday
 
       - name: Build Pi OS image (Buildroot via Docker)
         run: docker compose up --exit-code-from build-images
@@ -135,8 +137,13 @@ jobs:
         working-directory: esp32-touch2
         run: |
           mkdir -p ../images
+          # The default ESP-IDF partition table caps the factory app at 1 MB,
+          # but the firmware is ~2.4 MB. Our partitions.csv gives it 4 MB.
+          # (esp-idf-sys convention: no CONFIG_PARTITION_TABLE_* in
+          # sdkconfig.defaults — pass the CSV to espflash instead.)
           cargo espflash save-image --release --merge --skip-padding \
-            --chip esp32s3 "../images/faraday_esp32-s3.${VERSION}.bin"
+            --chip esp32s3 --partition-table partitions.csv \
+            "../images/faraday_esp32-s3.${VERSION}.bin"
           test -f "../images/faraday_esp32-s3.${VERSION}.bin" || {
             echo "::error::merged ESP32-S3 image missing after save-image"
             exit 1
