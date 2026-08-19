@@ -43,6 +43,12 @@ CONFIG_SCCB_HARDWARE_I2C_PORT=1
 # Logging
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 
+# Flash: the Waveshare ESP32-S3-Touch-LCD-2 carries 16 MB (ESP32-S3R8). Pinning
+# it (the ESP-IDF default is 4 MB) keeps the bootloader's flash-size header
+# truthful and lets the custom partition table (partitions.csv, see below) use a
+# factory app partition bigger than the 1 MB default.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
 # Air-gap: disable WiFi and Bluetooth. The ESP-IDF framework enables both by
 # default; explicitly turning them off shortens the build and guarantees no
 # radio stack is linked into the final binary.

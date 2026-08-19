@@ -10,7 +10,9 @@ services:
       - buildroot-output:/output
       - ./buildroot_dl:/opt/buildroot_dl
       - ./.buildroot-ccache:/root/.buildroot-ccache
-      - ./raspberry-pi/target/arm-unknown-linux-gnueabihf/release/faraday:/opt/faraday-bin:ro
+      # `raspberry-pi` is a workspace member, so Cargo writes the ARM binary to
+      # the *workspace-root* target dir, not raspberry-pi/target/.
+      - ./target/arm-unknown-linux-gnueabihf/release/faraday:/opt/faraday-bin:ro
     command: "${BUILD_ARGS:---pi0}"
 
 volumes:
