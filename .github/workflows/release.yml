@@ -61,8 +61,25 @@ jobs:
           }
           ls -lh ../target/arm-unknown-linux-gnueabihf/release/faraday
 
+      - name: Cache Buildroot downloads + ccache
+        uses: actions/cache@v4
+        with:
+          path: |
+            buildroot_dl
+            .buildroot-ccache
+          key: buildroot-${{ hashFiles('opt/build.sh', 'opt/pi0/**') }}
+          restore-keys: |
+            buildroot-
+
       - name: Build Pi OS image (Buildroot via Docker)
         run: docker compose up --exit-code-from build-images
+
+      - name: Hand build outputs back to the runner
+        # The Buildroot container writes the download cache, ccache, and image
+        # as root into these bind-mounted dirs. Hand ownership back before the
+        # cache-save post-step and packaging (both run as the runner user).
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" buildroot_dl .buildroot-ccache images
 
       - name: Package release artifacts
         id: pkg
@@ -142,7 +159,7 @@ jobs:
           # (esp-idf-sys convention: no CONFIG_PARTITION_TABLE_* in
           # sdkconfig.defaults — pass the CSV to espflash instead.)
           cargo espflash save-image --release --merge --skip-padding \
-            --chip esp32s3 --partition-table partitions.csv \
+            --chip esp32s3 --flash-size 16mb --partition-table partitions.csv \
             "../images/faraday_esp32-s3.${VERSION}.bin"
           test -f "../images/faraday_esp32-s3.${VERSION}.bin" || {
             echo "::error::merged ESP32-S3 image missing after save-image"
