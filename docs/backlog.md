@@ -31,9 +31,8 @@ Merge conflicts on this file are further defused by `.gitattributes` (`merge=uni
 
 ## Board — Grant push
 
-### 🏗 In Progress
-- **FA-17** `P1` — ESP32-S3 release artifact: versioned firmware image + ESP Web Tools manifest from the release workflow — unblocks FA-13. Owner: trskel
 ### 🔬 In Review
+- **FA-13** `P1` — Web-based firmware flasher (ESP32-S3 / ESP Web Tools) — `/flash` built on ESP Web Tools, firmware proxied from GitHub releases; unsupported-browser manual-flash fallback (branch `feat/fa13-web-based-firmware-flasher`) — owner: trskel
 - **FA-16** `P1` — Landing page redesign (faraday.to) — dark instrument-panel rebuild; flasher (FA-13) slot + `/flash` stub and extension-store (FA-08) slot reserved (branch `feat/landing-redesign`, PR #117, **draft — awaiting cxalem design approval on the Vercel preview before merge**) — owner: cxalem
 
 ### 📋 To Do
@@ -66,7 +65,6 @@ Merge conflicts on this file are further defused by `.gitattributes` (`merge=uni
 ### 🗂 Backlog
 - **FA-07** `P2` — Decide direction on the verify proposals (`docs/proposals/`)
 - **FA-10** `P2` — QR scan latency: benchmark Pi vs ESP32, then reach parity or better
-- **FA-13** `P1` — Web-based firmware flasher (ESP32-S3 / ESP Web Tools) — lands within the FA-16 site; depends on FA-16, FA-17, and ESP32 support (PRs #73/#93)
 - **FA-14** `P2` — Optimize CI wall-clock time
 - **FA-15** `P2` — Mobile app **epic** — first child card: scoping spike
 - **FA-19** `P2` — Durable-nonce for the mobile send flow — follow-up to FA-09 (extension only)
@@ -234,7 +232,7 @@ Merge conflicts on this file are further defused by `.gitattributes` (`merge=uni
 - [ ] Firmware binaries served versioned from GitHub releases via an ESP Web Tools manifest — no binaries checked into `site/`.
 - [ ] Unsupported browsers (no WebSerial) get a clear message with the manual-flash alternative, not a broken button.
 - [ ] The page states exactly which hardware it targets and that Pi Zero devices use the SD-card image instead.
-**Owner:** —
+**Owner:** trskel (branch `feat/fa13-web-based-firmware-flasher`)
 
 ### FA-14 `P2` — Optimize CI wall-clock time
 **Description:** `.github/workflows/ci.yml` has grown — Rust host feature-matrix checks, tests, Pi Zero ARM cross-compile, three JS typecheck jobs, and an ESP32-S3 xtensa build + nm radio audit job arriving with the ESP32 branches — and PR feedback time is degrading. Measure first, then cut, without weakening what's enforced.

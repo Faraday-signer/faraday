@@ -1,10 +1,10 @@
 import Link from "next/link";
 
-import { SectionLabel, Tag } from "./primitives";
+import { SectionLabel } from "./primitives";
 
 /**
- * Landing teaser for the browser flasher (FA-13). Links to the /flash stub so
- * the nav slot and route exist now; the flow itself lands in a later card.
+ * Landing teaser for the browser flasher (FA-13). Links to the live /flash
+ * page, which flashes ESP32-S3 firmware over WebSerial.
  */
 export function FlashTeaser() {
   return (
@@ -24,12 +24,11 @@ export function FlashTeaser() {
             </p>
           </div>
           <div className="flex flex-col items-start gap-4">
-            <Tag tone="brand">Coming soon</Tag>
             <Link
               href="/flash"
               className="inline-flex h-11 items-center justify-center rounded-sm border border-foreground/20 px-5 font-mono text-xs uppercase tracking-[0.14em] text-foreground transition-colors hover:bg-foreground/5"
             >
-              Preview the flasher →
+              Flash your device →
             </Link>
           </div>
         </div>
