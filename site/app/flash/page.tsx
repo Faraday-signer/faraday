@@ -1,24 +1,15 @@
-/**
- * Web flasher page — reserved home for FA-13 (browser-based ESP32-S3 flashing
- * over WebSerial / ESP Web Tools). For now it is a "coming soon" stub so the
- * route and nav slot exist; FA-13 replaces the placeholder block with the real
- * flashing flow (device connect, manifest, progress, unsupported-browser copy).
- */
-
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { QrGlyph } from "@/components/landing/qr-glyph";
-import { SectionLabel, Tag } from "@/components/landing/primitives";
+import { FlashInstaller } from "@/components/landing/flash-installer";
+import { SectionLabel } from "@/components/landing/primitives";
 import { SiteFooter } from "@/components/landing/site-footer";
 import { SiteNav } from "@/components/landing/site-nav";
 
 export const metadata: Metadata = {
   title: "Flash your device · Faraday",
   description:
-    "Install Faraday firmware on an ESP32-S3 from your browser over WebSerial. Coming soon. Pi Zero devices use the SD-card image instead.",
-  // Unlinked stub until FA-13 ships; keep it out of search results.
-  robots: { index: false, follow: false },
+    "Install Faraday firmware on an ESP32-S3 from your browser over WebSerial. Firmware is served versioned from GitHub releases. Pi Zero devices use the SD-card image instead.",
 };
 
 const NOTES = [
@@ -40,6 +31,12 @@ const NOTES = [
   },
 ];
 
+const STEPS = [
+  "Plug your ESP32-S3 into a USB port.",
+  "Click “Connect device” and pick the serial port from the browser dialog.",
+  "If the board isn’t detected, hold BOOT and tap RESET to enter download mode.",
+];
+
 export default function FlashPage() {
   return (
     <div className="min-h-svh bg-background text-foreground">
@@ -57,16 +54,21 @@ export default function FlashPage() {
           installing.
         </p>
 
-        <div className="mt-8">
-          <Tag tone="brand">Coming soon</Tag>
-        </div>
+        <ol className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {STEPS.map((step, i) => (
+            <li
+              key={step}
+              className="rounded-sm border border-border bg-muted/30 p-4 text-sm leading-relaxed text-foreground/75"
+            >
+              <span className="font-mono text-[11px] text-brand-ink">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <p className="mt-2">{step}</p>
+            </li>
+          ))}
+        </ol>
 
-        <div className="mt-12 flex aspect-video w-full flex-col items-center justify-center gap-4 rounded-sm border border-border bg-muted/30">
-          <QrGlyph className="h-16 w-16 text-border" />
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-            Flasher landing here
-          </p>
-        </div>
+        <FlashInstaller />
 
         <dl className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-sm border border-border bg-border sm:grid-cols-2">
           {NOTES.map((note) => (
