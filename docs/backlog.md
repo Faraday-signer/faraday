@@ -32,7 +32,6 @@ Merge conflicts on this file are further defused by `.gitattributes` (`merge=uni
 ## Board — Grant push
 
 ### 🔬 In Review
-- **FA-13** `P1` — Web-based firmware flasher (ESP32-S3 / ESP Web Tools) — `/flash` built on ESP Web Tools, firmware proxied from GitHub releases; unsupported-browser manual-flash fallback (branch `feat/fa13-web-based-firmware-flasher`) — owner: trskel
 - **FA-16** `P1` — Landing page redesign (faraday.to) — dark instrument-panel rebuild; flasher (FA-13) slot + `/flash` stub and extension-store (FA-08) slot reserved (branch `feat/landing-redesign`, PR #117, **draft — awaiting cxalem design approval on the Vercel preview before merge**) — owner: cxalem
 
 ### 📋 To Do
@@ -54,7 +53,7 @@ Merge conflicts on this file are further defused by `.gitattributes` (`merge=uni
 - **FA-24** `P1` — Lookup-table txs sign normally (branch `feat/sign-button`, PR #127) — owner: cxalem
 - **FA-22** `P2` — Camera-entropy capture feedback (branch `feat/camera-entropy-feedback`) — owner: cxalem
 - **FA-21** `P2` — Touch UX: press feedback + honest footer (branch `feat/touch-feedback-footer`) — owner: cxalem
-
+- **FA-13** `P1` — Web-based firmware flasher (ESP32-S3 / ESP Web Tools) — `/flash` built on ESP Web Tools, firmware proxied from GitHub releases; unsupported-browser manual-flash fallback (branch `feat/fa13-web-based-firmware-flasher`) — owner: trskel
 ### 🔬 In Review
 - **FA-09** `P1` — Durable-nonce transactions: signed QR-relayed txs must not expire (branch `feat/durable-nonce`, PR #112) — owner: cxalem
 - **FA-20** `P2` — IMU support + shake-to-theme Easter egg on the ESP32-S3 (branch `feat/imu-shake-theme`) — owner: cxalem
