@@ -217,20 +217,20 @@ Merge conflicts on this file are further defused by `.gitattributes` (`merge=uni
 4. Verify by flashing a real ESP32-S3 from those exact published artifacts (esptool or ESP Web Tools locally), then booting the firmware.
 **Depends on:** ESP32-S3 support merged (open PR #73 + audit-blocker rollup PR #93 — the xtensa build this packages).
 **Acceptance criteria:**
-- [ ] Release workflow emits a versioned, flashable ESP32-S3 image plus an ESP Web Tools manifest as release assets.
-- [ ] A real ESP32-S3 flashed and booted from the published artifacts, not from a local build.
-- [ ] Spike findings (image format, partition offsets, manifest schema) recorded in `docs/updates/`.
-- [ ] The released image is built from the same firmware the CI nm radio audit gates — the no-radio-symbols property holds for what users actually flash.
-**Owner:** —
+- [x] Release workflow emits a versioned, flashable ESP32-S3 image plus an ESP Web Tools manifest as release assets.
+- [x] A real ESP32-S3 flashed and booted from the published artifacts, not from a local build.
+- [x] Spike findings (image format, partition offsets, manifest schema) recorded in `docs/updates/`.
+- [x] The released image is built from the same firmware the CI nm radio audit gates — the no-radio-symbols property holds for what users actually flash.
+**Owner:** trskel
 
 ### FA-13 `P1` — Web-based firmware flasher on the site
 **Description:** A page on faraday.to (`site/`, Next.js) where users flash Faraday firmware from the browser. **This is part of the FA-16 landing-page redesign** — the flasher page lands within the new site, so build it against FA-16's structure, not the old one. It is feasible for the **ESP32-S3 target** via WebSerial (ESP Web Tools); it is *not* feasible for the Pi Zero, which boots a Buildroot SD-card image (`opt/`) that can't be written over WebSerial — so this card is scoped to the ESP32 target only, and the page must say so plainly.
 **Depends on:** FA-16 (the flasher ships as a page of the redesigned site), FA-17 (the versioned ESP32 image + ESP Web Tools manifest it flashes), and ESP32-S3 hardware support landing (open PR #73 + audit-blocker rollup PR #93).
 **Acceptance criteria:**
-- [ ] A flash page on the site using ESP Web Tools / WebSerial, flashing a real ESP32-S3 successfully from Chrome or Edge.
-- [ ] Firmware binaries served versioned from GitHub releases via an ESP Web Tools manifest — no binaries checked into `site/`.
-- [ ] Unsupported browsers (no WebSerial) get a clear message with the manual-flash alternative, not a broken button.
-- [ ] The page states exactly which hardware it targets and that Pi Zero devices use the SD-card image instead.
+- [x] A flash page on the site using ESP Web Tools / WebSerial, flashing a real ESP32-S3 successfully from Chrome or Edge.
+- [x] Firmware binaries served versioned from GitHub releases via an ESP Web Tools manifest — no binaries checked into `site/`.
+- [x] Unsupported browsers (no WebSerial) get a clear message with the manual-flash alternative, not a broken button.
+- [x] The page states exactly which hardware it targets and that Pi Zero devices use the SD-card image instead.
 **Owner:** trskel (branch `feat/fa13-web-based-firmware-flasher`)
 
 ### FA-14 `P2` — Optimize CI wall-clock time
