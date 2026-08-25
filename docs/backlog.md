@@ -31,8 +31,6 @@ Merge conflicts on this file are further defused by `.gitattributes` (`merge=uni
 
 ## Board — Grant push
 
-### 🏗 In Progress
-- **FA-17** `P1` — ESP32-S3 release artifact: versioned firmware image + ESP Web Tools manifest from the release workflow — unblocks FA-13. Owner: trskel
 ### 🔬 In Review
 - **FA-16** `P1` — Landing page redesign (faraday.to) — dark instrument-panel rebuild; flasher (FA-13) slot + `/flash` stub and extension-store (FA-08) slot reserved (branch `feat/landing-redesign`, PR #117, **draft — awaiting cxalem design approval on the Vercel preview before merge**) — owner: cxalem
 
@@ -55,7 +53,7 @@ Merge conflicts on this file are further defused by `.gitattributes` (`merge=uni
 - **FA-24** `P1` — Lookup-table txs sign normally (branch `feat/sign-button`, PR #127) — owner: cxalem
 - **FA-22** `P2` — Camera-entropy capture feedback (branch `feat/camera-entropy-feedback`) — owner: cxalem
 - **FA-21** `P2` — Touch UX: press feedback + honest footer (branch `feat/touch-feedback-footer`) — owner: cxalem
-
+- **FA-13** `P1` — Web-based firmware flasher (ESP32-S3 / ESP Web Tools) — `/flash` built on ESP Web Tools, firmware proxied from GitHub releases; unsupported-browser manual-flash fallback (branch `feat/fa13-web-based-firmware-flasher`) — owner: trskel
 ### 🔬 In Review
 - **FA-09** `P1` — Durable-nonce transactions: signed QR-relayed txs must not expire (branch `feat/durable-nonce`, PR #112) — owner: cxalem
 - **FA-20** `P2` — IMU support + shake-to-theme Easter egg on the ESP32-S3 (branch `feat/imu-shake-theme`) — owner: cxalem
@@ -66,7 +64,6 @@ Merge conflicts on this file are further defused by `.gitattributes` (`merge=uni
 ### 🗂 Backlog
 - **FA-07** `P2` — Decide direction on the verify proposals (`docs/proposals/`)
 - **FA-10** `P2` — QR scan latency: benchmark Pi vs ESP32, then reach parity or better
-- **FA-13** `P1` — Web-based firmware flasher (ESP32-S3 / ESP Web Tools) — lands within the FA-16 site; depends on FA-16, FA-17, and ESP32 support (PRs #73/#93)
 - **FA-14** `P2` — Optimize CI wall-clock time
 - **FA-15** `P2` — Mobile app **epic** — first child card: scoping spike
 - **FA-19** `P2` — Durable-nonce for the mobile send flow — follow-up to FA-09 (extension only)
@@ -220,21 +217,21 @@ Merge conflicts on this file are further defused by `.gitattributes` (`merge=uni
 4. Verify by flashing a real ESP32-S3 from those exact published artifacts (esptool or ESP Web Tools locally), then booting the firmware.
 **Depends on:** ESP32-S3 support merged (open PR #73 + audit-blocker rollup PR #93 — the xtensa build this packages).
 **Acceptance criteria:**
-- [ ] Release workflow emits a versioned, flashable ESP32-S3 image plus an ESP Web Tools manifest as release assets.
-- [ ] A real ESP32-S3 flashed and booted from the published artifacts, not from a local build.
-- [ ] Spike findings (image format, partition offsets, manifest schema) recorded in `docs/updates/`.
-- [ ] The released image is built from the same firmware the CI nm radio audit gates — the no-radio-symbols property holds for what users actually flash.
-**Owner:** —
+- [x] Release workflow emits a versioned, flashable ESP32-S3 image plus an ESP Web Tools manifest as release assets.
+- [x] A real ESP32-S3 flashed and booted from the published artifacts, not from a local build.
+- [x] Spike findings (image format, partition offsets, manifest schema) recorded in `docs/updates/`.
+- [x] The released image is built from the same firmware the CI nm radio audit gates — the no-radio-symbols property holds for what users actually flash.
+**Owner:** trskel
 
 ### FA-13 `P1` — Web-based firmware flasher on the site
 **Description:** A page on faraday.to (`site/`, Next.js) where users flash Faraday firmware from the browser. **This is part of the FA-16 landing-page redesign** — the flasher page lands within the new site, so build it against FA-16's structure, not the old one. It is feasible for the **ESP32-S3 target** via WebSerial (ESP Web Tools); it is *not* feasible for the Pi Zero, which boots a Buildroot SD-card image (`opt/`) that can't be written over WebSerial — so this card is scoped to the ESP32 target only, and the page must say so plainly.
 **Depends on:** FA-16 (the flasher ships as a page of the redesigned site), FA-17 (the versioned ESP32 image + ESP Web Tools manifest it flashes), and ESP32-S3 hardware support landing (open PR #73 + audit-blocker rollup PR #93).
 **Acceptance criteria:**
-- [ ] A flash page on the site using ESP Web Tools / WebSerial, flashing a real ESP32-S3 successfully from Chrome or Edge.
-- [ ] Firmware binaries served versioned from GitHub releases via an ESP Web Tools manifest — no binaries checked into `site/`.
-- [ ] Unsupported browsers (no WebSerial) get a clear message with the manual-flash alternative, not a broken button.
-- [ ] The page states exactly which hardware it targets and that Pi Zero devices use the SD-card image instead.
-**Owner:** —
+- [x] A flash page on the site using ESP Web Tools / WebSerial, flashing a real ESP32-S3 successfully from Chrome or Edge.
+- [x] Firmware binaries served versioned from GitHub releases via an ESP Web Tools manifest — no binaries checked into `site/`.
+- [x] Unsupported browsers (no WebSerial) get a clear message with the manual-flash alternative, not a broken button.
+- [x] The page states exactly which hardware it targets and that Pi Zero devices use the SD-card image instead.
+**Owner:** trskel (branch `feat/fa13-web-based-firmware-flasher`)
 
 ### FA-14 `P2` — Optimize CI wall-clock time
 **Description:** `.github/workflows/ci.yml` has grown — Rust host feature-matrix checks, tests, Pi Zero ARM cross-compile, three JS typecheck jobs, and an ESP32-S3 xtensa build + nm radio audit job arriving with the ESP32 branches — and PR feedback time is degrading. Measure first, then cut, without weakening what's enforced.
