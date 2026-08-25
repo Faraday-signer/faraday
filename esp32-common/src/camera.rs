@@ -47,22 +47,22 @@ use faraday_core::camera::{Frame, ScanDiagnostics, ScanMode};
 // sensor (I2C0, GPIO48/47). No RESET line is wired; PWDN is GPIO17 (active
 // high: esp_camera_init drives it HIGH then LOW to power the sensor on).
 
-const CAM_PIN_PWDN: i32  = 17;
+const CAM_PIN_PWDN: i32 = 17;
 const CAM_PIN_RESET: i32 = -1;
-const CAM_PIN_XCLK: i32  = 8;
-const CAM_PIN_SIOD: i32  = 21; // TWI_SDA
-const CAM_PIN_SIOC: i32  = 16; // TWI_CLK
-const CAM_PIN_D7: i32    = 2;
-const CAM_PIN_D6: i32    = 7;
-const CAM_PIN_D5: i32    = 10;
-const CAM_PIN_D4: i32    = 14;
-const CAM_PIN_D3: i32    = 11;
-const CAM_PIN_D2: i32    = 15;
-const CAM_PIN_D1: i32    = 13;
-const CAM_PIN_D0: i32    = 12;
+const CAM_PIN_XCLK: i32 = 8;
+const CAM_PIN_SIOD: i32 = 21; // TWI_SDA
+const CAM_PIN_SIOC: i32 = 16; // TWI_CLK
+const CAM_PIN_D7: i32 = 2;
+const CAM_PIN_D6: i32 = 7;
+const CAM_PIN_D5: i32 = 10;
+const CAM_PIN_D4: i32 = 14;
+const CAM_PIN_D3: i32 = 11;
+const CAM_PIN_D2: i32 = 15;
+const CAM_PIN_D1: i32 = 13;
+const CAM_PIN_D0: i32 = 12;
 const CAM_PIN_VSYNC: i32 = 6;
-const CAM_PIN_HREF: i32  = 4;
-const CAM_PIN_PCLK: i32  = 9;
+const CAM_PIN_HREF: i32 = 4;
+const CAM_PIN_PCLK: i32 = 9;
 
 // 20 MHz XCLK — standard for OV2640 and OV5640.
 const CAM_XCLK_FREQ: i32 = 20_000_000;
@@ -147,8 +147,7 @@ impl QrPipeline {
     fn start() -> Result<QrPipeline, String> {
         let latest: Arc<Mutex<Option<Arc<Frame>>>> = Arc::new(Mutex::new(None));
         let pending_qr: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
-        let diag: Arc<Mutex<ScanDiagnostics>> =
-            Arc::new(Mutex::new(ScanDiagnostics::default()));
+        let diag: Arc<Mutex<ScanDiagnostics>> = Arc::new(Mutex::new(ScanDiagnostics::default()));
         let decode_enabled = Arc::new(AtomicBool::new(false));
         let small_qr_mode = Arc::new(AtomicBool::new(false));
         let streaming = Arc::new(AtomicBool::new(false));
@@ -167,11 +166,11 @@ impl QrPipeline {
         let mode_d = Arc::clone(&small_qr_mode);
         let decode_d = Arc::clone(&decode_enabled);
 
-        // Pin the decoder to CPU1 (APP core). A single decode is CPU-bound for
-        // ~1 s and runs at the default pthread priority (5), which is higher
+        // Pin the decoder to CPU1 (APP core). A decode is CPU-bound for roughly
+        // 50–90 ms and runs at the default pthread priority (5), which is higher
         // than the main/GUI task (priority 1, pinned to CPU0). Without an
         // explicit affinity the scheduler can place it on CPU0, where it
-        // preempts the GUI and freezes the camera preview for a full second per
+        // preempts the GUI and visibly stalls the camera preview during each
         // attempt. CPU1 is the core the watchdog config already expects it on
         // (CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n in sdkconfig.defaults).
         // Affinity comes only from the esp_pthread cfg (Thread::Builder can't
@@ -202,9 +201,10 @@ impl QrPipeline {
         let latest_r = Arc::clone(&latest);
         let fatal_r = Arc::clone(&fatal);
         let streaming_r = Arc::clone(&streaming);
+        let diag_r = Arc::clone(&diag);
         let reader = thread::Builder::new()
             .stack_size(16 * 1024)
-            .spawn(move || reader_loop(latest_r, fatal_r, streaming_r))
+            .spawn(move || reader_loop(latest_r, fatal_r, streaming_r, diag_r))
             .map_err(|e| format!("spawn reader: {e}"))?;
 
         Ok(QrPipeline {
@@ -242,7 +242,11 @@ impl EspCamera {
         if !CAM_INITED.load(Ordering::Acquire) {
             unsafe { init_camera()? };
             CAM_INITED.store(true, Ordering::Release);
-            log::info!("esp_camera: init OK ({}x{} GRAYSCALE)", CAPTURE_W, CAPTURE_H);
+            log::info!(
+                "esp_camera: init OK ({}x{} GRAYSCALE)",
+                CAPTURE_W,
+                CAPTURE_H
+            );
         } else {
             unsafe { sensor_standby(false) };
             // Let AGC/AWB settle after wake before the reader starts grabbing
@@ -276,27 +280,54 @@ impl EspCamera {
     pub fn latest(&self) -> Option<Arc<Frame>> {
         // Clones the Arc (pointer), not the frame — the lock hold is a refcount
         // bump, and the ~480 KB buffer is shared with the reader/decoder.
-        pipeline().expect("pipeline not initialised").latest.lock().ok().and_then(|g| g.clone())
+        pipeline()
+            .expect("pipeline not initialised")
+            .latest
+            .lock()
+            .ok()
+            .and_then(|g| g.clone())
     }
 
     pub fn take_qr(&self) -> Option<Vec<u8>> {
-        pipeline().expect("pipeline not initialised").pending_qr.lock().ok().and_then(|mut g| g.take())
+        pipeline()
+            .expect("pipeline not initialised")
+            .pending_qr
+            .lock()
+            .ok()
+            .and_then(|mut g| g.take())
     }
 
     pub fn set_decode_enabled(&self, on: bool) {
-        pipeline().expect("pipeline not initialised").decode_enabled.store(on, Ordering::Relaxed);
+        pipeline()
+            .expect("pipeline not initialised")
+            .decode_enabled
+            .store(on, Ordering::Relaxed);
     }
 
     pub fn set_small_qr_mode(&self, on: bool) {
-        pipeline().expect("pipeline not initialised").small_qr_mode.store(on, Ordering::Relaxed);
+        pipeline()
+            .expect("pipeline not initialised")
+            .small_qr_mode
+            .store(on, Ordering::Relaxed);
     }
 
     pub fn take_fatal_err(&self) -> Option<String> {
-        pipeline().expect("pipeline not initialised").fatal.lock().ok().and_then(|mut g| g.take())
+        pipeline()
+            .expect("pipeline not initialised")
+            .fatal
+            .lock()
+            .ok()
+            .and_then(|mut g| g.take())
     }
 
     pub fn diagnostics(&self) -> ScanDiagnostics {
-        pipeline().expect("pipeline not initialised").diag.lock().ok().map(|g| *g).unwrap_or_default()
+        pipeline()
+            .expect("pipeline not initialised")
+            .diag
+            .lock()
+            .ok()
+            .map(|g| *g)
+            .unwrap_or_default()
     }
 }
 
@@ -330,20 +361,20 @@ unsafe fn init_camera() -> Result<(), String> {
     // safe default (0 / false / null).
     let mut cfg: cam::camera_config_t = core::mem::zeroed();
 
-    cfg.pin_pwdn  = CAM_PIN_PWDN;
+    cfg.pin_pwdn = CAM_PIN_PWDN;
     cfg.pin_reset = CAM_PIN_RESET;
-    cfg.pin_xclk  = CAM_PIN_XCLK;
-    cfg.pin_d7    = CAM_PIN_D7;
-    cfg.pin_d6    = CAM_PIN_D6;
-    cfg.pin_d5    = CAM_PIN_D5;
-    cfg.pin_d4    = CAM_PIN_D4;
-    cfg.pin_d3    = CAM_PIN_D3;
-    cfg.pin_d2    = CAM_PIN_D2;
-    cfg.pin_d1    = CAM_PIN_D1;
-    cfg.pin_d0    = CAM_PIN_D0;
+    cfg.pin_xclk = CAM_PIN_XCLK;
+    cfg.pin_d7 = CAM_PIN_D7;
+    cfg.pin_d6 = CAM_PIN_D6;
+    cfg.pin_d5 = CAM_PIN_D5;
+    cfg.pin_d4 = CAM_PIN_D4;
+    cfg.pin_d3 = CAM_PIN_D3;
+    cfg.pin_d2 = CAM_PIN_D2;
+    cfg.pin_d1 = CAM_PIN_D1;
+    cfg.pin_d0 = CAM_PIN_D0;
     cfg.pin_vsync = CAM_PIN_VSYNC;
-    cfg.pin_href  = CAM_PIN_HREF;
-    cfg.pin_pclk  = CAM_PIN_PCLK;
+    cfg.pin_href = CAM_PIN_HREF;
+    cfg.pin_pclk = CAM_PIN_PCLK;
 
     // Anonymous unions: pin_sccb_sda / pin_siod  and  pin_sccb_scl / pin_sioc.
     // Writing via sda/scl variant; both names alias the same memory.
@@ -352,17 +383,17 @@ unsafe fn init_camera() -> Result<(), String> {
 
     cfg.xclk_freq_hz = CAM_XCLK_FREQ;
     // Use LEDC timer 1 / channel 1 — backlight occupies timer 0 / channel 0.
-    cfg.ledc_timer   = cam::ledc_timer_t_LEDC_TIMER_1;
+    cfg.ledc_timer = cam::ledc_timer_t_LEDC_TIMER_1;
     cfg.ledc_channel = cam::ledc_channel_t_LEDC_CHANNEL_1;
     // I2C port 1 for SCCB (CONFIG_SCCB_HARDWARE_I2C_PORT=1); touch is on I2C0.
     cfg.sccb_i2c_port = 1;
 
     cfg.pixel_format = cam::pixformat_t_PIXFORMAT_GRAYSCALE;
-    cfg.frame_size   = cam::framesize_t_FRAMESIZE_SVGA;
+    cfg.frame_size = cam::framesize_t_FRAMESIZE_SVGA;
     cfg.jpeg_quality = 12;
-    cfg.fb_count     = 2;
-    cfg.grab_mode    = cam::camera_grab_mode_t_CAMERA_GRAB_LATEST;
-    cfg.fb_location  = cam::camera_fb_location_t_CAMERA_FB_IN_PSRAM;
+    cfg.fb_count = 2;
+    cfg.grab_mode = cam::camera_grab_mode_t_CAMERA_GRAB_LATEST;
+    cfg.fb_location = cam::camera_fb_location_t_CAMERA_FB_IN_PSRAM;
 
     // The SCCB probe occasionally fails on a cold boot with 0x106
     // (ESP_ERR_NOT_SUPPORTED) — the sensor isn't ready to report its chip-ID the
@@ -380,9 +411,7 @@ unsafe fn init_camera() -> Result<(), String> {
         if ret == esp_idf_sys::ESP_OK {
             break;
         }
-        log::warn!(
-            "esp_camera_init attempt {attempt}/{MAX_INIT_TRIES} failed: {ret:#010x}"
-        );
+        log::warn!("esp_camera_init attempt {attempt}/{MAX_INIT_TRIES} failed: {ret:#010x}");
         cam::esp_camera_deinit();
         thread::sleep(Duration::from_millis(100));
     }
@@ -437,6 +466,7 @@ fn reader_loop(
     latest: Arc<Mutex<Option<Arc<Frame>>>>,
     fatal: Arc<Mutex<Option<String>>>,
     streaming: Arc<AtomicBool>,
+    diag: Arc<Mutex<ScanDiagnostics>>,
 ) {
     // The camera driver occasionally returns NULL on a transient frame timeout
     // (the DVP path is bandwidth-tight). Tolerate those and keep going — only
@@ -444,6 +474,7 @@ fn reader_loop(
     // single timeout tore down and reopened the camera, causing multi-second
     // dead periods mid-scan.
     let mut consecutive_nulls = 0u32;
+    let mut last_counter_log = std::time::Instant::now();
     const MAX_CONSECUTIVE_NULLS: u32 = 30;
 
     // Persistent thread (spawned once for the life of the process). It idles
@@ -456,11 +487,28 @@ fn reader_loop(
             continue;
         }
 
+        if last_counter_log.elapsed() >= Duration::from_secs(1) {
+            if let Ok(g) = diag.lock() {
+                log::info!(
+                    "camera frames valid={} short={} timeout={} decoded={} duplicate_skips={}",
+                    g.frames_valid,
+                    g.frames_short,
+                    g.frame_timeouts,
+                    g.frames_decoded,
+                    g.duplicate_frames_skipped,
+                );
+            }
+            last_counter_log = std::time::Instant::now();
+        }
+
         // Blocking call — returns when the camera DMA has a frame ready.
         let fb = unsafe { esp_idf_sys::camera::esp_camera_fb_get() };
 
         if fb.is_null() {
             consecutive_nulls += 1;
+            if let Ok(mut g) = diag.lock() {
+                g.frame_timeouts = g.frame_timeouts.saturating_add(1);
+            }
             if consecutive_nulls >= MAX_CONSECUTIVE_NULLS {
                 if let Ok(mut g) = fatal.lock() {
                     if g.is_none() {
@@ -488,6 +536,9 @@ fn reader_loop(
         // out-of-bounds indexing in the decoder → heap corruption. In GRAYSCALE
         // the buffer is 1 byte/pixel, so a full frame is exactly `npx` bytes.
         if fb_ref.len < npx {
+            if let Ok(mut g) = diag.lock() {
+                g.frames_short = g.frames_short.saturating_add(1);
+            }
             unsafe { esp_idf_sys::camera::esp_camera_fb_return(fb) };
             thread::sleep(Duration::from_millis(10));
             continue;
@@ -512,6 +563,9 @@ fn reader_loop(
         if let Ok(mut g) = latest.lock() {
             *g = Some(Arc::new(frame));
         }
+        if let Ok(mut g) = diag.lock() {
+            g.frames_valid = g.frames_valid.saturating_add(1);
+        }
     }
 }
 
@@ -527,9 +581,11 @@ fn decoder_loop(
     // Runs for the life of the process; gated by `decode_enabled` (set false
     // whenever no camera is open), so it never needs a stop signal.
     let mut ur_acc = faraday_core::qr::ur_decoder::UrAccumulator::new();
+    let mut last_frame: Option<Arc<Frame>> = None;
     loop {
         if !decode_enabled.load(Ordering::Relaxed) {
             ur_acc.reset();
+            last_frame = None;
             if let Ok(mut g) = diag.lock() {
                 *g = ScanDiagnostics::default();
             }
@@ -559,13 +615,26 @@ fn decoder_loop(
                 continue;
             }
         };
+        if last_frame
+            .as_ref()
+            .is_some_and(|previous| Arc::ptr_eq(previous, &frame))
+        {
+            if let Ok(mut g) = diag.lock() {
+                g.duplicate_frames_skipped = g.duplicate_frames_skipped.saturating_add(1);
+            }
+            thread::sleep(Duration::from_millis(10));
+            continue;
+        }
+        last_frame = Some(Arc::clone(&frame));
+        if let Ok(mut g) = diag.lock() {
+            g.frames_decoded = g.frames_decoded.saturating_add(1);
+        }
         let mode = if small_qr_mode.load(Ordering::Relaxed) {
             ScanMode::SmallQr
         } else {
             ScanMode::Full
         };
-        let (decoded, saw_qr) =
-            crate::qr_decode::try_decode_qr_ur_diag(&frame, &mut ur_acc, mode);
+        let (decoded, saw_qr) = crate::qr_decode::try_decode_qr_ur_diag(&frame, &mut ur_acc, mode);
         if saw_qr {
             if let Ok(mut g) = diag.lock() {
                 g.last_qr_at = Some(std::time::Instant::now());
@@ -580,4 +649,3 @@ fn decoder_loop(
         thread::sleep(Duration::from_millis(10));
     }
 }
-

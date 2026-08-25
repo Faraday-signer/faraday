@@ -18,6 +18,11 @@ pub struct Frame {
 pub struct ScanDiagnostics {
     pub last_qr_at: Option<std::time::Instant>,
     pub ur_progress: Option<(usize, usize)>,
+    pub frames_valid: u32,
+    pub frames_short: u32,
+    pub frame_timeouts: u32,
+    pub frames_decoded: u32,
+    pub duplicate_frames_skipped: u32,
 }
 
 /// Scan mode hint for the QR decoder.
