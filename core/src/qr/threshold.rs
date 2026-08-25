@@ -20,7 +20,14 @@ pub fn otsu_threshold(luma: &[u8]) -> u8 {
     for &p in luma {
         hist[p as usize] += 1;
     }
-    let total = luma.len() as f64;
+    otsu_threshold_from_histogram(&hist, luma.len())
+}
+
+/// Find the Otsu threshold from a histogram that was collected while producing
+/// an image. This avoids another full pixel pass in latency-sensitive camera
+/// pipelines.
+pub fn otsu_threshold_from_histogram(hist: &[u64; 256], pixel_count: usize) -> u8 {
+    let total = pixel_count as f64;
 
     let sum_total: f64 = (0..256).map(|i| (i as f64) * hist[i] as f64).sum();
 
@@ -82,7 +89,24 @@ mod tests {
             luma.push(200);
         }
         let t = otsu_threshold(&luma);
-        assert!(t >= 40 && t < 200, "threshold {} should sit between peaks", t);
+        assert!(
+            t >= 40 && t < 200,
+            "threshold {} should sit between peaks",
+            t
+        );
+    }
+
+    #[test]
+    fn histogram_entry_point_matches_pixel_entry_point() {
+        let luma = [0u8, 10, 10, 40, 120, 200, 200, 255];
+        let mut hist = [0u64; 256];
+        for &p in &luma {
+            hist[p as usize] += 1;
+        }
+        assert_eq!(
+            otsu_threshold_from_histogram(&hist, luma.len()),
+            otsu_threshold(&luma)
+        );
     }
 
     #[test]
